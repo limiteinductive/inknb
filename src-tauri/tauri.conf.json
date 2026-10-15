@@ -1,0 +1,41 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "aside",
+  "version": "0.1.0",
+  "identifier": "io.github.limiteinductive.aside",
+  "build": {
+    "beforeDevCommand": "npm run dev",
+    "devUrl": "http://127.0.0.1:1420",
+    "beforeBuildCommand": "npm run build",
+    "frontendDist": "../dist"
+  },
+  "app": {
+    "windows": [
+      {
+        "label": "main",
+        "title": "aside",
+        "width": 1180,
+        "height": 820,
+        "minWidth": 700,
+        "minHeight": 480,
+        "titleBarStyle": "Overlay",
+        "hiddenTitle": true,
+        "backgroundColor": "#f9f8f2"
+      }
+    ],
+    "security": {
+      "csp": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: asset: http://asset.localhost; connect-src ipc: http://ipc.localhost; font-src 'self' data:; object-src 'none'; frame-src 'none'"
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": ["app"],
+    "category": "Productivity",
+    "icon": ["icons/512x512.png"],
+    "shortDescription": "A quiet place to write with your agent beside you.",
+    "macOS": { "minimumSystemVersion": "13.0" },
+    "fileAssociations": [
+      { "ext": ["md", "markdown"], "name": "Markdown", "role": "Editor" }
+    ]
+  }
+}

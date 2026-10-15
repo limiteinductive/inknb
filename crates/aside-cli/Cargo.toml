@@ -1,0 +1,8 @@
+[package]
+name = "aside-cli"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+aside-core = { path = "../aside-core" }
+serde_json = "1"
