@@ -34,7 +34,6 @@ import {
   FileText,
   Focus,
   ImagePlus,
-  Link2,
   MessageSquarePlus,
   Plus,
   Settings2,
@@ -48,7 +47,7 @@ import { ask, open } from "@tauri-apps/plugin-dialog";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { session } from "./session";
 import { createEditor } from "./editor";
-import type { Binding, Source } from "./domain";
+import type { Source } from "./domain";
 import { threadHasStaleSources } from "./domain";
 import { useSession } from "./use-session";
 import "./style.css";
@@ -150,7 +149,7 @@ function Composer({ threadId }: { threadId?: string }) {
         </p>
       )}
       {!state.metadata.binding && (
-        <p className="quiet-note">Saved locally until you connect an agent.</p>
+        <p className="quiet-note">Saved locally until your agent joins.</p>
       )}
     </form>
   );
@@ -319,7 +318,7 @@ function Conversation({ identity }: { identity: string }) {
                 ? "Sending request…"
                 : state.metadata.binding
                   ? "Waiting to send"
-                  : "Waiting for a connection"}
+                  : "Waiting for your agent"}
           {latest.state === "failed" && (
             <Button
               className="text-button"
@@ -350,41 +349,7 @@ function Conversation({ identity }: { identity: string }) {
 
 function Settings() {
   const state = useSession();
-  const [provider, setProvider] = useState<Binding["provider"]>(
-    state.metadata.binding?.provider ?? "codex",
-  );
-  const [sessionId, setSessionId] = useState(
-    state.metadata.binding?.sessionId ?? "",
-  );
-  const [commandPath, setCommandPath] = useState(
-    state.metadata.binding?.commandPath || state.codexPath,
-  );
-  const [connectionError, setConnectionError] = useState("");
   const preferences = state.preferences;
-  const configuration =
-    provider === "codex"
-      ? `[mcp_servers.inknb]\ncommand = ${JSON.stringify(state.commandPath)}\nargs = ["mcp"]`
-      : JSON.stringify(
-          {
-            mcpServers: {
-              inknb: {
-                command: state.commandPath,
-                args: [
-                  "mcp",
-                  ...(provider === "claude"
-                    ? [
-                        "--claude-channel",
-                        "--connection",
-                        sessionId || "my-writing-session",
-                      ]
-                    : []),
-                ],
-              },
-            },
-          },
-          null,
-          2,
-        );
   return (
     <ModalOverlay
       isOpen={state.settings}
@@ -502,106 +467,6 @@ function Settings() {
                   <span />
                 </span>
               </Switch>
-            </section>
-            <section className="connection-settings">
-              <h3>Your agent</h3>
-              <p className="section-note">
-                Connect an existing session. Your agent keeps its own model,
-                credentials, and context.
-              </p>
-              <RadioGroup
-                aria-label="Agent provider"
-                value={provider}
-                onChange={(value) => setProvider(value as Binding["provider"])}
-              >
-                <div className="segmented">
-                  <Radio value="codex">Codex</Radio>
-                  <Radio value="claude">Claude Code</Radio>
-                </div>
-              </RadioGroup>
-              <TextField
-                value={sessionId}
-                onChange={setSessionId}
-                className="field"
-              >
-                <Label>
-                  {provider === "codex" ? "Session UUID" : "Connection name"}
-                </Label>
-                <Input
-                  placeholder={
-                    provider === "codex"
-                      ? "From your existing Codex session"
-                      : "My writing session"
-                  }
-                />
-              </TextField>
-              {provider === "codex" && (
-                <TextField
-                  value={commandPath}
-                  onChange={setCommandPath}
-                  className="field"
-                >
-                  <Label>Codex executable</Label>
-                  <Input />
-                </TextField>
-              )}
-              <div className="connection-actions">
-                <Button
-                  className="primary-button"
-                  onPress={() => {
-                    if (!sessionId.trim()) {
-                      setConnectionError("Enter a session or connection name.");
-                      return;
-                    }
-                    if (
-                      provider === "codex" &&
-                      !/^[0-9a-f]{8}-[0-9a-f-]{27}$/i.test(sessionId.trim())
-                    ) {
-                      setConnectionError("Use the exact Codex session UUID.");
-                      return;
-                    }
-                    session.bind({
-                      provider,
-                      sessionId: sessionId.trim(),
-                      label: provider === "codex" ? "Codex" : "Claude Code",
-                      commandPath,
-                    });
-                    setConnectionError("");
-                  }}
-                >
-                  {state.metadata.binding ? "Update connection" : "Connect"}
-                </Button>
-                {state.metadata.binding && (
-                  <Button
-                    className="text-button"
-                    onPress={() => session.bind(null)}
-                  >
-                    Disconnect
-                  </Button>
-                )}
-              </div>
-              {connectionError && (
-                <p role="alert" className="field-error">
-                  {connectionError}
-                </p>
-              )}
-              <details className="connection-help">
-                <summary>Connect the local MCP tools</summary>
-                <p>
-                  Add this server to your agent’s MCP configuration. Open ink
-                  and butter while using it.
-                </p>
-                <pre>{configuration}</pre>
-                <p>
-                  {provider === "claude"
-                    ? "For push delivery, start Claude with its documented channel opt-in. Custom channels currently require a development-channel flag and account support."
-                    : "Codex receives requests through its installed queue command. It can also use inknb when MCP tools are unavailable."}
-                </p>
-                <p>
-                  Pending requests stay saved. Use Retry after checking an
-                  interrupted delivery.
-                </p>
-              </details>
             </section>
             <footer className="settings-footer">
               <span>ink and butter {__INKNB_BUILD__.split("+")[0]}</span>
@@ -1087,17 +952,31 @@ function App() {
             : state.status || (state.dirty ? "Unsaved" : "")}
         </span>
         <span className="status-spacer" />
-        <Button
-          className={`connection-status ${state.metadata.binding ? "connected" : ""}`}
-          onPress={() => session.update({ settings: true })}
-        >
-          {state.metadata.binding ? (
-            <span className="status-dot" />
-          ) : (
-            <Link2 size={12} />
-          )}
-          {state.metadata.binding?.label ?? "Connect agent"}
-        </Button>
+        {state.metadata.binding ? (
+          <MenuTrigger>
+            <Button
+              className="connection-status connected"
+              aria-label="Agent connection"
+            >
+              <span className="status-dot" />
+              {state.metadata.binding.label}
+            </Button>
+            <Popover className="document-menu" placement="top end" offset={8}>
+              <Menu
+                aria-label="Agent connection"
+                onAction={() => {
+                  void session
+                    .bind(null, state.metadata.documentId)
+                    .catch((error) => session.fail(error));
+                }}
+              >
+                <MenuItem id="disconnect">Disconnect agent</MenuItem>
+              </Menu>
+            </Popover>
+          </MenuTrigger>
+        ) : (
+          <span className="connection-status">No agent yet</span>
+        )}
         <span className="word-count">
           {wordCount.toLocaleString()} {wordCount === 1 ? "word" : "words"}
         </span>

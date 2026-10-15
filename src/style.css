@@ -541,8 +541,7 @@ kbd {
   background: currentColor;
   border-radius: 50%;
 }
-.delivery.failed,
-.field-error {
+.delivery.failed {
   color: var(--danger);
 }
 .delivery p {
@@ -673,6 +672,7 @@ kbd {
   font-size: 10px;
   color: var(--faint);
   padding: 4px 0;
+  white-space: nowrap;
 }
 .connection-status.connected {
   color: var(--accent);
@@ -865,17 +865,6 @@ h3 {
   cursor: pointer;
   margin-top: 20px;
 }
-.section-note {
-  color: var(--muted);
-  font-size: 12px;
-  line-height: 1.6;
-  margin-top: -8px;
-  margin-bottom: 18px;
-}
-.connection-settings > [role="radiogroup"] {
-  display: inline-block;
-  margin-bottom: 4px;
-}
 .field {
   display: flex;
   flex-direction: column;
@@ -907,34 +896,11 @@ h3 {
 .primary-button:hover {
   filter: brightness(1.1);
 }
-.connection-actions,
 .modal-actions {
   display: flex;
   gap: 16px;
   align-items: center;
   margin-top: 18px;
-}
-.field-error {
-  font-size: 11px;
-  margin-top: 12px;
-}
-.connection-help {
-  margin-top: 20px;
-  font-size: 11px;
-  line-height: 1.7;
-  color: var(--muted);
-}
-.connection-help summary {
-  cursor: pointer;
-}
-.connection-help pre {
-  white-space: pre-wrap;
-  overflow-wrap: anywhere;
-  font: 10px/1.7 var(--mono-font);
-  padding: 12px;
-  background: var(--paper);
-  border-radius: 5px;
-  user-select: text;
 }
 .settings-footer {
   display: flex;

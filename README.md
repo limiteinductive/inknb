@@ -34,36 +34,15 @@ The document menu inserts local figures and Markdown tables. Reading preview ren
 
 Ask your agent to handle routine document work, including file lookup, figure insertion, and PDF export. The agent can save the live document with `document_save`, run the document's existing build script, and attach the generated PDF to its reply with `source_attach`. The file opens from the reply. Export tools and build configuration stay with the document and external agent.
 
-## Connect Codex
+## Work with your agent
 
-Add the installed MCP server to Codex:
+Ask your existing agent: "Work with me in ink and butter." The agent handles its connection and tool setup. The editor shows a quiet connection indicator. Use that indicator to disconnect.
 
-```toml
-[mcp_servers.inknb]
-command = "/Applications/ink and butter.app/Contents/MacOS/inknb"
-args = ["mcp"]
-```
-
-Open an existing Codex session with that server available. Enter its exact session UUID in ink and butter's settings. Requests use the installed `codex queue` command. A closed session receives the queued request when it resumes.
+Saved asides wait locally until the agent joins. Pending requests then send automatically. Connecting does not grant permission to edit prose. Each request retains its own permission.
 
 The session retains its own context and permissions. ink and butter does not select a model, manage credentials, or run the agent. MCP tools read the live buffer and return replies, sources, and edits.
 
-## Claude Code
-
-Claude Code uses a local MCP channel. This connection remains unverified on the development machine. Codex supplies the end-to-end integration verification.
-
-```json
-{
-  "mcpServers": {
-    "inknb": {
-      "command": "/Applications/ink and butter.app/Contents/MacOS/inknb",
-      "args": ["mcp", "--claude-channel", "--connection", "writing"]
-    }
-  }
-}
-```
-
-Use the same connection name in ink and butter. Claude's current channel preview requires its documented channel opt-in and a compatible account policy. The local development opt-in is `--dangerously-load-development-channels server:inknb`. ink and butter does not alter that policy or the agent's login.
+See [the agent guide](docs/agents.md) for setup and transport details. Codex supplies the end-to-end integration verification. Claude channel support remains unverified on the development machine.
 
 ## Local data
 

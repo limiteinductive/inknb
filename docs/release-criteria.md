@@ -23,6 +23,8 @@ Evidence appears in [release verification](release-verification.md). An unchecke
 
 ## Agent connections
 
+- [x] An existing Codex session registers itself without human session IDs or executable fields.
+- [x] Saved pending asides send when the agent joins. Connection grants no prose edit permission.
 - [x] A real existing Codex session receives an editor request and replies through inknb MCP.
 - [x] Claude channel support states its external requirements and verification status.
 - [x] Disconnect and reconnect preserve pending requests without duplicate delivery.

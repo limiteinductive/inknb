@@ -548,15 +548,17 @@ export class DocumentSession {
     );
     if (
       !request ||
+      request.state === "sending" ||
       request.state === "delivered" ||
       request.state === "answered"
     )
       return;
-    const binding = request.binding ?? this.state.metadata.binding;
+    const binding = this.state.metadata.binding;
     if (!binding) {
-      this.update({ status: "Request saved. Connect an agent to send it." });
+      this.update({ status: "Request saved for your agent" });
       return;
     }
+    const epoch = this.state.epoch;
     this.changed({
       ...this.state.metadata,
       requests: this.state.metadata.requests.map((candidate) =>
@@ -571,6 +573,7 @@ export class DocumentSession {
       ),
     });
     await this.recover();
+    if (this.state.epoch !== epoch) return;
     if (binding.provider === "claude") {
       this.update({ status: "Waiting for the Claude channel" });
       return;
@@ -582,8 +585,10 @@ export class DocumentSession {
         sessionId: binding.sessionId,
         message,
       });
+      if (this.state.epoch !== epoch) return;
       this.markDelivered(requestId);
     } catch (error) {
+      if (this.state.epoch !== epoch) return;
       this.changed({
         ...this.state.metadata,
         requests: this.state.metadata.requests.map((candidate) =>
@@ -610,8 +615,27 @@ export class DocumentSession {
     });
   }
 
-  bind(binding: Binding | null): void {
-    this.changed({ ...this.state.metadata, binding });
+  async bind(binding: Binding | null, documentId: string): Promise<void> {
+    if (documentId !== this.state.metadata.documentId)
+      throw new Error("The open document changed. Read document_read again.");
+    const epoch = this.state.epoch;
+    this.changed({
+      ...this.state.metadata,
+      binding,
+      requests: this.state.metadata.requests.map((request) =>
+        request.state === "pending" ? { ...request, binding } : request,
+      ),
+    });
+    await this.recover();
+    if (this.state.epoch !== epoch)
+      throw new Error("The open document changed while connecting.");
+    if (this.state.metadata.binding !== binding) return;
+    this.update({ status: binding ? "Agent connected" : "Agent disconnected" });
+    if (!binding) return;
+    for (const request of this.state.metadata.requests) {
+      if (request.state === "pending")
+        void this.deliver(request.id).catch((error) => this.fail(error));
+    }
   }
 
   async preference(patch: Partial<Preferences>): Promise<void> {
@@ -819,6 +843,30 @@ export class DocumentSession {
             (thread) => thread.id === request.threadId,
           ),
         }));
+    }
+    if (method === "agent_connect") {
+      const parsed = z
+        .object({
+          documentId: z.string().uuid(),
+          provider: z.enum(["codex", "claude"]),
+          sessionId: z.string().trim().min(1),
+          commandPath: z.string().startsWith("/").optional(),
+        })
+        .strict()
+        .parse(parameters);
+      if (parsed.provider === "codex")
+        z.string().uuid().parse(parsed.sessionId);
+      const binding: Binding = {
+        provider: parsed.provider,
+        sessionId: parsed.sessionId,
+        label: parsed.provider === "codex" ? "Codex" : "Claude Code",
+        commandPath:
+          parsed.provider === "codex"
+            ? (parsed.commandPath ?? this.state.codexPath)
+            : "",
+      };
+      await this.bind(binding, parsed.documentId);
+      return { documentId: parsed.documentId, binding };
     }
     if (method === "ui_state") {
       z.object({}).strict().parse(parameters);

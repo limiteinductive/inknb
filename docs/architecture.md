@@ -32,7 +32,13 @@ Anchors use UTF-16 offsets compatible with CodeMirror. Each edit maps the offset
 
 The app exposes a local Unix socket with permissions restricted to the current user. A CLI and an MCP server use that protocol. Requests route to the live frontend through a request-response bridge.
 
-Codex delivery uses the installed `codex queue` command with an explicitly bound session ID. Claude delivery uses the documented MCP channel contract. Channel availability depends on the external Claude installation and account policy. Connection errors remain visible and retain unsent requests.
+The connection design is `long-term`. The external agent registers itself for a specific document through `agent_connect`. The document identity is a precondition. Connection changes persist before delivery starts.
+
+The bundled `inknb connect` command reads the calling Codex shell's `CODEX_THREAD_ID`. The MCP server does not infer session identity from its inherited environment. Codex delivery uses the installed `codex queue` command with that registered session ID. Claude delivery uses the documented MCP channel contract. Channel availability depends on the external Claude installation and account policy. Connection errors remain visible and retain unsent requests.
+
+Pending asides adopt the registered agent and send automatically. Delivered and answered requests do not resend on reconnect. Failed deliveries require an explicit Retry. Request provenance remains attached to each delivery. An in-flight delivery can finish after Disconnect. Delivery completion cannot mutate another document.
+
+The writer interface has no provider, session, executable, or MCP configuration controls. It shows connection status and a Disconnect action. Connection grants no prose edit permission.
 
 Codex receives end-to-end verification with an existing session. Claude remains unverified on this machine. The user selected Codex for integration testing.
 
