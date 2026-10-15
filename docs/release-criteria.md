@@ -23,7 +23,7 @@ Evidence appears in [release verification](release-verification.md). An unchecke
 
 ## Agent connections
 
-- [x] A real existing Codex session receives an editor request and replies through aside MCP.
+- [x] A real existing Codex session receives an editor request and replies through inknb MCP.
 - [x] Claude channel support states its external requirements and verification status.
 - [x] Disconnect and reconnect preserve pending requests without duplicate delivery.
 - [x] The app contains no model selection, credentials, context engine, or agent harness.

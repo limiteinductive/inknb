@@ -1,6 +1,6 @@
 [package]
-name = "aside-core"
-version = "0.1.0"
+name = "inknb-core"
+version = "0.1.1"
 edition = "2021"
 
 [dependencies]

@@ -11,13 +11,13 @@ execFileSync(
     "--locked",
     "--release",
     "--bin",
-    "aside-cli",
+    "inknb",
     "--jobs",
     "4",
     "--manifest-path",
     "Cargo.toml",
     "--package",
-    "aside-cli",
+    "inknb",
   ],
   { cwd: root, stdio: "inherit" },
 );
@@ -28,10 +28,10 @@ execFileSync(
 );
 const bundle = path.join(
   root,
-  "src-tauri/target/release/bundle/macos/aside.app",
+  "src-tauri/target/release/bundle/macos/ink and butter.app",
 );
-const command = path.join(bundle, "Contents/MacOS/aside-cli");
-copyFileSync(path.join(root, "src-tauri/target/release/aside-cli"), command);
+const command = path.join(bundle, "Contents/MacOS/inknb");
+copyFileSync(path.join(root, "src-tauri/target/release/inknb"), command);
 execFileSync("/usr/bin/codesign", ["--force", "--sign", "-", command], {
   stdio: "inherit",
 });

@@ -1,2 +1,2 @@
 declare module "*.css";
-declare const __ASIDE_BUILD__: string;
+declare const __INKNB_BUILD__: string;

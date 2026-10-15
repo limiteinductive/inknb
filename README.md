@@ -1,6 +1,6 @@
-# aside
+# ink and butter
 
-aside is a local Markdown writing app for macOS. Conversations attach to passages in the document. Existing agent sessions receive requests and return replies, sources, and proposed edits.
+ink and butter is a local Markdown writing app for macOS. Conversations attach to passages in the document. Existing agent sessions receive requests and return replies, sources, and proposed edits.
 
 The app uses Tauri, React, CodeMirror, and React Aria. Document text stays in Markdown files. Adjacent JSON files store annotations and provenance.
 
@@ -14,11 +14,11 @@ The build uses Node.js 22.22 or newer, Rust 1.93 or newer, and the Xcode command
 npm ci
 npm run check
 npm test
-cargo test --locked --package aside-core --package aside-cli
+cargo test --locked --package inknb-core --package inknb
 npm run bundle
 ```
 
-The locally signed app appears at `src-tauri/target/release/bundle/macos/aside.app`. The bundle contains the editor and `aside-cli`. The installed app needs no Node.js or Rust runtime.
+The locally signed app appears at `src-tauri/target/release/bundle/macos/ink and butter.app`. The bundle contains the editor and `inknb`. The installed app needs no Node.js or Rust runtime.
 
 `npm run desktop` starts the development app. `npm run bundle` creates the local macOS release bundle.
 
@@ -39,14 +39,14 @@ Ask your agent to handle routine document work, including file lookup, figure in
 Add the installed MCP server to Codex:
 
 ```toml
-[mcp_servers.aside]
-command = "/Applications/aside.app/Contents/MacOS/aside-cli"
+[mcp_servers.inknb]
+command = "/Applications/ink and butter.app/Contents/MacOS/inknb"
 args = ["mcp"]
 ```
 
-Open an existing Codex session with that server available. Enter its exact session UUID in aside's settings. Requests use the installed `codex queue` command. A closed session receives the queued request when it resumes.
+Open an existing Codex session with that server available. Enter its exact session UUID in ink and butter's settings. Requests use the installed `codex queue` command. A closed session receives the queued request when it resumes.
 
-The session retains its own context and permissions. aside does not select a model, manage credentials, or run the agent. MCP tools read the live buffer and return replies, sources, and edits.
+The session retains its own context and permissions. ink and butter does not select a model, manage credentials, or run the agent. MCP tools read the live buffer and return replies, sources, and edits.
 
 ## Claude Code
 
@@ -55,15 +55,15 @@ Claude Code uses a local MCP channel. This connection remains unverified on the 
 ```json
 {
   "mcpServers": {
-    "aside": {
-      "command": "/Applications/aside.app/Contents/MacOS/aside-cli",
+    "inknb": {
+      "command": "/Applications/ink and butter.app/Contents/MacOS/inknb",
       "args": ["mcp", "--claude-channel", "--connection", "writing"]
     }
   }
 }
 ```
 
-Use the same connection name in aside. Claude's current channel preview requires its documented channel opt-in and a compatible account policy. The local development opt-in is `--dangerously-load-development-channels server:aside`. aside does not alter that policy or the agent's login.
+Use the same connection name in ink and butter. Claude's current channel preview requires its documented channel opt-in and a compatible account policy. The local development opt-in is `--dangerously-load-development-channels server:inknb`. ink and butter does not alter that policy or the agent's login.
 
 ## Local data
 
@@ -74,3 +74,9 @@ The app stores preferences, the last document path, and its recovery journal in 
 External changes show Reload and Save a copy controls. Source changes mark their conversations and attached passages. Ambiguous anchors remain detached until the writer attaches them again.
 
 The control socket permits connections from the current user. The MCP screenshot tool captures actual WebKit pixels with a build fingerprint, document revision, viewport, and capture identity.
+
+## Naming and upgrades
+
+The app name is **ink and butter**. The repository, CLI, and MCP server use **inknb**. A margin conversation is an **aside**.
+
+The persistent application identity, support directory, and `.aside.json` format remain stable. Existing preferences, recovery data, and conversations load directly. Update the MCP command path when moving from the earlier app bundle.

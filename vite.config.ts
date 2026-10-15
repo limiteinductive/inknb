@@ -1,5 +1,6 @@
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
+import packageMetadata from "./package.json" with { type: "json" };
 import { createHash } from "node:crypto";
 import { readFileSync, readdirSync, statSync } from "node:fs";
 import path from "node:path";
@@ -26,11 +27,11 @@ for (const source of sources) {
   if (statSync(source).isFile())
     fingerprint.update(source).update(readFileSync(source));
 }
-const build = `0.1.0+${fingerprint.digest("hex").slice(0, 12)}`;
+const build = `${packageMetadata.version}+${fingerprint.digest("hex").slice(0, 12)}`;
 
 export default defineConfig({
   plugins: [react()],
   clearScreen: false,
-  define: { __ASIDE_BUILD__: JSON.stringify(build) },
+  define: { __INKNB_BUILD__: JSON.stringify(build) },
   server: { host: "127.0.0.1", port: 1420, strictPort: true },
 });

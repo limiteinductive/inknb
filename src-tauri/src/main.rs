@@ -1,9 +1,9 @@
-use aside_core::protocol::{socket_path, ControlRequest, ControlResponse};
-use aside_core::storage::{
+use base64::Engine;
+use inknb_core::protocol::{socket_path, ControlRequest, ControlResponse};
+use inknb_core::storage::{
     application_directory, atomic_write, file_hash, load_document, save_document, sidecar_path,
     store_recovery, LoadedDocument, SavedDocument, Snapshot,
 };
-use base64::Engine;
 use serde::Serialize;
 use serde_json::{json, Value};
 use std::collections::HashMap;
@@ -64,7 +64,7 @@ fn bootstrap(state: State<DesktopState>) -> Result<Bootstrap, String> {
         recovery,
         last_path: requested_path.or(stored_path),
         command_path: executable
-            .with_file_name("aside-cli")
+            .with_file_name("inknb")
             .to_string_lossy()
             .into_owned(),
         codex_path: find_executable("codex"),
@@ -260,7 +260,7 @@ fn preview_assets(
 fn open_reference(document_path: Option<String>, reference: String) -> Result<(), String> {
     let destination = match tauri::Url::parse(&reference) {
         Ok(url) if matches!(url.scheme(), "http" | "https") => url.to_string(),
-        Ok(_) => return Err("This link type cannot be opened from aside.".into()),
+        Ok(_) => return Err("This link type cannot be opened from ink and butter.".into()),
         Err(_) => {
             let decoded = percent_encoding::percent_decode_str(&reference)
                 .decode_utf8()
@@ -352,7 +352,7 @@ async fn dispatch(app: &tauri::AppHandle, request: ControlRequest) -> Result<Val
         .lock()
         .map_err(|error| error.to_string())?
         .insert(request.id.clone(), sender);
-    app.emit_to("main", "aside-control", &request)
+    app.emit_to("main", "inknb-control", &request)
         .map_err(|error| error.to_string())?;
     let response = tokio::time::timeout(std::time::Duration::from_secs(25), receiver).await;
     state
@@ -495,7 +495,8 @@ async fn capture_window(app: &tauri::AppHandle) -> Result<Vec<u8>, String> {
 }
 
 fn main() {
-    let directory = application_directory().expect("The aside support directory is unavailable.");
+    let directory =
+        application_directory().expect("The ink and butter support directory is unavailable.");
     let lock = OpenOptions::new()
         .read(true)
         .write(true)
@@ -505,7 +506,7 @@ fn main() {
         .open(directory.join("instance.lock"))
         .unwrap();
     if unsafe { libc::flock(lock.as_raw_fd(), libc::LOCK_EX | libc::LOCK_NB) } != 0 {
-        eprintln!("aside is already running.");
+        eprintln!("ink and butter is already running.");
         return;
     }
     let socket = socket_path().unwrap();
@@ -554,11 +555,15 @@ fn main() {
             let settings =
                 MenuItem::with_id(app, "settings", "Settings…", true, Some("CmdOrCtrl+,"))?;
             let comment =
-                MenuItem::with_id(app, "comment", "Add Aside", true, Some("CmdOrCtrl+Shift+A"))?;
+                MenuItem::with_id(app, "comment", "Add aside", true, Some("CmdOrCtrl+Shift+A"))?;
             let focus =
                 MenuItem::with_id(app, "focus", "Focus Mode", true, Some("CmdOrCtrl+Shift+F"))?;
-            let application = SubmenuBuilder::new(app, "aside")
-                .item(&PredefinedMenuItem::about(app, Some("About aside"), None)?)
+            let application = SubmenuBuilder::new(app, "ink and butter")
+                .item(&PredefinedMenuItem::about(
+                    app,
+                    Some("About ink and butter"),
+                    None,
+                )?)
                 .item(&settings)
                 .separator()
                 .item(&PredefinedMenuItem::hide(app, None)?)
@@ -567,7 +572,7 @@ fn main() {
                 .item(&MenuItem::with_id(
                     app,
                     "close",
-                    "Quit aside",
+                    "Quit ink and butter",
                     true,
                     Some("CmdOrCtrl+Q"),
                 )?)
@@ -593,7 +598,7 @@ fn main() {
                     .build()?,
             )?;
             app.on_menu_event(|app, event| {
-                let _ = app.emit_to("main", "aside-menu", event.id().as_ref());
+                let _ = app.emit_to("main", "inknb-menu", event.id().as_ref());
             });
             let handle = app.handle().clone();
             tauri::async_runtime::spawn(async move {
@@ -617,11 +622,11 @@ fn main() {
         .on_window_event(|window, event| {
             if let tauri::WindowEvent::CloseRequested { api, .. } = event {
                 api.prevent_close();
-                let _ = window.emit("aside-menu", "close");
+                let _ = window.emit("inknb-menu", "close");
             }
         })
         .build(tauri::generate_context!())
-        .expect("aside could not start.");
+        .expect("ink and butter could not start.");
     app.run(|handle, event| {
         if let tauri::RunEvent::Opened { urls } = event {
             if let Some(path) = urls.first().and_then(|url| url.to_file_path().ok()) {
@@ -629,7 +634,7 @@ fn main() {
                 if let Ok(mut pending) = handle.state::<DesktopState>().open_path.lock() {
                     *pending = Some(path.clone());
                 }
-                let _ = handle.emit_to("main", "aside-open", path);
+                let _ = handle.emit_to("main", "inknb-open", path);
             }
         }
     });

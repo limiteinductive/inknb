@@ -1,18 +1,18 @@
 [package]
-name = "aside"
-version = "0.1.0"
+name = "inknb-desktop"
+version = "0.1.1"
 edition = "2021"
-default-run = "aside"
+default-run = "inknb-desktop"
 
 [[bin]]
-name = "aside"
+name = "inknb-desktop"
 path = "src/main.rs"
 
 [build-dependencies]
 tauri-build = { version = "=2.7.3", features = [] }
 
 [dependencies]
-aside-core = { path = "../crates/aside-core" }
+inknb-core = { path = "../crates/inknb-core" }
 tauri = { version = "=2.12.4", features = [] }
 tauri-plugin-dialog = "=2.8.3"
 serde = { version = "1", features = ["derive"] }

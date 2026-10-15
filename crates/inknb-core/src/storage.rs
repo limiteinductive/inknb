@@ -75,7 +75,7 @@ pub fn file_hash(path: &Path) -> Result<Option<String>, String> {
 
 pub fn atomic_write(path: &Path, bytes: &[u8]) -> Result<(), String> {
     let parent = path.parent().ok_or("The file has no parent directory.")?;
-    let temporary = parent.join(format!(".aside-{}.tmp", Uuid::new_v4()));
+    let temporary = parent.join(format!(".inknb-{}.tmp", Uuid::new_v4()));
     let result = (|| {
         let mut file = OpenOptions::new()
             .write(true)
@@ -139,12 +139,13 @@ pub fn save_document(directory: &Path, snapshot: &Snapshot) -> Result<SavedDocum
     let sidecar = sidecar_path(path);
     if file_hash(path)? != snapshot.expected_hash {
         return Err(
-            "The Markdown file changed outside aside. Reload it or save a separate copy.".into(),
+            "The Markdown file changed outside ink and butter. Reload it or save a separate copy."
+                .into(),
         );
     }
     if file_hash(&sidecar)? != snapshot.expected_sidecar_hash {
         return Err(
-            "The annotation file changed outside aside. Reload it or save a separate copy.".into(),
+            "The annotation file changed outside ink and butter. Reload it or save a separate copy.".into(),
         );
     }
     store_recovery(directory, snapshot)?;

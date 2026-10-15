@@ -1,4 +1,4 @@
-# aside development
+# ink and butter development
 
 This is a personal project. Use fresh code, public dependencies, and synthetic fixtures. Keep private company code, research, data, paths, and assets out of this repository and its history.
 
@@ -10,7 +10,7 @@ Keep model selection, credentials, context management, and agent execution in ex
 
 Use the shared design tokens and accessible components. Margin is the default conversation placement. Inline is a presentation preference over the same annotation model.
 
-Exercise the actual desktop app with computer use. Capture and inspect screenshots after meaningful UI changes. Use aside MCP for live state and screenshots once available. Check native dialogs, focus, selection, scrolling, and keyboard behavior. Inspect motion through interaction and recordings where available.
+Exercise the actual desktop app with computer use. Capture and inspect screenshots after meaningful UI changes. Use inknb MCP for live state and screenshots once available. Check native dialogs, focus, selection, scrolling, and keyboard behavior. Inspect motion through interaction and recordings where available.
 
 Verify release criteria from current evidence. Screenshots and successful tool calls alone do not establish functional completion.
 

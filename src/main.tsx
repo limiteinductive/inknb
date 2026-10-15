@@ -363,11 +363,11 @@ function Settings() {
   const preferences = state.preferences;
   const configuration =
     provider === "codex"
-      ? `[mcp_servers.aside]\ncommand = ${JSON.stringify(state.commandPath)}\nargs = ["mcp"]`
+      ? `[mcp_servers.inknb]\ncommand = ${JSON.stringify(state.commandPath)}\nargs = ["mcp"]`
       : JSON.stringify(
           {
             mcpServers: {
-              aside: {
+              inknb: {
                 command: state.commandPath,
                 args: [
                   "mcp",
@@ -588,14 +588,14 @@ function Settings() {
               <details className="connection-help">
                 <summary>Connect the local MCP tools</summary>
                 <p>
-                  Add this server to your agent’s MCP configuration. Open aside
-                  while using it.
+                  Add this server to your agent’s MCP configuration. Open ink
+                  and butter while using it.
                 </p>
                 <pre>{configuration}</pre>
                 <p>
                   {provider === "claude"
                     ? "For push delivery, start Claude with its documented channel opt-in. Custom channels currently require a development-channel flag and account support."
-                    : "Codex receives requests through its installed queue command. It can also use aside-cli when MCP tools are unavailable."}
+                    : "Codex receives requests through its installed queue command. It can also use inknb when MCP tools are unavailable."}
                 </p>
                 <p>
                   Pending requests stay saved. Use Retry after checking an
@@ -604,7 +604,7 @@ function Settings() {
               </details>
             </section>
             <footer className="settings-footer">
-              <span>aside 0.1.0</span>
+              <span>ink and butter {__INKNB_BUILD__.split("+")[0]}</span>
               <span>Local files. Your words.</span>
             </footer>
           </div>
@@ -645,18 +645,18 @@ function App() {
   useEffect(() => {
     const subscriptions = [
       listen<string>(
-        "aside-menu",
+        "inknb-menu",
         (event) => void session.command(event.payload),
       ),
       listen<string>(
-        "aside-open",
+        "inknb-open",
         (event) =>
           void session
             .openDocument(event.payload)
             .catch((error) => session.fail(error)),
       ),
       listen<{ id: string; method: string; params: unknown }>(
-        "aside-control",
+        "inknb-control",
         (event) => {
           void session.control(event.payload.method, event.payload.params).then(
             (result) =>
@@ -756,7 +756,7 @@ function App() {
   useEffect(() => {
     const name = state.path?.split("/").at(-1) ?? "Untitled";
     void getCurrentWindow().setTitle(
-      `${name}${state.dirty ? " •" : ""} · aside`,
+      `${name}${state.dirty ? " •" : ""} · ink and butter`,
     );
   }, [state.path, state.dirty]);
   useEffect(() => {
@@ -950,7 +950,7 @@ function App() {
       )}
       {state.externalChange && (
         <div className="notice conflict">
-          <span>This file changed outside aside.</span>
+          <span>This file changed outside ink and butter.</span>
           <Button
             onPress={() => {
               if (state.path)
@@ -1080,7 +1080,7 @@ function App() {
         )}
       </main>
       <footer className="statusbar">
-        <span className="brand">aside</span>
+        <span className="brand">ink and butter</span>
         <span className="save-status" aria-live="polite">
           {state.saving
             ? "Saving…"

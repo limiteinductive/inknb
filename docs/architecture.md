@@ -2,6 +2,12 @@
 
 Status: verified for the local Apple Silicon release. See [release verification](release-verification.md).
 
+## Naming
+
+The app name is `ink and butter`. The repository, CLI executable, MCP server, and Rust packages use `inknb`. A margin conversation is an aside.
+
+The persistent macOS identifier remains `io.github.limiteinductive.aside`. The support directory remains `aside`. Annotation sidecars retain the `.aside.json` suffix. These identifiers define the existing data identity.
+
 ## Foundation
 
 The design is `long-term`. The app uses Tauri 2 with React and TypeScript. CodeMirror 6 owns the live text buffer, selection, composition, and undo history. React Aria supplies accessible control behavior. Shared tokens define typography, spacing, colors, icons, and motion.
