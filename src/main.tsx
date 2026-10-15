@@ -48,7 +48,7 @@ import { getCurrentWindow } from "@tauri-apps/api/window";
 import { session } from "./session";
 import { createEditor } from "./editor";
 import type { Source } from "./domain";
-import { threadHasStaleSources } from "./domain";
+import { figureMarkdown, tableMarkdown, threadHasStaleSources } from "./domain";
 import { useSession } from "./use-session";
 import "./style.css";
 
@@ -169,13 +169,19 @@ function SourceChip({ source }: { source: Source }) {
       </Button>
       {expanded && (
         <div className="source-detail">
-          <code>{source.path}</code>
           <p>
             {source.status === "current"
               ? "Matches the local file attached to this reply."
-              : "This file changed after the reply. Ask your agent to check it again."}
+              : (source.review ?? "Your agent is checking this source update.")}
           </p>
-          <small>SHA-256 {source.hash.slice(0, 16)}</small>
+          <details className="inspection">
+            <summary>Inspect source</summary>
+            <code>{source.path}</code>
+            <small>Original SHA-256 {source.hash}</small>
+            <small>
+              Observed SHA-256 {source.observedHash ?? "File unavailable"}
+            </small>
+          </details>
           <Button
             className="text-button"
             onPress={() =>
@@ -204,7 +210,8 @@ function Conversation({ identity }: { identity: string }) {
   );
   const latest = requests.at(-1);
   const proposals = state.metadata.proposals.filter(
-    (proposal) => proposal.threadId === identity,
+    (proposal) =>
+      proposal.threadId === identity && proposal.status !== "superseded",
   );
   return (
     <section
@@ -242,6 +249,29 @@ function Conversation({ identity }: { identity: string }) {
           >
             Attach to selection
           </Button>
+          {thread.anchorSuggestions.map((candidate) => (
+            <Button
+              className="anchor-candidate"
+              key={candidate.id}
+              onPress={() => {
+                if (
+                  session
+                    .getSnapshot()
+                    .text.slice(candidate.anchor.from, candidate.anchor.to) !==
+                  candidate.anchor.quote
+                ) {
+                  session.fail(
+                    "This passage changed. Your agent can locate it again.",
+                  );
+                  return;
+                }
+                session.reanchor(thread.id, candidate.anchor);
+              }}
+            >
+              <span>{candidate.label}</span>
+              <q>{candidate.anchor.quote}</q>
+            </Button>
+          ))}
         </div>
       )}
       {thread.originalQuote && (
@@ -277,7 +307,9 @@ function Conversation({ identity }: { identity: string }) {
           <div className="eyebrow">
             {proposal.status === "pending"
               ? "Proposed edit"
-              : `Edit ${proposal.status}`}
+              : proposal.status === "conflict"
+                ? "Suggestion out of date"
+                : `Edit ${proposal.status}`}
           </div>
           <p>{proposal.explanation}</p>
           {proposal.expectedText && <del>{proposal.expectedText}</del>}
@@ -311,23 +343,28 @@ function Conversation({ identity }: { identity: string }) {
         <div className={`delivery ${latest.state}`}>
           <span className="status-dot" />
           {latest.state === "failed"
-            ? "Could not deliver"
+            ? "Your agent needs to check this request"
             : latest.state === "delivered"
-              ? "Sent to your agent"
+              ? latest.trigger.kind === "source_changed"
+                ? "Checking the updated source…"
+                : latest.trigger.kind === "proposal_stale"
+                  ? "Refreshing the suggestion…"
+                  : latest.trigger.kind === "anchor_detached"
+                    ? thread.anchorSuggestions.length > 0
+                      ? "Choose a passage above"
+                      : "Locating this passage…"
+                    : "Sent to your agent"
               : latest.state === "sending"
                 ? "Sending request…"
                 : state.metadata.binding
                   ? "Waiting to send"
                   : "Waiting for your agent"}
-          {latest.state === "failed" && (
-            <Button
-              className="text-button"
-              onPress={() => void session.deliver(latest.id)}
-            >
-              Retry
-            </Button>
+          {latest.error && (
+            <details className="inspection">
+              <summary>Details</summary>
+              <p>{latest.error}</p>
+            </details>
           )}
-          {latest.error && <p>{latest.error}</p>}
           {latest.state === "pending" && state.metadata.binding && (
             <Button
               className="text-button"
@@ -681,25 +718,16 @@ function App() {
         documentPath: state.path,
         assetPath: path,
       });
-      const figureName = (
+      const figureName =
         path
           .split("/")
           .at(-1)
-          ?.replace(/\.[^.]+$/, "") ?? "Figure"
-      )
-        .replaceAll("\\", "\\\\")
-        .replaceAll("[", "\\[")
-        .replaceAll("]", "\\]");
-      const reference = encodeURI(relative)
-        .replaceAll("#", "%23")
-        .replaceAll("?", "%3F")
-        .replaceAll("(", "%28")
-        .replaceAll(")", "%29");
+          ?.replace(/\.[^.]+$/, "") ?? "Figure";
       const selection = session.getSnapshot().selection;
       session.view?.dispatch({
         changes: {
           ...selection,
-          insert: `![${figureName}](${reference})`,
+          insert: figureMarkdown(figureName, relative),
         },
         scrollIntoView: true,
         userEvent: "input.figure",
@@ -1010,8 +1038,8 @@ function App() {
                 onPress={() => {
                   const names = columns
                     .split(",")
-                    .map((column) => column.trim().replaceAll("|", "\\|"));
-                  const insert = `\n| ${names.join(" | ")} |\n| ${names.map(() => "---").join(" | ")} |\n| ${names.map(() => " ").join(" | ")} |\n`;
+                    .map((column) => column.trim());
+                  const insert = tableMarkdown(names, [names.map(() => " ")]);
                   session.view?.dispatch({
                     changes: { ...session.getSnapshot().selection, insert },
                     userEvent: "input.table",

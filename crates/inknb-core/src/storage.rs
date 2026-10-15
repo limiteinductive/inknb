@@ -15,6 +15,10 @@ pub struct Snapshot {
     pub metadata: Value,
     pub expected_hash: Option<String>,
     pub expected_sidecar_hash: Option<String>,
+    #[serde(default)]
+    pub events: Vec<crate::events::EventInput>,
+    #[serde(default)]
+    pub save_event: Option<crate::events::EventInput>,
 }
 
 #[derive(Serialize)]
@@ -161,10 +165,211 @@ pub fn save_document(directory: &Path, snapshot: &Snapshot) -> Result<SavedDocum
         &directory.join("workspace.json"),
         &serde_json::to_vec(&snapshot.path).map_err(|error| error.to_string())?,
     )?;
+    if let Some(event) = &snapshot.save_event {
+        crate::events::EventStore::open(directory)?.append(std::slice::from_ref(event))?;
+    }
     fs::remove_file(directory.join("recovery.json")).map_err(|error| error.to_string())?;
     Ok(SavedDocument { hash, sidecar_hash })
 }
 
+#[derive(Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct MoveFile {
+    source: PathBuf,
+    destination: PathBuf,
+    hash: String,
+}
+
+#[derive(Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct DocumentMove {
+    id: Uuid,
+    source: PathBuf,
+    destination: PathBuf,
+    files: Vec<MoveFile>,
+    event: crate::events::EventInput,
+}
+
+pub fn move_document(
+    directory: &Path,
+    snapshot: &Snapshot,
+    destination: &Path,
+    assets: &[String],
+    event: crate::events::EventInput,
+) -> Result<SavedDocument, String> {
+    let source = Path::new(
+        snapshot
+            .path
+            .as_ref()
+            .ok_or("Save this document before moving it.")?,
+    )
+    .canonicalize()
+    .map_err(|error| error.to_string())?;
+    if !destination.is_absolute() {
+        return Err("Use an absolute document destination.".into());
+    }
+    let parent = destination
+        .parent()
+        .ok_or("The destination has no parent directory.")?;
+    fs::create_dir_all(parent).map_err(|error| error.to_string())?;
+    let parent = parent.canonicalize().map_err(|error| error.to_string())?;
+    let destination = parent.join(
+        destination
+            .file_name()
+            .ok_or("The destination needs a file name.")?,
+    );
+    if source == destination {
+        return Err("The document already uses this path.".into());
+    }
+    if file_hash(&source)? != snapshot.expected_hash
+        || file_hash(&sidecar_path(&source))? != snapshot.expected_sidecar_hash
+    {
+        return Err(
+            "The document changed before the move. Reconcile its current files first.".into(),
+        );
+    }
+    let hash = snapshot
+        .expected_hash
+        .clone()
+        .ok_or("Save the document before moving it.")?;
+    let sidecar_hash = snapshot
+        .expected_sidecar_hash
+        .clone()
+        .ok_or("Save the annotations before moving the document.")?;
+    if destination.exists() || sidecar_path(&destination).exists() {
+        return Err("The destination already exists.".into());
+    }
+    let mut files = Vec::new();
+    if source.parent() != Some(parent.as_path()) {
+        for reference in assets {
+            let relative = Path::new(reference);
+            if relative.is_absolute() {
+                continue;
+            }
+            if relative
+                .components()
+                .any(|component| matches!(component, std::path::Component::ParentDir))
+            {
+                return Err("A relative reference leaves the document folder. Prepare its destination before moving this document.".into());
+            }
+            let asset = source.parent().unwrap().join(relative);
+            if !asset.is_file() {
+                return Err(format!("A referenced file is unavailable: {reference}"));
+            }
+            files.push(MoveFile {
+                source: asset.clone(),
+                destination: parent.join(relative),
+                hash: file_hash(&asset)?.ok_or("A referenced file disappeared.")?,
+            });
+        }
+    }
+    files.push(MoveFile {
+        source: source.clone(),
+        destination: destination.clone(),
+        hash: hash.clone(),
+    });
+    files.push(MoveFile {
+        source: sidecar_path(&source),
+        destination: sidecar_path(&destination),
+        hash: sidecar_hash.clone(),
+    });
+    let plan = DocumentMove {
+        id: Uuid::new_v4(),
+        source,
+        destination,
+        files,
+        event,
+    };
+    atomic_write(
+        &directory.join("move.json"),
+        &serde_json::to_vec(&plan).map_err(|error| error.to_string())?,
+    )?;
+    recover_move(directory)?;
+    Ok(SavedDocument { hash, sidecar_hash })
+}
+
+pub fn recover_move(directory: &Path) -> Result<(), String> {
+    let journal = directory.join("move.json");
+    let bytes = match fs::read(&journal) {
+        Ok(bytes) => bytes,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(()),
+        Err(error) => return Err(error.to_string()),
+    };
+    let plan: DocumentMove = serde_json::from_slice(&bytes).map_err(|error| error.to_string())?;
+    let parent = plan
+        .destination
+        .parent()
+        .ok_or("The move destination has no parent.")?
+        .canonicalize()
+        .map_err(|error| error.to_string())?;
+    for (index, file) in plan.files.iter().enumerate() {
+        let destination_hash = file_hash(&file.destination)?;
+        if destination_hash.as_deref() == Some(&file.hash) {
+            continue;
+        }
+        if destination_hash.is_some() {
+            return Err(
+                "A move destination changed. Both copies remain available for reconciliation."
+                    .into(),
+            );
+        }
+        if file_hash(&file.source)?.as_deref() != Some(&file.hash) {
+            return Err(
+                "A move source changed. Both locations remain available for reconciliation.".into(),
+            );
+        }
+        let destination_parent = file
+            .destination
+            .parent()
+            .ok_or("A moved file has no parent.")?;
+        fs::create_dir_all(destination_parent).map_err(|error| error.to_string())?;
+        let destination_parent = destination_parent
+            .canonicalize()
+            .map_err(|error| error.to_string())?;
+        if !destination_parent.starts_with(&parent) {
+            return Err("A destination reference leaves the selected folder.".into());
+        }
+        let temporary = destination_parent.join(format!(".inknb-move-{}-{index}.tmp", plan.id));
+        atomic_write(
+            &temporary,
+            &fs::read(&file.source).map_err(|error| error.to_string())?,
+        )?;
+        fs::hard_link(&temporary, &file.destination).map_err(|error| error.to_string())?;
+        fs::remove_file(&temporary).map_err(|error| error.to_string())?;
+        File::open(&destination_parent)
+            .and_then(|file| file.sync_all())
+            .map_err(|error| error.to_string())?;
+    }
+    for file in &plan.files {
+        if file_hash(&file.destination)?.as_deref() != Some(&file.hash) {
+            return Err(
+                "A destination changed during the move. The originals remain available.".into(),
+            );
+        }
+    }
+    for file in plan
+        .files
+        .iter()
+        .filter(|file| file.source == plan.source || file.source == sidecar_path(&plan.source))
+    {
+        if let Some(hash) = file_hash(&file.source)? {
+            if hash != file.hash {
+                return Err(
+                    "The original file changed during the move. Both copies remain available."
+                        .into(),
+                );
+            }
+            fs::remove_file(&file.source).map_err(|error| error.to_string())?;
+        }
+    }
+    atomic_write(
+        &directory.join("workspace.json"),
+        &serde_json::to_vec(&plan.destination).map_err(|error| error.to_string())?,
+    )?;
+    crate::events::EventStore::open(directory)?.append(&[plan.event])?;
+    fs::remove_file(journal).map_err(|error| error.to_string())?;
+    Ok(())
+}
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -180,6 +385,8 @@ mod tests {
             metadata: json!({"version": 1, "documentHash": ""}),
             expected_hash: None,
             expected_sidecar_hash: None,
+            events: Vec::new(),
+            save_event: None,
         };
         let saved = save_document(directory.path(), &snapshot).unwrap();
         assert_eq!(fs::read_to_string(&path).unwrap(), snapshot.text);
@@ -197,5 +404,112 @@ mod tests {
         fs::write(&path, "Words").unwrap();
         fs::write(sidecar_path(&path), "broken").unwrap();
         assert!(load_document(&path).is_err());
+    }
+    #[test]
+    fn move_preserves_annotations_and_relative_assets_without_overwriting_files() {
+        let directory = tempfile::tempdir().unwrap();
+        let source_directory = directory.path().join("source");
+        let destination_directory = directory.path().join("destination");
+        fs::create_dir_all(source_directory.join("figs")).unwrap();
+        fs::write(source_directory.join("figs/chart.svg"), "<svg/>").unwrap();
+        let source = source_directory.join("draft.md");
+        let snapshot = Snapshot {
+            path: Some(source.to_string_lossy().into_owned()),
+            text: "# Draft\r\n\r\n![Chart](figs/chart.svg)\n".into(),
+            metadata: json!({"version":2}),
+            expected_hash: None,
+            expected_sidecar_hash: None,
+            events: Vec::new(),
+            save_event: None,
+        };
+        let saved = save_document(directory.path(), &snapshot).unwrap();
+        let snapshot = Snapshot {
+            expected_hash: Some(saved.hash),
+            expected_sidecar_hash: Some(saved.sidecar_hash),
+            ..snapshot
+        };
+        let destination = destination_directory.join("renamed.md");
+        let event = crate::events::EventInput {
+            id: Uuid::new_v4(),
+            document_id: Uuid::new_v4(),
+            revision: 0,
+            kind: "document.moved".into(),
+            occurred_at: "2026-10-15T00:00:00Z".into(),
+            payload: json!({}),
+        };
+        move_document(
+            directory.path(),
+            &snapshot,
+            &destination,
+            &["figs/chart.svg".into()],
+            event.clone(),
+        )
+        .unwrap();
+        assert_eq!(fs::read_to_string(&destination).unwrap(), snapshot.text);
+        assert!(sidecar_path(&destination).exists());
+        assert!(destination_directory.join("figs/chart.svg").exists());
+        assert!(source_directory.join("figs/chart.svg").exists());
+        assert!(!source.exists());
+        assert!(!sidecar_path(&source).exists());
+        recover_move(directory.path()).unwrap();
+        assert!(move_document(directory.path(), &snapshot, &destination, &[], event).is_err());
+    }
+    #[test]
+    fn interrupted_move_resumes_after_one_original_is_removed() {
+        let directory = tempfile::tempdir().unwrap();
+        let source = directory.path().join("before.md");
+        let destination = directory.path().join("after.md");
+        fs::write(&destination, "Words").unwrap();
+        fs::write(sidecar_path(&source), "{}").unwrap();
+        fs::write(sidecar_path(&destination), "{}").unwrap();
+        let event = crate::events::EventInput {
+            id: Uuid::new_v4(),
+            document_id: Uuid::new_v4(),
+            revision: 0,
+            kind: "document.moved".into(),
+            occurred_at: "2026-10-15T00:00:00Z".into(),
+            payload: json!({}),
+        };
+        let plan = DocumentMove {
+            id: Uuid::new_v4(),
+            source: source.clone(),
+            destination: destination.clone(),
+            files: vec![
+                MoveFile {
+                    source: source.clone(),
+                    destination: destination.clone(),
+                    hash: fingerprint(b"Words"),
+                },
+                MoveFile {
+                    source: sidecar_path(&source),
+                    destination: sidecar_path(&destination),
+                    hash: fingerprint(b"{}"),
+                },
+            ],
+            event,
+        };
+        atomic_write(
+            &directory.path().join("move.json"),
+            &serde_json::to_vec(&plan).unwrap(),
+        )
+        .unwrap();
+        recover_move(directory.path()).unwrap();
+        assert!(!sidecar_path(&source).exists());
+        assert_eq!(fs::read_to_string(&destination).unwrap(), "Words");
+        assert!(!directory.path().join("move.json").exists());
+        let store = crate::events::EventStore::open(directory.path()).unwrap();
+        assert_eq!(
+            store
+                .read(&crate::events::EventQuery {
+                    after: 0,
+                    document_id: None,
+                    consumer: None,
+                    limit: 100
+                })
+                .unwrap()
+                .events
+                .len(),
+            1
+        );
     }
 }

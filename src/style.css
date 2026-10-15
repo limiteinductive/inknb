@@ -1043,3 +1043,44 @@ html[data-active="false"] *::after {
   animation: none !important;
   transition: none !important;
 }
+
+.inspection {
+  font-size: 10px;
+  color: var(--faint);
+  overflow-wrap: anywhere;
+}
+.inspection summary {
+  cursor: pointer;
+  padding: 4px 0;
+}
+.inspection code,
+.inspection small {
+  display: block;
+  margin: 7px 0;
+}
+.anchor-candidate {
+  display: flex;
+  flex-direction: column;
+  align-items: start;
+  gap: 5px;
+  width: 100%;
+  padding: 10px;
+  margin-top: 8px;
+  border: 1px solid var(--line);
+  border-radius: 5px;
+  text-align: left;
+}
+.anchor-candidate q {
+  font: 12px/1.5 var(--writing-font);
+  color: var(--muted);
+}
+
+.active-thread .thread-heading {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background: var(--surface);
+  padding: 10px 9px 9px 16px;
+  margin: -16px -16px 9px;
+  border-bottom: 1px solid var(--line-soft);
+}

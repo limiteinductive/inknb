@@ -19,6 +19,8 @@ export const sourceSchema = z.object({
   label: z.string(),
   hash: z.string(),
   status: z.enum(["current", "changed", "missing"]),
+  observedHash: z.string().nullable().default(null),
+  review: z.string().nullable().default(null),
 });
 
 export const messageSchema = z.object({
@@ -30,7 +32,7 @@ export const messageSchema = z.object({
   requestId: z.string().uuid().optional(),
   agent: z
     .object({
-      provider: z.enum(["codex", "claude"]),
+      provider: z.enum(["codex", "claude", "automation"]),
       sessionId: z.string(),
       label: z.string(),
     })
@@ -45,6 +47,15 @@ export const threadSchema = z.object({
   createdAt: z.string(),
   resolved: z.boolean(),
   messages: z.array(messageSchema),
+  anchorSuggestions: z
+    .array(
+      z.object({
+        id: z.string().uuid(),
+        label: z.string(),
+        anchor: anchorSchema,
+      }),
+    )
+    .default([]),
 });
 
 export const bindingSchema = z.object({
@@ -57,8 +68,23 @@ export const bindingSchema = z.object({
 export const requestSchema = z.object({
   id: z.string().uuid(),
   threadId: z.string().uuid(),
-  messageId: z.string().uuid(),
+  messageId: z.string().uuid().nullable(),
   revision: z.number().int().nonnegative(),
+  trigger: z
+    .discriminatedUnion("kind", [
+      z.object({ kind: z.literal("human") }),
+      z.object({
+        kind: z.literal("source_changed"),
+        sourceId: z.string().uuid(),
+        hash: z.string().nullable(),
+      }),
+      z.object({
+        kind: z.literal("proposal_stale"),
+        proposalId: z.string().uuid(),
+      }),
+      z.object({ kind: z.literal("anchor_detached") }),
+    ])
+    .default({ kind: "human" }),
   permission: z.enum(["read", "edit"]),
   state: z.enum(["pending", "sending", "delivered", "answered", "failed"]),
   binding: bindingSchema.nullable(),
@@ -77,12 +103,20 @@ export const proposalSchema = z.object({
   expectedText: z.string(),
   replacement: z.string(),
   explanation: z.string(),
-  status: z.enum(["pending", "applied", "undone", "rejected", "conflict"]),
+  status: z.enum([
+    "pending",
+    "applied",
+    "undone",
+    "rejected",
+    "conflict",
+    "superseded",
+  ]),
   createdAt: z.string(),
+  replaces: z.string().uuid().nullable().default(null),
 });
 
 export const metadataSchema = z.object({
-  version: z.literal(1),
+  version: z.union([z.literal(1), z.literal(2)]).transform(() => 2 as const),
   documentId: z.string().uuid(),
   revision: z.number().int().nonnegative(),
   documentHash: z.string(),
@@ -143,7 +177,7 @@ export const defaultPreferences: Preferences = {
 
 export function createMetadata(): Metadata {
   return {
-    version: 1,
+    version: 2,
     documentId: crypto.randomUUID(),
     revision: 0,
     documentHash: "",
@@ -185,7 +219,8 @@ export function validateSelection(text: string, selection: Selection): void {
 export function captureAnchor(text: string, selection: Selection): Anchor {
   validateSelection(text, selection);
   return {
-    ...selection,
+    from: selection.from,
+    to: selection.to,
     quote: text.slice(selection.from, selection.to),
     before: text.slice(Math.max(0, selection.from - 48), selection.from),
     after: text.slice(selection.to, selection.to + 48),
@@ -250,10 +285,31 @@ export function applyChanges(
   const threads = metadata.threads.map((thread) => ({
     ...thread,
     anchor: mapAnchor(nextText, thread.anchor, changes),
+    anchorSuggestions: thread.anchorSuggestions
+      .map((candidate) => ({
+        ...candidate,
+        anchor: mapAnchor(nextText, candidate.anchor, changes),
+      }))
+      .filter((candidate) => candidate.anchor.status === "attached"),
   }));
+  const revision = metadata.revision + 1;
+  const proposals = metadata.proposals.map((proposal) => {
+    if (proposal.status !== "pending") return proposal;
+    const mapped = mapAnchor(nextText, captureAnchor(text, proposal), changes);
+    const valid =
+      mapped.status === "attached" &&
+      nextText.slice(mapped.from, mapped.to) === proposal.expectedText;
+    return {
+      ...proposal,
+      from: mapped.from,
+      to: mapped.to,
+      revision,
+      status: valid ? ("pending" as const) : ("conflict" as const),
+    };
+  });
   return {
     text: nextText,
-    metadata: { ...metadata, revision: metadata.revision + 1, threads },
+    metadata: { ...metadata, revision, threads, proposals },
   };
 }
 
@@ -309,6 +365,7 @@ export function createConversation(
     createdAt,
     resolved: false,
     messages: [message],
+    anchorSuggestions: [],
   };
   const request: AgentRequest = {
     id: crypto.randomUUID(),
@@ -316,6 +373,7 @@ export function createConversation(
     messageId: message.id,
     revision: metadata.revision,
     permission,
+    trigger: { kind: "human" },
     state: "pending",
     binding: metadata.binding,
     createdAt,
@@ -343,6 +401,7 @@ export function createProposal(
   const thread = metadata.threads.find(
     (thread) => thread.id === request.threadId,
   );
+  if (thread?.resolved) throw new Error("This conversation is resolved.");
   if (!thread || thread.anchor.status === "detached")
     throw new Error(
       "Attach this conversation to a passage before proposing an edit.",
@@ -362,11 +421,41 @@ export function createProposal(
     threadId: request.threadId,
     requestId,
     revision,
-    ...selection,
+    from: selection.from,
+    to: selection.to,
+    replaces:
+      request.trigger.kind === "proposal_stale"
+        ? request.trigger.proposalId
+        : null,
     expectedText,
     replacement,
     explanation,
     status: "pending",
     createdAt: new Date().toISOString(),
   };
+}
+
+export function figureMarkdown(label: string, reference: string): string {
+  const escaped = label
+    .replaceAll("\\", "\\\\")
+    .replaceAll("[", "\\[")
+    .replaceAll("]", "\\]");
+  const encoded = encodeURI(reference)
+    .replaceAll("#", "%23")
+    .replaceAll("?", "%3F")
+    .replaceAll("(", "%28")
+    .replaceAll(")", "%29");
+  return `![${escaped}](${encoded})`;
+}
+
+export function tableMarkdown(columns: string[], rows: string[][]): string {
+  if (columns.length === 0 || rows.some((row) => row.length !== columns.length))
+    throw new Error("Every table row must match its columns.");
+  const cells = [columns, ...rows].map((row) =>
+    row.map((cell) => cell.replaceAll("|", "\\|").replaceAll("\n", "<br>")),
+  );
+  return `\n| ${cells[0].join(" | ")} |\n| ${columns.map(() => "---").join(" | ")} |\n${cells
+    .slice(1)
+    .map((row) => `| ${row.join(" | ")} |`)
+    .join("\n")}\n`;
 }

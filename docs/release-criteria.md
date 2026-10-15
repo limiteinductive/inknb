@@ -32,6 +32,19 @@ Evidence appears in [release verification](release-verification.md). An unchecke
 - [x] Local IPC rejects invalid requests and restricts access to the current user.
 - [x] MCP screenshots capture the rendered app and identify the captured state.
 
+## Automation
+
+- [x] Unrelated typing preserves pending proposals and their target text.
+- [x] Affected proposals create read-only refresh work for the agent.
+- [x] Changed sources create fingerprint-scoped reviews beside affected passages.
+- [x] Detached discussions accept exact matches or human-confirmed candidates.
+- [x] Figure and table tools prepare insertions for human acceptance.
+- [x] Document moves preserve annotations and direct local references with recovery.
+- [x] Delivery receipts prevent automatic resends after completed or uncertain sends.
+- [x] Versioned socket events support replay and durable consumer checkpoints.
+- [x] Executable hooks retry unacknowledged failures and reconnect after restart.
+- [x] Independent backends can post findings without gaining prose edit permission.
+
 ## Interface
 
 - [x] Writing, conversation, source, proposal, pending, error, and empty states receive screenshot review.

@@ -18,7 +18,7 @@ CodeMirror applies local typing immediately. Serialized persistence snapshots fo
 
 ## Files
 
-The document remains a UTF-8 Markdown file. The adjacent `<filename>.aside.json` sidecar stores a versioned document identity, annotations, requests, proposals, and provenance. A recovery snapshot contains the latest unsaved text and metadata.
+The document remains a UTF-8 Markdown file. The adjacent `<filename>.aside.json` sidecar uses annotation format 2. It reads format 1 directly and stores a versioned document identity, annotations, requests, proposals, and provenance. A recovery snapshot contains the latest unsaved text and metadata.
 
 Writes use temporary files and atomic replacement. Recovery remains available until the document and sidecar both persist. External changes compare against the last saved fingerprint. Conflicting changes require an explicit reconciliation action in the app.
 
@@ -36,7 +36,7 @@ The connection design is `long-term`. The external agent registers itself for a 
 
 The bundled `inknb connect` command reads the calling Codex shell's `CODEX_THREAD_ID`. The MCP server does not infer session identity from its inherited environment. Codex delivery uses the installed `codex queue` command with that registered session ID. Claude delivery uses the documented MCP channel contract. Channel availability depends on the external Claude installation and account policy. Connection errors remain visible and retain unsent requests.
 
-Pending asides adopt the registered agent and send automatically. Delivered and answered requests do not resend on reconnect. Failed deliveries require an explicit Retry. Request provenance remains attached to each delivery. An in-flight delivery can finish after Disconnect. Delivery completion cannot mutate another document.
+Pending asides adopt the registered agent and send automatically. Delivered and answered requests do not resend on reconnect. Delivery receipts reconcile completed sends. The transport retries failures before process start. Uncertain sends require agent reconciliation. Request provenance remains attached to each delivery. An in-flight delivery can finish after Disconnect. Delivery completion cannot mutate another document.
 
 The writer interface has no provider, session, executable, or MCP configuration controls. It shows connection status and a Disconnect action. Connection grants no prose edit permission.
 
@@ -49,6 +49,16 @@ The agent protocol provides live document state, selection, annotations, replies
 Edits stay within the passage attached to their human request. Direct changes require explicit edit permission and an unchanged anchor. Proposals require human acceptance. Undo restores text, anchors, and the applied edit status.
 
 A completed edit consumes its request's direct edit permission. Undo preserves that completed operation in the history.
+
+## Automation
+
+The local protocol uses version 1 over a Unix socket. A durable SQLite event journal supports subscriptions, replay cursors, named consumer checkpoints, and external executable hooks. See [the automation contract](automation.md).
+
+Human and maintenance requests share one queue. Maintenance work permits replies and proposals. External backends can post anchored findings through the same live document owner. Human replies keep discussions under human control.
+
+Pending proposals follow unrelated edits. Changes to their passage create refresh work. Source changes create fingerprint-scoped reviews. Detached passages receive exact or human-confirmed attachment candidates.
+
+Document moves retain recovery journals until files and events commit. Local figure and document references inside the document folder retain their relative paths.
 
 ## Interface
 

@@ -1,10 +1,11 @@
 use base64::Engine;
+use inknb_core::events::{EventInput, EventQuery, EventStore};
 use inknb_core::protocol::{socket_path, ControlRequest, ControlResponse};
 use inknb_core::storage::{
     application_directory, atomic_write, file_hash, load_document, save_document, sidecar_path,
     store_recovery, LoadedDocument, SavedDocument, Snapshot,
 };
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use std::collections::HashMap;
 use std::fs::{self, File, OpenOptions};
@@ -21,6 +22,8 @@ type PendingResult = oneshot::Sender<Result<Value, String>>;
 struct DesktopState {
     directory: PathBuf,
     persistence: Mutex<()>,
+    events: Mutex<EventStore>,
+    event_notification: tokio::sync::Notify,
     pending: Mutex<HashMap<String, PendingResult>>,
     open_path: Mutex<Option<String>>,
     _lock: File,
@@ -39,6 +42,7 @@ struct Bootstrap {
 
 #[tauri::command]
 fn bootstrap(state: State<DesktopState>) -> Result<Bootstrap, String> {
+    inknb_core::storage::recover_move(&state.directory)?;
     let read = |name: &str| -> Result<Option<Value>, String> {
         let path = state.directory.join(name);
         if !path.exists() {
@@ -48,10 +52,45 @@ fn bootstrap(state: State<DesktopState>) -> Result<Bootstrap, String> {
             .map(Some)
             .map_err(|error| format!("Could not read {name}: {error}"))
     };
-    let recovery = read("recovery.json")?
+    let mut recovery: Option<Snapshot> = read("recovery.json")?
         .map(serde_json::from_value)
         .transpose()
         .map_err(|error| error.to_string())?;
+    if let Some(snapshot) = &mut recovery {
+        if let Some(path) = &snapshot.path {
+            let new_hash = inknb_core::storage::fingerprint(snapshot.text.as_bytes());
+            let mut metadata = snapshot.metadata.clone();
+            metadata["documentHash"] = json!(new_hash);
+            let new_sidecar_hash = inknb_core::storage::fingerprint(
+                &serde_json::to_vec_pretty(&metadata).map_err(|error| error.to_string())?,
+            );
+            let actual_hash = file_hash(Path::new(path))?;
+            let actual_sidecar_hash = file_hash(&sidecar_path(Path::new(path)))?;
+            if actual_hash.as_ref() == Some(&new_hash)
+                && actual_sidecar_hash.as_ref() == Some(&new_sidecar_hash)
+            {
+                if let Some(event) = &snapshot.save_event {
+                    state
+                        .events
+                        .lock()
+                        .map_err(|error| error.to_string())?
+                        .append(std::slice::from_ref(event))?;
+                }
+            }
+            if (actual_hash == snapshot.expected_hash || actual_hash.as_ref() == Some(&new_hash))
+                && (actual_sidecar_hash == snapshot.expected_sidecar_hash
+                    || actual_sidecar_hash.as_ref() == Some(&new_sidecar_hash))
+            {
+                snapshot.expected_hash = actual_hash;
+                snapshot.expected_sidecar_hash = actual_sidecar_hash;
+            }
+        }
+        state
+            .events
+            .lock()
+            .map_err(|error| error.to_string())?
+            .append(&snapshot.events)?;
+    }
     let stored_path = read("workspace.json")?.and_then(|value| value.as_str().map(String::from));
     let requested_path = state
         .open_path
@@ -97,24 +136,94 @@ async fn read_document(path: String) -> Result<LoadedDocument, String> {
 }
 
 #[tauri::command]
-fn write_recovery(state: State<DesktopState>, snapshot: Snapshot) -> Result<(), String> {
-    let _guard = state
-        .persistence
-        .lock()
-        .map_err(|error| error.to_string())?;
-    store_recovery(&state.directory, &snapshot)
+async fn write_recovery(app: tauri::AppHandle, snapshot: Snapshot) -> Result<(), String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let state = app.state::<DesktopState>();
+        let _guard = state
+            .persistence
+            .lock()
+            .map_err(|error| error.to_string())?;
+        store_recovery(&state.directory, &snapshot)?;
+        state
+            .events
+            .lock()
+            .map_err(|error| error.to_string())?
+            .append(&snapshot.events)?;
+        state.event_notification.notify_waiters();
+        Ok(())
+    })
+    .await
+    .map_err(|error| error.to_string())?
 }
 
 #[tauri::command]
-fn persist_document(
-    state: State<DesktopState>,
+async fn persist_document(
+    app: tauri::AppHandle,
     snapshot: Snapshot,
 ) -> Result<SavedDocument, String> {
-    let _guard = state
-        .persistence
-        .lock()
-        .map_err(|error| error.to_string())?;
-    save_document(&state.directory, &snapshot)
+    tauri::async_runtime::spawn_blocking(move || {
+        let state = app.state::<DesktopState>();
+        let _guard = state
+            .persistence
+            .lock()
+            .map_err(|error| error.to_string())?;
+        store_recovery(&state.directory, &snapshot)?;
+        state
+            .events
+            .lock()
+            .map_err(|error| error.to_string())?
+            .append(&snapshot.events)?;
+        state.event_notification.notify_waiters();
+        let saved = save_document(&state.directory, &snapshot)?;
+        state.event_notification.notify_waiters();
+        Ok(saved)
+    })
+    .await
+    .map_err(|error| error.to_string())?
+}
+
+#[tauri::command]
+async fn publish_events(app: tauri::AppHandle, events: Vec<EventInput>) -> Result<(), String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let state = app.state::<DesktopState>();
+        state
+            .events
+            .lock()
+            .map_err(|error| error.to_string())?
+            .append(&events)?;
+        state.event_notification.notify_waiters();
+        Ok(())
+    })
+    .await
+    .map_err(|error| error.to_string())?
+}
+
+#[tauri::command]
+async fn move_document(
+    app: tauri::AppHandle,
+    snapshot: Snapshot,
+    destination: String,
+    assets: Vec<String>,
+    event: EventInput,
+) -> Result<SavedDocument, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let state = app.state::<DesktopState>();
+        let _guard = state
+            .persistence
+            .lock()
+            .map_err(|error| error.to_string())?;
+        let saved = inknb_core::storage::move_document(
+            &state.directory,
+            &snapshot,
+            Path::new(&destination),
+            &assets,
+            event,
+        )?;
+        state.event_notification.notify_waiters();
+        Ok(saved)
+    })
+    .await
+    .map_err(|error| error.to_string())?
 }
 
 #[tauri::command]
@@ -296,32 +405,139 @@ fn open_reference(document_path: Option<String>, reference: String) -> Result<()
 
 #[tauri::command]
 async fn deliver_codex(
+    app: tauri::AppHandle,
+    request_id: String,
     command_path: String,
     session_id: String,
     message: String,
 ) -> Result<(), String> {
+    uuid::Uuid::parse_str(&request_id).map_err(|_| "Invalid work request identity.")?;
     if !Path::new(&command_path).is_absolute() || !Path::new(&command_path).is_file() {
-        return Err("Choose the installed Codex executable in connection settings.".into());
+        return Err("The agent must reconnect using its installed Codex executable.".into());
     }
-    uuid::Uuid::parse_str(&session_id).map_err(|_| "Enter the exact Codex session UUID.")?;
-    let result = tauri::async_runtime::spawn_blocking(move || {
-        std::process::Command::new(command_path)
-            .args(["queue", "--thread", &session_id, "--message", &message])
-            .output()
+    uuid::Uuid::parse_str(&session_id)
+        .map_err(|_| "The agent must reconnect using its current session identity.")?;
+    let state = app.state::<DesktopState>();
+    let receipt = state
+        .events
+        .lock()
+        .map_err(|error| error.to_string())?
+        .begin_delivery(&request_id)?;
+    if receipt == "queued" {
+        return Ok(());
+    }
+    if receipt != "new" {
+        return Err(
+            "Delivery is unconfirmed. The agent must reconcile this request before retrying."
+                .into(),
+        );
+    }
+    tauri::async_runtime::spawn_blocking(move || {
+        let mut started = None;
+        let mut failure = String::new();
+        for attempt in 0..3 {
+            match std::process::Command::new(&command_path)
+                .args(["queue", "--thread", &session_id, "--message", &message])
+                .stdout(std::process::Stdio::piped())
+                .stderr(std::process::Stdio::piped())
+                .spawn()
+            {
+                Ok(child) => {
+                    started = Some(child);
+                    break;
+                }
+                Err(error) => {
+                    failure = error.to_string();
+                    if !matches!(
+                        error.kind(),
+                        std::io::ErrorKind::Interrupted | std::io::ErrorKind::WouldBlock
+                    ) {
+                        break;
+                    }
+                    std::thread::sleep(std::time::Duration::from_millis(250 * (attempt + 1)));
+                }
+            }
+        }
+        let state = app.state::<DesktopState>();
+        let Some(mut child) = started else {
+            state
+                .events
+                .lock()
+                .map_err(|error| error.to_string())?
+                .finish_delivery(&request_id, "unstarted")?;
+            return Err(format!("The agent transport could not start: {failure}"));
+        };
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(20);
+        let mut timed_out = false;
+        loop {
+            match child.try_wait() {
+                Ok(Some(_)) => break,
+                Err(_) => {
+                    let _ = child.kill();
+                    break;
+                }
+                Ok(None) if std::time::Instant::now() >= deadline => {
+                    timed_out = true;
+                    let _ = child.kill();
+                    break;
+                }
+                Ok(None) => std::thread::sleep(std::time::Duration::from_millis(50)),
+            }
+        }
+        let output = child.wait_with_output();
+        let queued = output
+            .as_ref()
+            .map(|result| result.status.success())
+            .unwrap_or(false);
+        state
+            .events
+            .lock()
+            .map_err(|error| error.to_string())?
+            .finish_delivery(&request_id, if queued { "queued" } else { "uncertain" })?;
+        if queued {
+            return Ok(());
+        }
+        if timed_out {
+            return Err(
+                "The transport timed out. The agent must reconcile this request before retrying."
+                    .into(),
+            );
+        }
+        let detail = output
+            .map(|output| {
+                String::from_utf8_lossy(&output.stderr)
+                    .chars()
+                    .take(1200)
+                    .collect::<String>()
+            })
+            .unwrap_or_else(|error| error.to_string());
+        Err(format!(
+            "Delivery needs reconciliation by the agent: {detail}"
+        ))
     })
     .await
     .map_err(|error| error.to_string())?
-    .map_err(|error| error.to_string())?;
-    if !result.status.success() {
-        return Err(format!(
-            "Codex could not queue this request: {}",
-            String::from_utf8_lossy(&result.stderr)
-                .chars()
-                .take(1200)
-                .collect::<String>()
-        ));
-    }
-    Ok(())
+}
+
+#[tauri::command]
+fn delivery_receipts(
+    state: State<DesktopState>,
+    requests: Vec<String>,
+) -> Result<HashMap<String, Option<String>>, String> {
+    let store = state.events.lock().map_err(|error| error.to_string())?;
+    requests
+        .into_iter()
+        .map(|identity| store.delivery(&identity).map(|receipt| (identity, receipt)))
+        .collect()
+}
+
+#[tauri::command]
+fn reset_delivery(state: State<DesktopState>, request_id: String) -> Result<(), String> {
+    state
+        .events
+        .lock()
+        .map_err(|error| error.to_string())?
+        .finish_delivery(&request_id, "unstarted")
 }
 
 #[tauri::command]
@@ -366,6 +582,18 @@ async fn dispatch(app: &tauri::AppHandle, request: ControlRequest) -> Result<Val
     }
 }
 
+async fn write_control(
+    writer: &mut tokio::net::unix::OwnedWriteHalf,
+    response: ControlResponse,
+) -> Result<(), String> {
+    let mut bytes = serde_json::to_vec(&response).map_err(|error| error.to_string())?;
+    bytes.push(b'\n');
+    tokio::time::timeout(std::time::Duration::from_secs(10), writer.write_all(&bytes))
+        .await
+        .map_err(|_| "The control client stopped reading.")?
+        .map_err(|error| error.to_string())
+}
+
 async fn serve_connection(
     app: tauri::AppHandle,
     stream: tokio::net::UnixStream,
@@ -383,70 +611,182 @@ async fn serve_connection(
         return Err("The request is too large.".into());
     }
     let request: ControlRequest = serde_json::from_str(&line).map_err(|error| error.to_string())?;
+    if request.version != 1 {
+        return write_control(
+            &mut writer,
+            ControlResponse {
+                version: 1,
+                id: request.id,
+                result: None,
+                error: Some("Unsupported protocol version. Use version 1.".into()),
+            },
+        )
+        .await;
+    }
     if request.id.len() > 80 {
         return Err("Invalid request identity.".into());
     }
+    if request.method == "events_subscribe" {
+        let mut query = match serde_json::from_value::<EventQuery>(request.params.clone()) {
+            Ok(query) => query,
+            Err(error) => {
+                return write_control(
+                    &mut writer,
+                    ControlResponse {
+                        version: 1,
+                        id: request.id,
+                        result: None,
+                        error: Some(error.to_string()),
+                    },
+                )
+                .await
+            }
+        };
+        loop {
+            let state = app.state::<DesktopState>();
+            let notified = state.event_notification.notified();
+            tokio::pin!(notified);
+            notified.as_mut().enable();
+            let result = state
+                .events
+                .lock()
+                .map_err(|error| error.to_string())
+                .and_then(|store| store.read(&query));
+            let page = match result {
+                Ok(page) => page,
+                Err(error) => {
+                    return write_control(
+                        &mut writer,
+                        ControlResponse {
+                            version: 1,
+                            id: request.id,
+                            result: None,
+                            error: Some(error),
+                        },
+                    )
+                    .await
+                }
+            };
+            let has_events = !page.events.is_empty();
+            query.after = page.next_cursor;
+            write_control(
+                &mut writer,
+                ControlResponse {
+                    version: 1,
+                    id: request.id.clone(),
+                    result: Some(serde_json::to_value(page).map_err(|error| error.to_string())?),
+                    error: None,
+                },
+            )
+            .await?;
+            if !has_events {
+                let _ = tokio::time::timeout(std::time::Duration::from_secs(15), notified).await;
+            }
+        }
+    }
     let identity = request.id.clone();
     let method = request.method.clone();
-    let result = if method == "window_show" {
-        if request.params != json!({}) {
-            Err("This tool takes no parameters.".into())
-        } else {
-            app.get_webview_window("main")
-                .ok_or("The writing window is unavailable.".to_string())
-                .and_then(|window| {
-                    window.unminimize().map_err(|error| error.to_string())?;
-                    window.show().map_err(|error| error.to_string())?;
-                    window.set_focus().map_err(|error| error.to_string())?;
-                    Ok(json!({"shown":true}))
-                })
-        }
-    } else if method == "screenshot" {
-        let mut state_request = request.clone();
-        state_request.method = "ui_state".into();
-        let mut before = dispatch(&app, state_request.clone()).await?;
-        let bytes = capture_window(&app).await?;
-        let mut after = dispatch(&app, state_request).await?;
-        before
-            .as_object_mut()
-            .map(|state| state.remove("capturedAt"));
-        let captured_at = after
-            .as_object_mut()
-            .and_then(|state| state.remove("capturedAt"));
-        if before != after {
-            Err("The editor changed during capture. Take another screenshot.".into())
-        } else {
-            after["capturedAt"] = captured_at.unwrap_or(Value::Null);
-            after["captureId"] = Value::String(uuid::Uuid::new_v4().to_string());
+    let result: Result<Value, String> = async {
+        if method == "protocol_info" {
+            if request.params != json!({}) {
+                return Err("This tool takes no parameters.".into());
+            }
             Ok(
-                json!({"state":after,"data":base64::engine::general_purpose::STANDARD.encode(bytes)}),
+                json!({"version":1,"transport":"unix-json-lines","socketPath":socket_path()?,"eventDelivery":"at-least-once","streamMethod":"events_subscribe","tools":inknb_core::protocol::tools()}),
             )
+        } else if method == "request_delivery" {
+            #[derive(Deserialize)]
+            #[serde(rename_all = "camelCase", deny_unknown_fields)]
+            struct DeliveryQuery {
+                request_id: uuid::Uuid,
+            }
+            let parsed: DeliveryQuery =
+                serde_json::from_value(request.params).map_err(|error| error.to_string())?;
+            let receipt = app
+                .state::<DesktopState>()
+                .events
+                .lock()
+                .map_err(|error| error.to_string())?
+                .delivery(&parsed.request_id.to_string())?;
+            Ok(json!({"requestId":parsed.request_id,"receipt":receipt}))
+        } else if method == "events_read" {
+            let query: EventQuery =
+                serde_json::from_value(request.params).map_err(|error| error.to_string())?;
+            app.state::<DesktopState>()
+                .events
+                .lock()
+                .map_err(|error| error.to_string())?
+                .read(&query)
+                .and_then(|page| serde_json::to_value(page).map_err(|error| error.to_string()))
+        } else if method == "events_ack" {
+            #[derive(Deserialize)]
+            #[serde(deny_unknown_fields)]
+            struct Acknowledgement {
+                consumer: String,
+                cursor: u64,
+            }
+            let acknowledgement: Acknowledgement =
+                serde_json::from_value(request.params).map_err(|error| error.to_string())?;
+            app.state::<DesktopState>()
+                .events
+                .lock()
+                .map_err(|error| error.to_string())?
+                .acknowledge(&acknowledgement.consumer, acknowledgement.cursor)?;
+            Ok(json!({"acknowledged":acknowledgement.cursor}))
+        } else if method == "window_show" {
+            if request.params != json!({}) {
+                Err("This tool takes no parameters.".into())
+            } else {
+                app.get_webview_window("main")
+                    .ok_or("The writing window is unavailable.".to_string())
+                    .and_then(|window| {
+                        window.unminimize().map_err(|error| error.to_string())?;
+                        window.show().map_err(|error| error.to_string())?;
+                        window.set_focus().map_err(|error| error.to_string())?;
+                        Ok(json!({"shown":true}))
+                    })
+            }
+        } else if method == "screenshot" {
+            let mut state_request = request.clone();
+            state_request.method = "ui_state".into();
+            let mut before = dispatch(&app, state_request.clone()).await?;
+            let bytes = capture_window(&app).await?;
+            let mut after = dispatch(&app, state_request).await?;
+            before
+                .as_object_mut()
+                .map(|state| state.remove("capturedAt"));
+            let captured_at = after
+                .as_object_mut()
+                .and_then(|state| state.remove("capturedAt"));
+            if before != after {
+                Err("The editor changed during capture. Take another screenshot.".into())
+            } else {
+                after["capturedAt"] = captured_at.unwrap_or(Value::Null);
+                after["captureId"] = Value::String(uuid::Uuid::new_v4().to_string());
+                Ok(
+                    json!({"state":after,"data":base64::engine::general_purpose::STANDARD.encode(bytes)}),
+                )
+            }
+        } else {
+            dispatch(&app, request).await
         }
-    } else {
-        dispatch(&app, request).await
-    };
+    }
+    .await;
     let response = match result {
         Ok(result) => ControlResponse {
+            version: 1,
             id: identity,
             result: Some(result),
             error: None,
         },
         Err(error) => ControlResponse {
+            version: 1,
             id: identity,
             result: None,
             error: Some(error),
         },
     };
-    let bytes = serde_json::to_vec(&response).map_err(|error| error.to_string())?;
-    writer
-        .write_all(&bytes)
-        .await
-        .map_err(|error| error.to_string())?;
-    writer
-        .write_all(b"\n")
-        .await
-        .map_err(|error| error.to_string())?;
-    Ok(())
+    write_control(&mut writer, response).await
 }
 
 async fn capture_window(app: &tauri::AppHandle) -> Result<Vec<u8>, String> {
@@ -520,11 +860,14 @@ fn main() {
     let requested_path = std::env::args()
         .skip(1)
         .find(|argument| !argument.starts_with('-'));
+    let events = EventStore::open(&directory).expect("The automation journal could not be opened.");
     let app = tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
         .manage(DesktopState {
             directory,
             persistence: Mutex::new(()),
+            events: Mutex::new(events),
+            event_notification: tokio::sync::Notify::new(),
             pending: Mutex::new(HashMap::new()),
             open_path: Mutex::new(requested_path),
             _lock: lock,
@@ -533,7 +876,9 @@ fn main() {
             bootstrap,
             read_document,
             write_recovery,
+            publish_events,
             persist_document,
+            move_document,
             discard_recovery,
             store_preferences,
             remember_document,
@@ -543,6 +888,8 @@ fn main() {
             preview_assets,
             open_reference,
             deliver_codex,
+            delivery_receipts,
+            reset_delivery,
             complete_control
         ])
         .setup(move |app| {

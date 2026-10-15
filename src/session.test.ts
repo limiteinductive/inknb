@@ -151,3 +151,94 @@ describe("agent-owned connections", () => {
     expect(session.getSnapshot().dirty).toBe(false);
   });
 });
+
+test("attachment confirmation clears candidates and completes its repair work", async () => {
+  vi.useFakeTimers();
+  vi.mocked(invoke).mockResolvedValue(undefined);
+  const session = new DocumentSession();
+  const metadata = createMetadata();
+  const conversation = createConversation(
+    "A garden.",
+    metadata,
+    { from: 0, to: 9 },
+    "Keep this attached.",
+    "read",
+  );
+  conversation.thread.anchor.status = "detached";
+  conversation.thread.anchorSuggestions.push({
+    id: crypto.randomUUID(),
+    label: "Garden",
+    anchor: {
+      from: 0,
+      to: 9,
+      quote: "A garden.",
+      before: "",
+      after: "",
+      status: "attached",
+    },
+  });
+  metadata.threads.push(conversation.thread);
+  metadata.requests.push({
+    ...conversation.request,
+    messageId: null,
+    trigger: { kind: "anchor_detached" },
+    state: "delivered",
+  });
+  session.update({ text: "A garden.", metadata });
+  session.reanchor(conversation.thread.id, { from: 0, to: 9 });
+  expect(session.getSnapshot().metadata.threads[0].anchor.status).toBe(
+    "attached",
+  );
+  expect(session.getSnapshot().metadata.threads[0].anchorSuggestions).toEqual(
+    [],
+  );
+  expect(session.getSnapshot().metadata.requests[0].state).toBe("answered");
+});
+
+test("waits for recovered delivery reconciliation before enabling the editor", async () => {
+  vi.useFakeTimers();
+  const metadata = createMetadata();
+  const conversation = createConversation(
+    "A garden.",
+    metadata,
+    { from: 0, to: 9 },
+    "Check this.",
+    "read",
+  );
+  metadata.threads.push(conversation.thread);
+  metadata.requests.push({ ...conversation.request, state: "sending" });
+  let finishReceipts: (() => void) | undefined;
+  vi.mocked(invoke).mockImplementation((method) => {
+    if (method === "bootstrap")
+      return Promise.resolve({
+        preferences: { ...defaultPreferences, autosave: false },
+        recovery: {
+          path: null,
+          text: "A garden.",
+          metadata,
+          expectedHash: null,
+          expectedSidecarHash: null,
+          events: [],
+          saveEvent: null,
+        },
+        lastPath: null,
+        commandPath: "/local/inknb",
+        codexPath: null,
+        socketPath: "/local/control.sock",
+      });
+    if (method === "delivery_receipts")
+      return new Promise((resolve) => {
+        finishReceipts = () => resolve({ [conversation.request.id]: "queued" });
+      });
+    return Promise.resolve(undefined);
+  });
+  const session = new DocumentSession();
+  const initializing = session.initialize();
+  await vi.waitFor(() => expect(finishReceipts).toBeDefined());
+  expect(session.getSnapshot().ready).toBe(false);
+  finishReceipts?.();
+  await initializing;
+  expect(session.getSnapshot().ready).toBe(true);
+  expect(session.getSnapshot().metadata.requests[0].state).toBe("delivered");
+  expect(session.getSnapshot().text).toBe("A garden.");
+});

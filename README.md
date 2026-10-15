@@ -44,6 +44,12 @@ The session retains its own context and permissions. ink and butter does not sel
 
 See [the agent guide](docs/agents.md) for setup and transport details. Codex supplies the end-to-end integration verification. Claude channel support remains unverified on the development machine.
 
+## Automate
+
+External backends can subscribe to local events, replay missed work, and post anchored findings through MCP or the socket protocol. `inknb watch` streams events. `inknb hook` runs an external handler with durable checkpoints.
+
+See [the automation contract](docs/automation.md) and [the figure-reference backend](examples/check-figure-references.mjs).
+
 ## Local data
 
 Markdown stays in the file you opened. `<filename>.aside.json` stores conversations, request permissions, proposed edits, and source fingerprints. Keep both files when moving a document.

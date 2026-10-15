@@ -1,51 +1,61 @@
 # Release verification
 
-Version: 0.1.2. Build: `0.1.2+d77e3d7d9a92`. Date: 2026-10-15.
+Version: 0.2.0. Build: `0.2.0+7d38569352c4`. Date: 2026-10-15.
 
-The external agent now handles connection setup. Settings contain writing preferences. The footer shows connection status and a Disconnect action.
+Agents now receive source reviews, proposal refreshes, and anchor repairs through the existing request queue. Maintenance requests permit replies and proposals. They grant no direct prose edit permission.
 
-## Connection workflow
+## Live workflows
 
-A synthetic manuscript received an aside while no agent was connected. The request stayed pending with read permission.
+A real existing Codex session joined a synthetic manuscript through the packaged CLI. An unrelated insertion preserved a pending suggestion at its new position. Changing the suggested passage queued refresh work. Codex read the current text and returned a replacement proposal. Acceptance and Undo worked through the desktop app.
 
-An existing Codex session ran the packaged `inknb connect` command from its own shell. The initial sandbox blocked the local socket. The agent retried with its normal approval flow. The command registered that session's own identity.
+Two changes to a local CSV created separate fingerprint-scoped reviews. Codex read each file version and explained the new plant count and water use beside the affected paragraph. It identified missing comparison data and replication evidence. The prose stayed under human control.
 
-Registration delivered the saved aside. Codex read the live manuscript and returned a reply through MCP. The manuscript stayed byte-identical. A queued notification after the reply caused no second reply.
+Replacing a conclusion detached its discussion. Codex returned a candidate for the new conclusion. The native app showed that candidate for human confirmation. Confirmation reattached the discussion and completed its repair request.
 
-Disconnect through the native app menu removed the document connection. A new aside stayed pending locally. The same Codex session rejoined and answered that request. The earlier reply remained unchanged.
+Figure and table tools prepared pending insertions without changing prose. Maintenance work could not use direct edits. A document move preserved the Markdown, annotations, and local references, including an asset in a pending proposal.
 
-Two further registrations preserved completed requests, delivery timestamps, and conversation messages. Save and restart preserved the document identity, prose, connection, request permissions, replies, and provenance.
-
-The final package also passed registration against the saved document. Completed requests and prose remained unchanged.
+An independent Node backend subscribed through `inknb hook`. It posted a missing-figure finding and resolved its own finding after the file became available. Its named checkpoint survived app restarts. A separate handler failed once, received the same event identity again, and acknowledged it after success.
 
 ## Checks
 
-| Check                            | Result                                               |
-| -------------------------------- | ---------------------------------------------------- |
-| TypeScript and release build     | Passed                                               |
-| Frontend behavior tests          | 12 passed                                            |
-| Rust storage tests               | 2 passed                                             |
-| Rust Clippy with warnings denied | Passed                                               |
-| Packaged MCP server              | Version 0.1.2, 14 tools                              |
-| Invalid document identity        | Rejected without registration                        |
-| Invalid Codex session identity   | Rejected without registration                        |
-| CLI without a current session    | Rejected with agent-facing guidance                  |
-| Settings                         | Native controls contain writing preferences only     |
-| Connection menu                  | Native Disconnect action verified                    |
-| Compact settings                 | Light and dark reviewed at 700 by 480                |
-| Normal window                    | Settings and connection menu reviewed at 1180 by 820 |
-| Installed and extracted bundles  | Local signatures and binary equality verified        |
+| Check                            | Result                                                            |
+| -------------------------------- | ----------------------------------------------------------------- |
+| TypeScript and release build     | Passed                                                            |
+| Frontend behavior tests          | 17 passed                                                         |
+| Rust storage and event tests     | 6 passed                                                          |
+| Rust Clippy with warnings denied | Passed                                                            |
+| Packaged MCP server              | Version 0.2.0, 26 tools                                           |
+| Event replay                     | Stable IDs, duplicate rejection, durable checkpoints              |
+| Delivery receipts                | Completed sends preserved; uncertain sends require reconciliation |
+| Source review guards             | Newer fingerprints and generic reply bypass rejected              |
+| Proposal refresh                 | Unrelated typing preserved; affected text requested refresh       |
+| External annotations             | Read-only findings; human discussions protected                   |
+| Document move                    | Markdown, sidecar, relative assets, and recovery verified         |
 
-The release retains the document behavior verified in [version 0.1.0](release-0.1.0.md) and the naming upgrade in [version 0.1.1](release-0.1.1.md). Public dependency versions remain unchanged.
+The interface and package checks below identify the final build. Earlier connection evidence remains in [version 0.1.2](release-0.1.2.md).
 
-![Writing settings](screenshots/inknb-agent-settings.png)
+## Compatibility
 
-![Connection indicator and Disconnect menu](screenshots/inknb-agent-menu.png)
+Annotation format 2 reads format 1 sidecars. Earlier app releases cannot read the new maintenance requests. Keep the current app when using updated annotations.
 
-Settings capture: `36b7c93a-9695-4472-95aa-e03153741db7`. Menu capture: `f045cf1e-97f2-4cb7-9aaf-ac66835e48ca`.
-
-## Delivery
-
-The package contains the desktop app and CLI. Agents can use the CLI before configuring MCP. Persistent MCP setup remains in the external agent's environment.
+The event journal stays in local application support data. It uses SQLite with full synchronization. The protocol uses the existing same-user Unix socket. It opens no TCP listener.
 
 This Apple Silicon build uses ad hoc signing. It has no Developer ID notarization. Claude channel support remains unverified on this machine.
+
+## Final package and interface
+
+The installed build preserved the complete synthetic document across restart. The document identity, revision, path, text, and metadata matched exactly. The packaged MCP server exposed all 26 tools. An unsupported socket version returned an explicit error.
+
+Native computer use exercised the conversation, source disclosure, scrolling, menus, and a new document. The sticky conversation heading retained Resolve and Close controls. Screenshots received visual inspection at 1180 by 820 and 700 by 480.
+
+The final review used Dark appearance. Automatic approval review rejected a temporary Light appearance check. Dark stayed unchanged. The earlier light appearance review remains in version 0.1.2.
+
+The extracted release archive passed local signature verification. Its desktop and CLI binaries matched the installed app. The personal GitHub repository remained private. The app was left on an empty document after the synthetic checks.
+
+![Reviewed source beside the manuscript](screenshots/inknb-automation-final-dark.png)
+
+Capture: `6ae4f552-98a1-4a3d-a7f0-99e606221ba1`.
+
+![Compact margin conversation](screenshots/inknb-automation-compact-dark.png)
+
+Capture: `f903b469-10e9-4419-8dd9-f0aa3f182e1b`.
