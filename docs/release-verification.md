@@ -64,3 +64,15 @@ Capture: `70274550-9fd6-4dd7-be9e-875375869f52`.
 ![Compact component layout](screenshots/inknb-components-compact.png)
 
 Capture: `da173bc3-8cf1-4905-a955-5723e45dc87f`.
+
+## Corner rendering, version 0.3.1
+
+Build: `0.3.1+79e590f90b6a`. Date: 2026-10-15.
+
+The conversation card retains its border while its contents scroll. The sticky header uses the card padding at each window width.
+
+TypeScript, the release build, formatting, and all 19 existing frontend tests passed. Native screenshots received visual inspection at 1180 by 820 and 700 by 480. The checks covered both scroll endpoints and a short conversation. The original writing preferences remained unchanged.
+
+![Conversation border after scrolling](screenshots/inknb-corner.png)
+
+Capture: `4a0c36db-ed2e-454e-9065-4a48f54a2239`. Compact capture: `58c0e0c4-465c-4b84-8da9-1b350fe65ff3`.

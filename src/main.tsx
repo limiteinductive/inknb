@@ -223,6 +223,8 @@ function Conversation({ identity }: { identity: string }) {
   return (
     <section
       className={`thread-card ${thread.resolved ? "resolved" : ""}`}
+      data-inknb-control={`conversation:${thread.id}`}
+      data-inknb-scroll="true"
       aria-label="Conversation"
     >
       <div className="thread-heading">
@@ -954,13 +956,7 @@ function App() {
             ) : activeThread &&
               (state.preferences.placement === "margin" ||
                 activeThread.anchor.status === "detached") ? (
-              <div
-                className="active-thread"
-                style={{ top: railTop }}
-                data-inknb-control={`conversation:${activeThread.id}`}
-                data-inknb-scroll="true"
-                aria-label="Conversation scroll area"
-              >
+              <div className="active-thread" style={{ top: railTop }}>
                 <Conversation identity={activeThread.id} />
               </div>
             ) : (
