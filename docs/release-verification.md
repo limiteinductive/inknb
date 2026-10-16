@@ -184,3 +184,19 @@ TypeScript, formatting, all 19 existing frontend tests, and the production build
 Screenshots received visual inspection at 1728 by 1084 and 700 by 480. Captures: `cf6e44cf-5f55-4bf5-9967-a76bdce65ce6` and `cd8f6ee3-9207-45aa-a508-03db93d92d78`. The screenshots remain local because they contain the current document.
 
 The original text and metadata matched the pre-update snapshot. The window size, sidebar, and preview state were restored. The signed archive passed extraction, signature verification, and binary comparisons.
+
+## Native window chrome, version 0.4.2
+
+Build: `0.4.2+bf490da0c028`. Date: 2026-10-15.
+
+The native traffic lights and navigation controls share a vertical center at 26 logical pixels. Windowed navigation starts at 96 pixels. Native fullscreen moves navigation to 12 pixels. The same positions apply with the library open or closed.
+
+Native window updates enforce control positions after AppKit layout changes. Fullscreen notifications preserve the windowed gap during transitions. Agent snapshots read current native bounds on the main thread. The native View menu provides Toggle Full Screen.
+
+TypeScript, formatting, the production build, all 19 existing frontend tests, seven existing Rust tests, and Clippy passed. Native interaction checked window fullscreen, preview fullscreen, and restoration. Geometry checks covered repeated resizing at 1440 by 960, 700 by 480, and 1728 by 1084.
+
+Native screenshots received visual inspection in windowed and fullscreen states. Their files remain local because they contain current writing. Screen capture and keyboard checks required the visible app. Final captures: `2215dfbb-97cc-48ba-b5b7-ef5d28452e18` and `4786a540-ec76-4301-9bda-bb5e7a5f6dfe`.
+
+Repeated installations preserved complete document text and metadata. The final check retained the latest human edits. Appearance, selection, sidebar, preview mode, and window size matched the final pre-check snapshot.
+
+The signed archive passed extraction, signature verification, and binary comparisons. The macOS bundle uses ad hoc signing without notarization.

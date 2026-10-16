@@ -16,6 +16,8 @@ use std::sync::{Arc, Mutex};
 use tauri::{Emitter, Manager, State};
 use tokio::io::{AsyncBufReadExt, AsyncReadExt, AsyncWriteExt, BufReader};
 use tokio::sync::oneshot;
+mod window_chrome;
+use window_chrome::{WindowChrome, WindowMode, TOOLBAR_HEIGHT};
 
 type PendingResult = oneshot::Sender<Result<Value, String>>;
 
@@ -823,6 +825,15 @@ async fn serve_connection(
                         window.unminimize().map_err(|error| error.to_string())?;
                         window.show().map_err(|error| error.to_string())?;
                         window.set_focus().map_err(|error| error.to_string())?;
+                        window
+                            .with_webview(|_| {
+                                let main_thread = objc2::MainThreadMarker::new().unwrap();
+                                let application =
+                                    objc2_app_kit::NSApplication::sharedApplication(main_thread);
+                                #[allow(deprecated)]
+                                application.activateIgnoringOtherApps(true);
+                            })
+                            .map_err(|error| error.to_string())?;
                         Ok(json!({"shown":true}))
                     })
             }
@@ -1024,7 +1035,14 @@ fn main() {
             open_path: Mutex::new(requested_path),
             _lock: lock,
         })
+        .manage(Mutex::new(WindowChrome {
+            mode: WindowMode::Windowed,
+            toolbar_height: TOOLBAR_HEIGHT,
+            leading_inset: 86.0,
+            windowed_controls: Vec::new(),
+        }))
         .invoke_handler(tauri::generate_handler![
+            window_chrome::window_chrome,
             bootstrap,
             component_info,
             read_document,
@@ -1093,7 +1111,11 @@ fn main() {
                 .separator()
                 .item(&comment)
                 .build()?;
-            let view = SubmenuBuilder::new(app, "View").item(&focus).build()?;
+            let view = SubmenuBuilder::new(app, "View")
+                .item(&focus)
+                .separator()
+                .item(&PredefinedMenuItem::fullscreen(app, None)?)
+                .build()?;
             app.set_menu(
                 MenuBuilder::new(app)
                     .items(&[&application, &file, &edit, &view])
@@ -1129,8 +1151,87 @@ fn main() {
         })
         .build(tauri::generate_context!())
         .expect("ink and butter could not start.");
-    app.run(|handle, event| {
-        if let tauri::RunEvent::Opened { urls } = event {
+    let mut observers: Option<window_chrome::NativeObservers> = None;
+    app.run(move |handle, event| match event {
+        tauri::RunEvent::Ready => {
+            use block2::RcBlock;
+            use objc2::rc::Retained;
+            use objc2_app_kit::{
+                NSWindow, NSWindowDidChangeBackingPropertiesNotification,
+                NSWindowDidEnterFullScreenNotification, NSWindowDidExitFullScreenNotification,
+                NSWindowDidResizeNotification, NSWindowDidUpdateNotification, NSWindowStyleMask,
+                NSWindowWillEnterFullScreenNotification, NSWindowWillExitFullScreenNotification,
+            };
+            use objc2_foundation::{NSNotification, NSNotificationCenter, NSOperationQueue};
+
+            let window = handle
+                .get_webview_window("main")
+                .expect("The writing window is unavailable.");
+            let native = unsafe {
+                Retained::retain(
+                    window
+                        .ns_window()
+                        .expect("The native window is unavailable.")
+                        as *mut NSWindow,
+                )
+            }
+            .expect("The native window is unavailable.");
+            let mode = if native.styleMask().contains(NSWindowStyleMask::FullScreen) {
+                WindowMode::Fullscreen
+            } else {
+                WindowMode::Windowed
+            };
+            window_chrome::synchronize(&native, &window, mode)
+                .expect("Window controls could not be aligned.");
+            let center = NSNotificationCenter::defaultCenter();
+            let notifications = unsafe {
+                [
+                    (
+                        NSWindowWillEnterFullScreenNotification,
+                        Some(WindowMode::EnteringFullscreen),
+                    ),
+                    (
+                        NSWindowDidEnterFullScreenNotification,
+                        Some(WindowMode::Fullscreen),
+                    ),
+                    (
+                        NSWindowWillExitFullScreenNotification,
+                        Some(WindowMode::ExitingFullscreen),
+                    ),
+                    (
+                        NSWindowDidExitFullScreenNotification,
+                        Some(WindowMode::Windowed),
+                    ),
+                    (NSWindowDidResizeNotification, None),
+                    (NSWindowDidUpdateNotification, None),
+                    (NSWindowDidChangeBackingPropertiesNotification, None),
+                ]
+            };
+            let mut tokens = Vec::new();
+            for (notification, transition) in notifications {
+                let window = window.clone();
+                let observed = native.clone();
+                let callback = RcBlock::new(move |_: std::ptr::NonNull<NSNotification>| {
+                    let mode = transition.unwrap_or_else(|| {
+                        window.state::<Mutex<WindowChrome>>().lock().unwrap().mode
+                    });
+                    let _ = window_chrome::synchronize(&observed, &window, mode);
+                });
+                tokens.push(unsafe {
+                    center.addObserverForName_object_queue_usingBlock(
+                        Some(notification),
+                        Some(&native),
+                        Some(&NSOperationQueue::mainQueue()),
+                        &callback,
+                    )
+                });
+            }
+            observers = Some(window_chrome::NativeObservers { center, tokens });
+        }
+        tauri::RunEvent::Exit => {
+            observers.take();
+        }
+        tauri::RunEvent::Opened { urls } => {
             if let Some(path) = urls.first().and_then(|url| url.to_file_path().ok()) {
                 let path = path.to_string_lossy().into_owned();
                 if let Ok(mut pending) = handle.state::<DesktopState>().open_path.lock() {
@@ -1139,5 +1240,6 @@ fn main() {
                 let _ = handle.emit_to("main", "inknb-open", path);
             }
         }
+        _ => {}
     });
 }

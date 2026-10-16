@@ -51,6 +51,7 @@ import { workspace } from "./workspace";
 import Library from "./Library";
 import DocumentNavigation from "./DocumentNavigation";
 import IconButton from "./IconButton";
+import { readWindowChrome, windowChromeSchema } from "./window-chrome";
 import "./style.css";
 
 const Preview = lazy(() => import("./Preview"));
@@ -979,16 +980,33 @@ function App() {
     return () => query.removeEventListener("change", resize);
   }, []);
   useEffect(() => {
+    const updateChrome = (value: unknown) => {
+      const chrome = windowChromeSchema.parse(value);
+      document.documentElement.dataset.windowMode = chrome.mode;
+      document.documentElement.style.setProperty(
+        "--toolbar-height",
+        `${chrome.toolbarHeight}px`,
+      );
+      document.documentElement.style.setProperty(
+        "--window-controls-inset",
+        `${chrome.leadingInset}px`,
+      );
+      const session = workspace.active;
+      if (
+        chrome.mode === "windowed" &&
+        session?.getSnapshot().previewMode === "fullscreen"
+      )
+        void session.command("preview-fullscreen-ended");
+    };
+    const chromeSubscription = listen("inknb-window-chrome", (event) =>
+      updateChrome(event.payload),
+    );
+    void chromeSubscription
+      .then(() => readWindowChrome())
+      .then(updateChrome)
+      .catch((error) => workspace.fail(error));
     const subscriptions = [
-      getCurrentWindow().onResized(() => {
-        const session = workspace.active;
-        if (session?.getSnapshot().previewMode !== "fullscreen") return;
-        void getCurrentWindow()
-          .isFullscreen()
-          .then((fullscreen) => {
-            if (!fullscreen) void session.command("preview-fullscreen-ended");
-          });
-      }),
+      chromeSubscription,
       listen<string>(
         "inknb-menu",
         (event) =>

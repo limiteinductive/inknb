@@ -1,6 +1,6 @@
 # Architecture
 
-Status: version 0.4.1 passed local release verification. See [release verification](release-verification.md).
+Status: version 0.4.2 passed local release verification. See [release verification](release-verification.md).
 
 ## Naming
 
@@ -35,6 +35,10 @@ Each document retains its editor, Undo history, selection, conversations, and un
 The sidebar header owns its toggle and Back and Forward controls. The writing header owns those controls while the sidebar is hidden. Narrow windows show the library in a dismissible modal drawer. Navigation closes that drawer and restores writing focus.
 
 The document title is static text. The sidebar provides New and Open actions. The native File menu and keyboard shortcuts provide Save and Save As. The Preview action appears while its pane is closed.
+
+Window chrome uses a `long-term` native design. AppKit notifications track fullscreen entry, fullscreen exit, resizing, window updates, and display scale changes. Native window updates enforce the traffic-light bounds. Unchanged frames require no native mutation. The application owns and removes its notification observers.
+
+Windowed navigation shares the traffic lights' vertical center and reserves space after their measured bounds. Fullscreen navigation uses the left toolbar inset. The windowed inset returns during fullscreen exit. The same geometry applies with the sidebar open or closed. Agent snapshots measure current native control bounds on the main thread.
 
 Back and Forward restore visited documents and explicit passage jumps. Typing and scrolling do not add visits. A new visit after Back removes the forward branch. Navigation does not enter text Undo history.
 

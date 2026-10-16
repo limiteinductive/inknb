@@ -2,6 +2,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { save } from "@tauri-apps/plugin-dialog";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { LogicalSize } from "@tauri-apps/api/dpi";
+import { readWindowChrome } from "./window-chrome";
 import { EditorSelection } from "@codemirror/state";
 import { EditorView } from "@codemirror/view";
 import type { ViewUpdate } from "@codemirror/view";
@@ -1387,6 +1388,7 @@ export class DocumentSession {
       });
       return {
         build: __INKNB_BUILD__,
+        windowChrome: await readWindowChrome(),
         windowActive: document.hasFocus(),
         visibility: document.visibilityState,
         capturedAt: new Date().toISOString(),
