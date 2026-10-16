@@ -118,3 +118,17 @@ Capture: `837d1383-ff88-4cd1-bead-76911eb62b3b`.
 ![Labeled controls in a compact window](screenshots/inknb-header-compact.png)
 
 Capture: `3a8ee2f5-17a4-419c-bcb2-649c1a676c2b`. Resolved capture: `883679ef-dcf3-4d9c-8193-3edf99e521cf`.
+
+## Separate preview pane, version 0.3.4
+
+Build: `0.3.4+f46076ba2200`. Date: 2026-10-15.
+
+Preview occupies the far-right root pane and spans the window height. The writing toolbar and status bar stay inside the writing pane. Asides remain independent.
+
+TypeScript, formatting, the release build, and all 19 existing frontend tests passed. Native interaction checked preview navigation, live updates, Undo, independent scrolling, and fullscreen. Escape and the exit button restored the side pane and previous window size.
+
+Root-pane screenshots received visual inspection at 1180 by 820 and 700 by 480. Geometry checks confirmed the full-height preview and shifted writing controls. The compact writing pane stacked asides below the manuscript.
+
+The final installed build recovered the current unsaved document with identical text and metadata. Selection was restored. The final source audit removed one unrelated formatting change after the interaction checks.
+
+The signed archive passed extraction, signature verification, and binary comparisons. The release contains no document library or separate presentation model.

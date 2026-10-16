@@ -1,4 +1,5 @@
 import {
+  type CSSProperties,
   lazy,
   Suspense,
   useEffect,
@@ -557,7 +558,6 @@ function App() {
   const editorHost = useRef<HTMLDivElement>(null);
   const [table, setTable] = useState(false);
   const [columns, setColumns] = useState("Column 1, Column 2");
-  const [preview, setPreview] = useState(false);
   const [documentMenuOpen, setDocumentMenuOpen] = useState(false);
   const [railTop, setRailTop] = useState(90);
   const [showResolved, setShowResolved] = useState(false);
@@ -582,6 +582,14 @@ function App() {
   }, []);
   useEffect(() => {
     const subscriptions = [
+      getCurrentWindow().onResized(() => {
+        if (session.getSnapshot().previewMode !== "fullscreen") return;
+        void getCurrentWindow()
+          .isFullscreen()
+          .then((fullscreen) => {
+            if (!fullscreen) void session.command("preview-fullscreen-ended");
+          });
+      }),
       listen<string>(
         "inknb-menu",
         (event) => void session.command(event.payload),
@@ -723,6 +731,7 @@ function App() {
     };
   }, [
     state.activeThread,
+    state.previewMode,
     state.metadata.revision,
     state.preferences,
     state.ready,
@@ -775,288 +784,314 @@ function App() {
   }
   return (
     <div
-      className={`app ${state.focus ? "focus-mode" : ""} placement-${state.preferences.placement}`}
+      className={`app ${state.focus ? "focus-mode" : ""} ${state.previewMode === "panel" && !state.focus ? "preview-open" : ""} ${state.previewMode === "fullscreen" ? "preview-fullscreen" : ""} placement-${state.preferences.placement}`}
     >
-      <header className="titlebar" data-tauri-drag-region>
-        <div className="window-inset" />
-        <MenuTrigger
-          isOpen={documentMenuOpen}
-          onOpenChange={setDocumentMenuOpen}
-        >
-          <Button className="document-name">
-            {title}
-            <ChevronDown size={12} />
-            {state.dirty && (
-              <span className="unsaved-dot" aria-label="Unsaved changes" />
-            )}
-          </Button>
-          <Popover
-            className="document-menu"
-            placement="bottom start"
-            offset={5}
+      <section className="writing-pane" aria-label="Writing workspace">
+        <header className="titlebar" data-tauri-drag-region>
+          <div className="window-inset" />
+          <MenuTrigger
+            isOpen={documentMenuOpen}
+            onOpenChange={setDocumentMenuOpen}
           >
-            <Menu
-              aria-label="Document actions"
-              onAction={(action) => {
-                setDocumentMenuOpen(false);
-                if (action === "figure") {
-                  void insertFigure();
-                  return;
-                }
-                if (action === "table") {
-                  setTable(true);
-                  return;
-                }
-                if (action === "preview") {
-                  setPreview(true);
-                  return;
-                }
-                void session.command(String(action));
-              }}
-            >
-              <MenuItem id="new">
-                <Plus size={15} />
-                New document<kbd>⌘N</kbd>
-              </MenuItem>
-              <MenuItem id="open">
-                <FileText size={15} />
-                Open…<kbd>⌘O</kbd>
-              </MenuItem>
-              <MenuItem id="save">
-                <Check size={15} />
-                Save<kbd>⌘S</kbd>
-              </MenuItem>
-              <MenuItem id="save-as">
-                Save as…<kbd>⇧⌘S</kbd>
-              </MenuItem>
-              <Separator />
-              <MenuItem id="figure">
-                <ImagePlus size={15} />
-                Insert figure…
-              </MenuItem>
-              <MenuItem id="table">
-                <Table2 size={15} />
-                Insert table…
-              </MenuItem>
-              <MenuItem id="preview">
-                <FileText size={15} />
-                Reading preview
-              </MenuItem>
-            </Menu>
-          </Popover>
-        </MenuTrigger>
-        <div className="header-spacer" data-tauri-drag-region />
-        <div className="toolbar">
-          <IconButton
-            icon={Focus}
-            label="Toggle focus mode"
-            agentControl="focus.toggle"
-            active={state.focus}
-            onPress={() => void session.command("focus")}
-          />
-          <span className="toolbar-divider" />
-          <IconButton
-            icon={MessageSquarePlus}
-            label="Add aside"
-            agentControl="aside.add"
-            active={state.composer}
-            onPress={() => session.startComment()}
-          />
-          <IconButton
-            icon={Settings2}
-            label="Open settings"
-            agentControl="settings.open"
-            onPress={() => session.update({ settings: true })}
-          />
-        </div>
-      </header>
-      {state.error && (
-        <div className="notice error" role="alert">
-          <span>{state.error}</span>
-          <IconButton
-            icon={X}
-            label="Dismiss error"
-            onPress={() => session.update({ error: null })}
-          />
-        </div>
-      )}
-      {state.externalChange && (
-        <div className="notice conflict">
-          <span>This file changed outside ink and butter.</span>
-          <Button
-            onPress={() => {
-              if (state.path)
-                void (async () => {
-                  const confirmed =
-                    !state.dirty ||
-                    (await ask(
-                      "Reload the external file? This replaces your current unsaved buffer.",
-                      {
-                        title: "Reload document",
-                        kind: "warning",
-                        okLabel: "Reload",
-                        cancelLabel: "Keep editing",
-                      },
-                    ));
-                  if (confirmed) await session.load(state.path!);
-                })().catch((error) => session.fail(error));
-            }}
-          >
-            Reload
-          </Button>
-          <Button
-            onPress={() =>
-              void session.saveAs().catch((error) => session.fail(error))
-            }
-          >
-            Save a copy
-          </Button>
-        </div>
-      )}
-      <main className="workspace">
-        <div className="writing-region">
-          <div className="editor-host" ref={editorHost} />
-          {!state.text && state.ready && (
-            <div className="empty-hint">
-              <span>Your words go here.</span>
-              <span>
-                Select a passage, then press <kbd>⇧⌘A</kbd> to leave an aside.
-              </span>
-            </div>
-          )}
-        </div>
-        {!state.focus && (
-          <aside className="margin" aria-label="Asides">
-            <div className="margin-label">
-              <span>ASIDES</span>
-              <span>{threads.length || ""}</span>
-            </div>
-            {state.composer ? (
-              <div
-                className="new-aside thread-card"
-                style={{ marginTop: Math.max(32, railTop - 40) }}
-              >
-                <div className="thread-heading">
-                  <span className="eyebrow">A thought for your agent</span>
-                  <IconButton
-                    icon={X}
-                    label="Cancel aside"
-                    agentControl="aside.cancel"
-                    onPress={() => session.update({ composer: false })}
-                  />
-                </div>
-                <p className="composer-context">
-                  {state.selection.to > state.selection.from
-                    ? state.text.slice(state.selection.from, state.selection.to)
-                    : "At your cursor"}
-                </p>
-                <Composer />
-              </div>
-            ) : activeThread &&
-              (state.preferences.placement === "margin" ||
-                activeThread.anchor.status === "detached") ? (
-              <div className="active-thread" style={{ top: railTop }}>
-                <Conversation identity={activeThread.id} />
-              </div>
-            ) : (
-              <div className="thread-index">
-                {threads.length ? (
-                  threads.map((thread) => (
-                    <Button
-                      key={thread.id}
-                      className="thread-preview"
-                      data-inknb-control={`thread:${thread.id}`}
-                      onPress={() => session.selectThread(thread.id)}
-                    >
-                      <span
-                        className={`preview-marker ${threadHasStaleSources(thread) || thread.anchor.status === "detached" ? "stale" : thread.resolved ? "resolved" : ""}`}
-                      />{" "}
-                      <span>
-                        <span className="preview-quote">
-                          {thread.anchor.status === "detached" &&
-                            "Unattached: "}
-                          {thread.originalQuote || "At the cursor"}
-                        </span>
-                        <span className="preview-message">
-                          {thread.messages.at(-1)?.content}
-                        </span>
-                      </span>
-                      <ChevronRight size={13} />
-                    </Button>
-                  ))
-                ) : (
-                  <div className="margin-empty">
-                    <MessageSquarePlus size={22} strokeWidth={1.2} />
-                    <p>
-                      A place for the
-                      <br />
-                      thought beside the text.
-                    </p>
-                    <Button
-                      className="text-button"
-                      onPress={() => session.startComment()}
-                    >
-                      Leave an aside <Plus size={12} />
-                    </Button>
-                  </div>
-                )}
-                {state.metadata.threads.some((thread) => thread.resolved) && (
-                  <Button
-                    className="text-button resolved-toggle"
-                    onPress={() => setShowResolved(!showResolved)}
-                  >
-                    {showResolved ? "Hide resolved" : "Show resolved"}
-                  </Button>
-                )}
-              </div>
-            )}
-          </aside>
-        )}
-      </main>
-      <footer className="statusbar">
-        <span className="brand">ink and butter</span>
-        <span className="save-status" aria-live="polite">
-          {state.saving
-            ? "Saving…"
-            : state.status || (state.dirty ? "Unsaved" : "")}
-        </span>
-        <span className="status-spacer" />
-        {state.metadata.binding ? (
-          <MenuTrigger>
-            <Button
-              className="connection-status connected"
-              aria-label="Agent connection"
-            >
-              <span className="status-dot" />
-              {state.metadata.binding.label}
+            <Button className="document-name">
+              {title}
+              <ChevronDown size={12} />
+              {state.dirty && (
+                <span className="unsaved-dot" aria-label="Unsaved changes" />
+              )}
             </Button>
-            <Popover className="document-menu" placement="top end" offset={8}>
+            <Popover
+              className="document-menu"
+              placement="bottom start"
+              offset={5}
+            >
               <Menu
-                aria-label="Agent connection"
-                onAction={() => {
-                  void session
-                    .bind(null, state.metadata.documentId)
-                    .catch((error) => session.fail(error));
+                aria-label="Document actions"
+                onAction={(action) => {
+                  setDocumentMenuOpen(false);
+                  if (action === "figure") {
+                    void insertFigure();
+                    return;
+                  }
+                  if (action === "table") {
+                    setTable(true);
+                    return;
+                  }
+                  void session.command(String(action));
                 }}
               >
-                <MenuItem id="disconnect">Disconnect agent</MenuItem>
+                <MenuItem id="new">
+                  <Plus size={15} />
+                  New document<kbd>⌘N</kbd>
+                </MenuItem>
+                <MenuItem id="open">
+                  <FileText size={15} />
+                  Open…<kbd>⌘O</kbd>
+                </MenuItem>
+                <MenuItem id="save">
+                  <Check size={15} />
+                  Save<kbd>⌘S</kbd>
+                </MenuItem>
+                <MenuItem id="save-as">
+                  Save as…<kbd>⇧⌘S</kbd>
+                </MenuItem>
+                <Separator />
+                <MenuItem id="figure">
+                  <ImagePlus size={15} />
+                  Insert figure…
+                </MenuItem>
+                <MenuItem id="table">
+                  <Table2 size={15} />
+                  Insert table…
+                </MenuItem>
+                <MenuItem id="preview">
+                  <FileText size={15} />
+                  Reading preview
+                </MenuItem>
               </Menu>
             </Popover>
           </MenuTrigger>
-        ) : (
-          <span className="connection-status">No agent yet</span>
+          <div className="header-spacer" data-tauri-drag-region />
+          <div className="toolbar">
+            <IconButton
+              icon={Focus}
+              label="Toggle focus mode"
+              agentControl="focus.toggle"
+              active={state.focus}
+              onPress={() => void session.command("focus")}
+            />
+            <span className="toolbar-divider" />
+            <IconButton
+              icon={MessageSquarePlus}
+              label="Add aside"
+              agentControl="aside.add"
+              active={state.composer}
+              onPress={() => session.startComment()}
+            />
+            <IconButton
+              icon={Settings2}
+              label="Open settings"
+              agentControl="settings.open"
+              onPress={() => session.update({ settings: true })}
+            />
+          </div>
+        </header>
+        {state.error && (
+          <div className="notice error" role="alert">
+            <span>{state.error}</span>
+            <IconButton
+              icon={X}
+              label="Dismiss error"
+              onPress={() => session.update({ error: null })}
+            />
+          </div>
         )}
-        <span className="word-count">
-          {wordCount.toLocaleString()} {wordCount === 1 ? "word" : "words"}
-        </span>
-        <Button
-          className="focus-exit"
-          data-inknb-control="focus.leave"
-          onPress={() => void session.command("focus")}
+        {state.externalChange && (
+          <div className="notice conflict">
+            <span>This file changed outside ink and butter.</span>
+            <Button
+              onPress={() => {
+                if (state.path)
+                  void (async () => {
+                    const confirmed =
+                      !state.dirty ||
+                      (await ask(
+                        "Reload the external file? This replaces your current unsaved buffer.",
+                        {
+                          title: "Reload document",
+                          kind: "warning",
+                          okLabel: "Reload",
+                          cancelLabel: "Keep editing",
+                        },
+                      ));
+                    if (confirmed) await session.load(state.path!);
+                  })().catch((error) => session.fail(error));
+              }}
+            >
+              Reload
+            </Button>
+            <Button
+              onPress={() =>
+                void session.saveAs().catch((error) => session.fail(error))
+              }
+            >
+              Save a copy
+            </Button>
+          </div>
+        )}
+        <main className="workspace">
+          <div className="writing-region">
+            <div className="editor-host" ref={editorHost} />
+            {!state.text && state.ready && (
+              <div className="empty-hint">
+                <span>Your words go here.</span>
+                <span>
+                  Select a passage, then press <kbd>⇧⌘A</kbd> to leave an aside.
+                </span>
+              </div>
+            )}
+          </div>
+          {!state.focus && (
+            <aside className="margin" aria-label="Asides">
+              <div className="margin-label">
+                <span>ASIDES {threads.length || ""}</span>
+                <Button
+                  className="text-button"
+                  aria-label="Open reading preview"
+                  data-inknb-control="preview.open"
+                  onPress={() => void session.command("preview")}
+                >
+                  Preview
+                </Button>
+              </div>
+              {state.composer ? (
+                <div
+                  className="new-aside thread-card"
+                  style={
+                    {
+                      "--draft-top": `${Math.max(32, railTop - 40)}px`,
+                    } as CSSProperties
+                  }
+                >
+                  <div className="thread-heading">
+                    <span className="eyebrow">A thought for your agent</span>
+                    <IconButton
+                      icon={X}
+                      label="Cancel aside"
+                      agentControl="aside.cancel"
+                      onPress={() => session.update({ composer: false })}
+                    />
+                  </div>
+                  <p className="composer-context">
+                    {state.selection.to > state.selection.from
+                      ? state.text.slice(
+                          state.selection.from,
+                          state.selection.to,
+                        )
+                      : "At your cursor"}
+                  </p>
+                  <Composer />
+                </div>
+              ) : activeThread &&
+                (state.preferences.placement === "margin" ||
+                  activeThread.anchor.status === "detached") ? (
+                <div
+                  className="active-thread"
+                  style={{ "--aside-top": `${railTop}px` } as CSSProperties}
+                >
+                  <Conversation identity={activeThread.id} />
+                </div>
+              ) : (
+                <div className="thread-index">
+                  {threads.length ? (
+                    threads.map((thread) => (
+                      <Button
+                        key={thread.id}
+                        className="thread-preview"
+                        data-inknb-control={`thread:${thread.id}`}
+                        onPress={() => session.selectThread(thread.id)}
+                      >
+                        <span
+                          className={`preview-marker ${threadHasStaleSources(thread) || thread.anchor.status === "detached" ? "stale" : thread.resolved ? "resolved" : ""}`}
+                        />{" "}
+                        <span>
+                          <span className="preview-quote">
+                            {thread.anchor.status === "detached" &&
+                              "Unattached: "}
+                            {thread.originalQuote || "At the cursor"}
+                          </span>
+                          <span className="preview-message">
+                            {thread.messages.at(-1)?.content}
+                          </span>
+                        </span>
+                        <ChevronRight size={13} />
+                      </Button>
+                    ))
+                  ) : (
+                    <div className="margin-empty">
+                      <MessageSquarePlus size={22} strokeWidth={1.2} />
+                      <p>
+                        A place for the
+                        <br />
+                        thought beside the text.
+                      </p>
+                      <Button
+                        className="text-button"
+                        onPress={() => session.startComment()}
+                      >
+                        Leave an aside <Plus size={12} />
+                      </Button>
+                    </div>
+                  )}
+                  {state.metadata.threads.some((thread) => thread.resolved) && (
+                    <Button
+                      className="text-button resolved-toggle"
+                      onPress={() => setShowResolved(!showResolved)}
+                    >
+                      {showResolved ? "Hide resolved" : "Show resolved"}
+                    </Button>
+                  )}
+                </div>
+              )}
+            </aside>
+          )}
+        </main>
+        <footer className="statusbar">
+          <span className="brand">ink and butter</span>
+          <span className="save-status" aria-live="polite">
+            {state.saving
+              ? "Saving…"
+              : state.status || (state.dirty ? "Unsaved" : "")}
+          </span>
+          <span className="status-spacer" />
+          {state.metadata.binding ? (
+            <MenuTrigger>
+              <Button
+                className="connection-status connected"
+                aria-label="Agent connection"
+              >
+                <span className="status-dot" />
+                {state.metadata.binding.label}
+              </Button>
+              <Popover className="document-menu" placement="top end" offset={8}>
+                <Menu
+                  aria-label="Agent connection"
+                  onAction={() => {
+                    void session
+                      .bind(null, state.metadata.documentId)
+                      .catch((error) => session.fail(error));
+                  }}
+                >
+                  <MenuItem id="disconnect">Disconnect agent</MenuItem>
+                </Menu>
+              </Popover>
+            </MenuTrigger>
+          ) : (
+            <span className="connection-status">No agent yet</span>
+          )}
+          <span className="word-count">
+            {wordCount.toLocaleString()} {wordCount === 1 ? "word" : "words"}
+          </span>
+          <Button
+            className="focus-exit"
+            data-inknb-control="focus.leave"
+            onPress={() => void session.command("focus")}
+          >
+            Leave focus <Focus size={13} />
+          </Button>
+        </footer>
+      </section>
+      {!state.focus && state.previewMode !== "closed" && (
+        <Suspense
+          fallback={
+            <aside className="preview-panel" aria-label="Reading preview">
+              <p className="quiet-note">Loading preview…</p>
+            </aside>
+          }
         >
-          Leave focus <Focus size={13} />
-        </Button>
-      </footer>
+          <Preview />
+        </Suspense>
+      )}
       {state.settings && <Settings />}
       <ModalOverlay
         isOpen={table}
@@ -1096,11 +1131,6 @@ function App() {
           </Dialog>
         </Modal>
       </ModalOverlay>
-      {preview && (
-        <Suspense fallback={null}>
-          <Preview close={() => setPreview(false)} />
-        </Suspense>
-      )}
     </div>
   );
 }

@@ -91,6 +91,7 @@ export interface SessionState {
   composer: boolean;
   settings: boolean;
   focus: boolean;
+  previewMode: "closed" | "panel" | "fullscreen";
   commandPath: string;
   codexPath: string;
   socketPath: string;
@@ -127,6 +128,7 @@ export class DocumentSession {
     composer: false,
     settings: false,
     focus: false,
+    previewMode: "closed",
     commandPath: "",
     codexPath: "",
     socketPath: "",
@@ -142,6 +144,7 @@ export class DocumentSession {
   private recoveryInFlight: Promise<void> | null = null;
   private recoveredGeneration = -1;
   private checking = false;
+  private previewWasWindowFullscreen: boolean | null = null;
   view: EditorView | null = null;
   getSnapshot = (): SessionState => this.state;
   subscribe = (listener: () => void): (() => void) => {
@@ -904,16 +907,56 @@ export class DocumentSession {
     }
   }
 
+  private async leavePreviewFullscreen(): Promise<void> {
+    const wasFullscreen = this.previewWasWindowFullscreen;
+    if (wasFullscreen === null) return;
+    await getCurrentWindow().setFullscreen(wasFullscreen);
+    this.previewWasWindowFullscreen = null;
+    this.update({ previewMode: "panel" });
+  }
+
   async command(command: string): Promise<void> {
     try {
       if (command === "open") await this.openDocument();
       if (command === "new") await this.newDocument();
       if (command === "save") await this.persist();
       if (command === "save-as") await this.saveAs();
-      if (command === "comment") this.startComment();
+      if (command === "comment") {
+        await this.leavePreviewFullscreen();
+        this.startComment();
+      }
       if (command === "settings") this.update({ settings: true });
-      if (command === "focus")
+      if (command === "preview") {
+        await this.leavePreviewFullscreen();
+        this.update({ previewMode: "panel", focus: false });
+      }
+      if (command === "preview-fullscreen") {
+        if (this.state.previewMode === "fullscreen") {
+          await this.leavePreviewFullscreen();
+        } else {
+          const window = getCurrentWindow();
+          const wasFullscreen = await window.isFullscreen();
+          await window.setFullscreen(true);
+          this.previewWasWindowFullscreen = wasFullscreen;
+          this.update({ previewMode: "fullscreen", focus: false });
+        }
+      }
+      if (
+        command === "preview-fullscreen-ended" &&
+        this.state.previewMode === "fullscreen"
+      ) {
+        this.previewWasWindowFullscreen = null;
+        this.update({ previewMode: "panel" });
+      }
+      if (command === "preview-close") {
+        await this.leavePreviewFullscreen();
+        this.update({ previewMode: "closed" });
+        this.view?.focus();
+      }
+      if (command === "focus") {
+        await this.leavePreviewFullscreen();
         this.update({ focus: !this.state.focus, composer: false });
+      }
       if (command === "close") {
         clearTimeout(this.autosaveTimer);
         clearTimeout(this.recoveryTimer);
@@ -1316,14 +1359,18 @@ export class DocumentSession {
     if (method === "ui_state") {
       z.object({}).strict().parse(parameters);
       const geometry = [
+        ".writing-pane",
+        ".titlebar",
         ".workspace",
+        ".statusbar",
         ".margin",
         ".active-thread",
         ".thread-card",
         ".cm-content",
         ".modal-overlay",
         ".settings-modal",
-        ".preview-modal",
+        ".preview-panel",
+        ".preview-content",
         ".document-menu",
       ].map((selector) => {
         const element = document.querySelector(selector);
@@ -1356,6 +1403,7 @@ export class DocumentSession {
         placement: this.state.preferences.placement,
         preferences: this.state.preferences,
         focusMode: this.state.focus,
+        previewMode: this.state.previewMode,
         dialogs: [...document.querySelectorAll('[role="dialog"]')].map(
           (dialog) => dialog.getAttribute("aria-label"),
         ),

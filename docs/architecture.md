@@ -86,6 +86,16 @@ The selection action uses the same speech bubble icon as the header. Placement u
 
 The figure picker accepts local files without format restrictions. It inserts an escaped Markdown reference. The document's external build determines format support.
 
+The reading preview design is `long-term`. The manuscript, reading preview, and asides occupy separate panes. Each pane scrolls independently. Opening preview retains aside drafts and discussion state.
+
+Preview occupies a root pane at the far right. Its header and content span the window height. The writing pane owns the manuscript, asides, title bar, and status bar. Its controls stay inside its width when preview opens.
+
+Wide writing panes show manuscript and asides in columns. Narrow writing panes stack asides below the manuscript. Preview retains its own column. Focus mode hides preview and asides. It restores their visibility on exit.
+
+Fullscreen preview uses the native window fullscreen mode and displays only the rendered document. Exit fullscreen and Escape restore the side pane. The app restores the window's previous fullscreen state. Closing preview returns focus to the manuscript.
+
+Preview uses the same Markdown buffer, local asset resolution, and sanitized renderer. Agent UI controls expose preview navigation, fullscreen, and scrolling. The UI snapshot includes preview mode and pane geometry.
+
 ## References
 
 - [Tauri architecture](https://v2.tauri.app/concept/architecture/)
