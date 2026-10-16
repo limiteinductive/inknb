@@ -1,6 +1,6 @@
 # Architecture
 
-Status: verified for the local Apple Silicon release. See [release verification](release-verification.md).
+Status: version 0.4.0 passed local release verification. See [release verification](release-verification.md).
 
 ## Naming
 
@@ -12,17 +12,33 @@ The persistent macOS identifier remains `io.github.limiteinductive.aside`. The s
 
 The design is `long-term`. The app uses Tauri 2 with React and TypeScript. CodeMirror 6 owns the live text buffer, selection, composition, and undo history. React Aria supplies accessible control behavior. Shared tokens define typography, spacing, colors, icons, and motion.
 
-The frontend document session is the single transaction owner. Agent requests enter that session through the same dispatcher as human actions. Rust owns filesystem coordination, recovery, native dialogs, local IPC, and external command transport. The app contains no model runtime or credential store.
+Each frontend document session owns its transactions. Agent requests enter the document's dispatcher. Rust owns filesystem coordination, recovery, native dialogs, local IPC, and external command transport. The app contains no model runtime or credential store.
 
 CodeMirror applies local typing immediately. Serialized persistence snapshots follow each transaction. Agent reads inspect the live buffer. Agent mutations enter the JavaScript transaction loop with revision and expected-text preconditions. A stale mutation returns a conflict.
 
 ## Files
 
-The document remains a UTF-8 Markdown file. The adjacent `<filename>.aside.json` sidecar uses annotation format 3. It reads formats 1 and 2 directly and stores a versioned document identity, annotations, requests, proposals, and provenance. A recovery snapshot contains the latest unsaved text and metadata.
+Documents contain UTF-8 text. New documents receive local text files through the app. Imported files retain their paths and contents. The writer interface requires no Markdown syntax.
+
+The adjacent `<filename>.aside.json` sidecar uses annotation format 3. It reads formats 1 and 2 directly and stores a versioned document identity, annotations, requests, proposals, and provenance. Each document has its own recovery snapshot. Startup migrates the earlier shared snapshot.
 
 Writes use temporary files and atomic replacement. Recovery remains available until the document and sidecar both persist. External changes compare against the last saved fingerprint. Conflicting changes require an explicit reconciliation action in the app.
 
 External file changes show Reload and Save a copy controls. The buffer changes after an explicit Reload action. Recovery writes run during continuous typing. A serialized queue bounds recovery to one active write.
+
+## Library and navigation
+
+The workspace design is `long-term`. It owns document sessions, titles, collections, the open list, and navigation history. A local library file stores those records and document view state.
+
+Each document retains its editor, Undo history, selection, conversations, and unsent drafts during navigation. The library searches exact document text and titles. Collections contain document references.
+
+The sidebar header owns its toggle and Back and Forward controls. The writing header owns those controls while the sidebar is hidden. Narrow windows show the library in a dismissible modal drawer. Navigation closes that drawer and restores writing focus.
+
+Back and Forward restore visited documents and explicit passage jumps. Typing and scrolling do not add visits. A new visit after Back removes the forward branch. Navigation does not enter text Undo history.
+
+Agent operations route by document, request, component, or message identity. Interface actions require the visible document. Background document replies retain their original session owner.
+
+The agreed verbatim and presentation requirements appear in [product direction](product-direction.md). The separate agent presentation model remains planned.
 
 ## Anchors
 
@@ -82,13 +98,11 @@ The text column retains its geometry when a margin thread opens. Typing has no a
 
 The editor uses platform-native selection and caret rendering. A completed selection exposes one aside action at its active end. CodeMirror owns action placement, clipping, and scrolling. Opening an aside preserves the editor selection and focuses the composer. The interaction design is `long-term`.
 
-The selection action uses the same speech bubble icon as the header. Placement uses the full selection bounds when space is available. Selections that fill the viewport use the active end. Drafts currently use the live editor selection until submission.
-
-The figure picker accepts local files without format restrictions. It inserts an escaped Markdown reference. The document's external build determines format support.
+The selection action uses the same speech bubble icon as the header. Placement uses the full selection bounds when space is available. Selections that fill the viewport use the active end. A draft captures its passage when opened. Text changes map that anchor. Moving the editor selection does not move the draft.
 
 The reading preview design is `long-term`. The manuscript, reading preview, and asides occupy separate panes. Each pane scrolls independently. Opening preview retains aside drafts and discussion state.
 
-Preview occupies a root pane at the far right. Its header and content span the window height. The writing pane owns the manuscript, asides, title bar, and status bar. Its controls stay inside its width when preview opens.
+Preview occupies a root pane at the far right. Its header contains expand or restore and close icons with tooltips and accessible names. Its content spans the window height. The writing pane owns the manuscript, asides, title bar, and status bar. Its controls stay inside its width when preview opens.
 
 Wide writing panes show manuscript and asides in columns. Narrow writing panes stack asides below the manuscript. Preview retains its own column. Focus mode hides preview and asides. It restores their visibility on exit.
 

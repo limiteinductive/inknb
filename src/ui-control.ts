@@ -18,18 +18,23 @@ const targets = new Map<
   (parameters: z.infer<typeof actionSchema>) => Promise<unknown>
 >();
 
+function isVisible(element: Element | null): boolean {
+  return (
+    element !== null &&
+    element.isConnected &&
+    element.getClientRects().length > 0 &&
+    getComputedStyle(element).visibility === "visible" &&
+    !element.closest('[inert],[aria-hidden="true"]')
+  );
+}
+
 export async function inspectInterface() {
   const inspectionId = crypto.randomUUID();
   const inspectedTargets: typeof targets = new Map();
   const controls = [
     ...document.querySelectorAll<HTMLElement>("[data-inknb-control]"),
   ]
-    .filter(
-      (element) =>
-        element.getClientRects().length > 0 &&
-        getComputedStyle(element).visibility === "visible" &&
-        !element.closest('[inert],[aria-hidden="true"]'),
-    )
+    .filter(isVisible)
     .map((element) => {
       const identity = element.dataset.inknbControl!;
       const label =
@@ -38,11 +43,9 @@ export async function inspectInterface() {
         identity;
       inspectedTargets.set(identity, async (parameters) => {
         if (
-          !element.isConnected ||
-          element.getClientRects().length === 0 ||
+          !isVisible(element) ||
           element.getAttribute("aria-disabled") === "true" ||
-          element.matches(":disabled") ||
-          Boolean(element.closest('[inert],[aria-hidden="true"]'))
+          element.matches(":disabled")
         )
           throw new Error("This control changed. Inspect the interface again.");
         if (parameters.action === "focus")
@@ -74,36 +77,52 @@ export async function inspectInterface() {
       };
     });
   const components = await Promise.all(
-    [...componentRuntimes].map(async ([identity, runtime]) => {
-      if (runtime.status !== "ready")
-        return { id: identity, status: runtime.status, error: runtime.error };
-      try {
-        const result = z
-          .object({
-            snapshotId: z.string(),
-            controls: z.array(z.object({ id: z.string() }).passthrough()),
-            text: z.string(),
-            title: z.string(),
-          })
-          .parse(await runtime.request("inspect", {}));
-        for (const control of result.controls) {
-          const componentTarget = control.id;
-          const target = `component:${identity}:${componentTarget}`;
-          inspectedTargets.set(target, async (parameters) =>
-            runtime.request("action", {
-              snapshotId: result.snapshotId,
-              target: componentTarget,
-              action: parameters.action,
-              value: parameters.value,
-            }),
-          );
-          control.id = target;
+    [...componentRuntimes]
+      .filter(([identity]) =>
+        isVisible(
+          document.querySelector(`[data-inknb-component="${identity}"]`),
+        ),
+      )
+      .map(async ([identity, runtime]) => {
+        if (runtime.status !== "ready")
+          return { id: identity, status: runtime.status, error: runtime.error };
+        try {
+          const result = z
+            .object({
+              snapshotId: z.string(),
+              controls: z.array(z.object({ id: z.string() }).passthrough()),
+              text: z.string(),
+              title: z.string(),
+            })
+            .parse(await runtime.request("inspect", {}));
+          for (const control of result.controls) {
+            const componentTarget = control.id;
+            const target = `component:${identity}:${componentTarget}`;
+            inspectedTargets.set(target, async (parameters) => {
+              if (
+                !isVisible(
+                  document.querySelector(
+                    `[data-inknb-component="${identity}"]`,
+                  ),
+                )
+              )
+                throw new Error(
+                  "This component changed. Inspect the interface again.",
+                );
+              return runtime.request("action", {
+                snapshotId: result.snapshotId,
+                target: componentTarget,
+                action: parameters.action,
+                value: parameters.value,
+              });
+            });
+            control.id = target;
+          }
+          return { id: identity, status: runtime.status, ...result };
+        } catch (error) {
+          return { id: identity, status: "error", error: String(error) };
         }
-        return { id: identity, status: runtime.status, ...result };
-      } catch (error) {
-        return { id: identity, status: "error", error: String(error) };
-      }
-    }),
+      }),
   );
   targets.clear();
   for (const [identity, action] of inspectedTargets)

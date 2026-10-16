@@ -132,3 +132,43 @@ Root-pane screenshots received visual inspection at 1180 by 820 and 700 by 480. 
 The final installed build recovered the current unsaved document with identical text and metadata. Selection was restored. The final source audit removed one unrelated formatting change after the interaction checks.
 
 The signed archive passed extraction, signature verification, and binary comparisons. The release contains no document library or separate presentation model.
+
+## Document library, version 0.4.0
+
+Build: `0.4.0+36c0a6b0b8c5`. Date: 2026-10-15.
+
+Named documents, collections, and exact text search retain their metadata after restart. Each document owns its live buffer, Undo history, selection, conversations, drafts, and recovery. New documents receive local text files without a file dialog.
+
+Native input checked document creation, naming, collection assignment, closing, and reopening. Independent Undo and Redo remained available after switching and reopening documents. Back and Forward restored document visits and open drafts. A new visit cleared the forward branch.
+
+A new aside retained its captured passage while the manuscript selection moved. Reply drafts survived switching, preview changes, fullscreen, and restart. Source review confirmed that draft clearing checks the submitted draft identity after local recovery.
+
+An agent reply, attachment, and proposal reached their original document while another document remained visible. Native acceptance applied the proposal. Undo restored its exact text after switching documents. Duplicate document identities failed before library or recovery mutation.
+
+The earlier shared recovery migrated without changing the original unsaved document. Complete text and metadata matched across repeated installations and restarts. Saved document fingerprints matched the live text.
+
+The sidebar header owns its toggle and navigation arrows. Collapsing it restores those controls beside the document title. Native clicks checked both locations. Interface geometry confirmed that all three controls sit within the open sidebar.
+
+Compact windows use a modal library drawer. Navigation dismisses it and restores manuscript focus. Escape closes it. Agent inspection excludes background controls while it is open. Document titles truncate with an ellipsis.
+
+Preview has expand or restore and close icons with tooltips and accessible names. Native clicks checked fullscreen entry, restoration, and closing. Escape restored the prior pane and window size. Preview scrolling retained manuscript scroll and drafts.
+
+TypeScript, formatting, the production build, and all 19 existing frontend tests passed. Seven existing Rust tests and Clippy with warnings denied passed. Source and documentation passed the privacy audit.
+
+Final screenshots received visual inspection at 1728 by 1000 and 700 by 480. Native fullscreen received inspection at 1728 by 1084. WebKit capture required foregrounding the window to include the modal overlay.
+
+![Library, writing, asides, and reading preview](screenshots/inknb-library-wide.png)
+
+Capture: `11039f3b-05fa-4f83-8211-77d2fa5115cb`.
+
+![Compact library navigation](screenshots/inknb-library-compact-drawer.png)
+
+Capture: `3142bdfc-1c02-418e-b290-483e1f864136`.
+
+![Compact writing and preview](screenshots/inknb-library-compact.png)
+
+Capture: `3ff8c236-3b6f-4dc3-9506-41a28efb1448`.
+
+The separate agent presentation model and linked aside references remain planned. Claude channel support remains unverified. The macOS bundle uses ad hoc signing without notarization.
+
+The archive passed extraction, signature verification, and binary comparisons. Synthetic test entries and files moved into a recoverable local backup. The original document retained its exact text, metadata, and path. The original window size and appearance were restored.

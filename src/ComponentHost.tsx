@@ -4,14 +4,14 @@ import { invoke } from "@tauri-apps/api/core";
 import { X } from "lucide-react";
 import { componentMessage, componentRuntimes } from "./component-bridge";
 import type { ComponentInstance } from "./domain";
-import { session } from "./session";
-import { useSession } from "./use-session";
+import { useDocumentSession, useSession } from "./use-session";
 
 export default function ComponentHost({
   instance,
 }: {
   instance: ComponentInstance;
 }) {
+  const session = useDocumentSession();
   const state = useSession();
   const frame = useRef<HTMLIFrameElement>(null);
   const [entry, setEntry] = useState<string | null>(null);
@@ -244,6 +244,7 @@ export default function ComponentHost({
           key={`${instance.bundleId}:${reload}`}
           ref={frame}
           title={instance.title}
+          data-inknb-component={instance.id}
           sandbox="allow-scripts"
           referrerPolicy="no-referrer"
           allow="camera 'none'; microphone 'none'; geolocation 'none'; clipboard-read 'none'; clipboard-write 'none'"

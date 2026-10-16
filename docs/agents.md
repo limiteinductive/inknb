@@ -70,3 +70,13 @@ Read `protocol_info.componentGuide` for the package and runtime contract. Build 
 Use `ui_inspect` before `ui_action`. Act on returned control identities and the current document. Native acceptance and permission controls remain human actions. Inspect a rendered screenshot after each meaningful UI change.
 
 Component events use the durable event stream. External hooks handle backend work and write results through the same component tools. Component events confer no manuscript edit grants.
+
+## Document library
+
+Use `library_list` to find documents and collections. `document_create` creates a named local document. `collection_create` and `library_update` organize documents. These operations do not change prose.
+
+`document_read`, `document_save`, and `requests_list` accept a document identity. Supply it when work continues after a human document switch. Replies route by request identity. Source attachments route by message identity.
+
+`document_activate` switches the visible document. Activate it before selecting a passage or acting on its interface. Each document retains its buffer, Undo history, selection, and drafts.
+
+The writer uses plain verbatim text. Formatting must preserve those words. The separate agent presentation model remains planned.

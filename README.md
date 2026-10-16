@@ -1,8 +1,8 @@
 # ink and butter
 
-ink and butter is a local Markdown writing app for macOS. Conversations attach to passages in the document. Existing agent sessions receive requests and return replies, sources, and proposed edits.
+ink and butter is a local writing app for macOS. Conversations attach to passages in the document. Existing agent sessions receive requests and return replies, sources, and proposed edits.
 
-The app uses Tauri, React, CodeMirror, and React Aria. Document text stays in Markdown files. Adjacent JSON files store annotations and provenance.
+The app uses Tauri, React, CodeMirror, and React Aria. Documents contain plain UTF-8 text. Adjacent JSON files store annotations and provenance.
 
 See [the architecture](docs/architecture.md), [release criteria](docs/release-criteria.md), and [release verification](docs/release-verification.md).
 
@@ -24,13 +24,13 @@ The locally signed app appears at `src-tauri/target/release/bundle/macos/ink and
 
 ## Write
 
-Open a Markdown file or start a new document. Select a passage and press Shift-Command-A to add an aside. An empty selection attaches the request to the cursor. Select all text to attach a document request.
+Start a named document or open a local text file. The library shows open documents, collections, and search. Back and Forward restore visited documents and passages. Command-[ and Command-] provide the same navigation. Select a passage and press Shift-Command-A to add an aside. An empty selection attaches the request to the cursor. Select all text to attach a document request.
 
 Requests permit replies and proposals by default. The Allow this edit switch permits a direct change within the attached passage. Proposed changes have Accept and Dismiss controls. Accepted changes enter the editor's undo history.
 
 Settings control conversation placement, appearance, typeface, text size, reduced motion, and autosave. Margin is the default placement. Inline uses the same annotation data.
 
-The document menu inserts local figures and Markdown tables. Reading preview renders standard Markdown and tables. Existing Pandoc syntax remains in the source file. The reading preview does not resolve Pandoc extensions.
+The writing surface displays verbatim text. Reading preview supports existing Markdown documents and tables. A separate agent presentation model remains planned. See [product direction](docs/product-direction.md).
 
 Ask your agent to handle routine document work, including file lookup, figure insertion, and PDF export. The agent can save the live document with `document_save`, run the document's existing build script, and attach the generated PDF to its reply with `source_attach`. The file opens from the reply. Export tools and build configuration stay with the document and external agent.
 
@@ -58,9 +58,9 @@ Agents can register local HTML, CSS, and JavaScript packages and attach interact
 
 ## Local data
 
-Markdown stays in the file you opened. `<filename>.aside.json` stores conversations, request permissions, proposed edits, and source fingerprints. Keep both files when moving a document.
+Imported text stays in the file you opened. New documents receive local text files. `<filename>.aside.json` stores conversations, request permissions, proposed edits, and source fingerprints. Keep both files when moving a document.
 
-The app stores preferences, the last document path, and its recovery journal in the user's application support folder. Recovery writes continue during typing. New text and annotation snapshots use atomic replacement.
+The app stores preferences, library metadata, and separate document recovery journals in the user's application support folder. Each document retains its Undo history, selection, and unsent aside drafts while switching. Recovery writes continue during typing. New text and annotation snapshots use atomic replacement.
 
 External changes show Reload and Save a copy controls. Source changes mark their conversations and attached passages. Ambiguous anchors remain detached until the writer attaches them again.
 

@@ -1,13 +1,13 @@
 import { useEffect, useState } from "react";
-import { Button } from "react-aria-components";
-import { Maximize2, Minimize2 } from "lucide-react";
+import { Maximize2, Minimize2, X } from "lucide-react";
 import { invoke } from "@tauri-apps/api/core";
 import MarkdownIt from "markdown-it";
 import DOMPurify from "dompurify";
-import { session } from "./session";
-import { useSession } from "./use-session";
+import IconButton from "./IconButton";
+import { useDocumentSession, useSession } from "./use-session";
 
 export default function Preview() {
+  const session = useDocumentSession();
   const state = useSession();
   const fullscreen = state.previewMode === "fullscreen";
   const [html, setHtml] = useState("");
@@ -76,27 +76,19 @@ export default function Preview() {
       }}
     >
       <div className="preview-heading" data-tauri-drag-region>
-        <span className="eyebrow">Preview</span>
         <div className="preview-actions">
-          <Button
-            className="text-button"
-            data-inknb-control="preview.fullscreen"
+          <IconButton
+            icon={fullscreen ? Minimize2 : Maximize2}
+            label={fullscreen ? "Exit fullscreen" : "Fullscreen"}
+            agentControl="preview.fullscreen"
             onPress={() => void session.command("preview-fullscreen")}
-          >
-            {fullscreen ? (
-              <Minimize2 size={14} aria-hidden="true" />
-            ) : (
-              <Maximize2 size={14} aria-hidden="true" />
-            )}
-            {fullscreen ? "Exit fullscreen" : "Fullscreen"}
-          </Button>
-          <Button
-            className="text-button"
-            data-inknb-control="preview.close"
+          />
+          <IconButton
+            icon={X}
+            label="Close preview"
+            agentControl="preview.close"
             onPress={() => void session.command("preview-close")}
-          >
-            Close preview
-          </Button>
+          />
         </div>
       </div>
       <div

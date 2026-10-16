@@ -1,5 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
-import { open, save, message } from "@tauri-apps/plugin-dialog";
+import { save } from "@tauri-apps/plugin-dialog";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { LogicalSize } from "@tauri-apps/api/dpi";
 import { EditorSelection } from "@codemirror/state";
@@ -21,12 +21,14 @@ import {
   figureMarkdown,
   tableMarkdown,
   metadataSchema,
+  mapAnchor,
   preferencesSchema,
   relocateAnchor,
   validateSelection,
 } from "./domain";
 import type {
   AgentRequest,
+  Anchor,
   Binding,
   Metadata,
   Preferences,
@@ -42,14 +44,14 @@ import {
   setSelectionAction,
 } from "./text-state";
 
-interface LoadedDocument {
+export interface LoadedDocument {
   path: string;
   text: string;
   metadata: unknown;
   hash: string;
   sidecarHash: string | null;
 }
-interface Snapshot {
+export interface Snapshot {
   path: string | null;
   text: string;
   metadata: Metadata;
@@ -58,10 +60,13 @@ interface Snapshot {
   events: EventInput[];
   saveEvent: EventInput | null;
 }
-interface Bootstrap {
+export interface Bootstrap {
   preferences: unknown;
   recovery: Snapshot | null;
+  recoveries?: Snapshot[];
+  library?: unknown;
   lastPath: string | null;
+  requestedPath?: string | null;
   commandPath: string;
   codexPath: string | null;
   socketPath: string;
@@ -89,6 +94,8 @@ export interface SessionState {
   externalChange: boolean;
   activeThread: string | null;
   composer: boolean;
+  drafts: Record<string, { content: string; permission: boolean }>;
+  composerAnchor: Anchor | null;
   settings: boolean;
   focus: boolean;
   previewMode: "closed" | "panel" | "fullscreen";
@@ -110,7 +117,17 @@ const editSchema = z
   })
   .strict();
 
+export interface DocumentHost {
+  openDocument(path?: string): Promise<void>;
+  newDocument(): Promise<void>;
+  close(): Promise<void>;
+  beforeNavigation(): void;
+  afterNavigation(): void;
+  preference(preferences: Preferences): void;
+}
+
 export class DocumentSession {
+  constructor(readonly host?: DocumentHost) {}
   private state: SessionState = {
     ready: false,
     epoch: 0,
@@ -126,6 +143,8 @@ export class DocumentSession {
     externalChange: false,
     activeThread: null,
     composer: false,
+    drafts: {},
+    composerAnchor: null,
     settings: false,
     focus: false,
     previewMode: "closed",
@@ -164,9 +183,9 @@ export class DocumentSession {
     });
   }
 
-  async initialize(): Promise<void> {
+  async initialize(restored?: Bootstrap): Promise<void> {
     try {
-      const bootstrap = await invoke<Bootstrap>("bootstrap");
+      const bootstrap = restored ?? (await invoke<Bootstrap>("bootstrap"));
       const preferences = bootstrap.preferences
         ? preferencesSchema.parse(bootstrap.preferences)
         : defaultPreferences;
@@ -335,6 +354,7 @@ export class DocumentSession {
           this.savedHash = saved.hash;
           this.sidecarHash = saved.sidecarHash;
           this.update({
+            metadata: { ...this.state.metadata, documentHash: saved.hash },
             dirty: this.generation !== generation,
             status: "Saved",
             error: null,
@@ -348,8 +368,10 @@ export class DocumentSession {
 
   async saveAs(): Promise<void> {
     const path = await save({
-      defaultPath: this.state.path ?? "Untitled.md",
-      filters: [{ name: "Markdown", extensions: ["md", "markdown"] }],
+      defaultPath: this.state.path ?? "Untitled.txt",
+      filters: [
+        { name: "Text document", extensions: ["txt", "md", "markdown"] },
+      ],
     });
     if (!path) return;
     if (path === this.state.path) {
@@ -382,52 +404,10 @@ export class DocumentSession {
     await this.persist();
   }
 
-  async leaveDocument(): Promise<boolean> {
-    clearTimeout(this.autosaveTimer);
-    clearTimeout(this.recoveryTimer);
-    this.recoveryTimer = undefined;
-    await this.persistence.catch(() => undefined);
-    if (!this.state.dirty) return true;
-    if (
-      this.state.path &&
-      !this.state.externalChange &&
-      this.state.preferences.autosave
-    ) {
-      await this.persist();
-      return true;
-    }
-    await this.recover();
-    const saveLabel = this.state.externalChange ? "Save a copy" : "Save";
-    const choice = await message("Save this document before continuing?", {
-      title: "Unsaved document",
-      kind: "warning",
-      buttons: { yes: saveLabel, no: "Discard", cancel: "Keep editing" },
-    });
-    if (choice === "Discard") {
-      await invoke("discard_recovery");
-      return true;
-    }
-    if (choice !== saveLabel) return false;
-    if (this.state.path && !this.state.externalChange) await this.persist();
-    else await this.saveAs();
-    return !this.state.dirty;
-  }
-
-  async openDocument(path?: string): Promise<void> {
-    const selected =
-      path ??
-      (await open({
-        multiple: false,
-        directory: false,
-        filters: [{ name: "Markdown", extensions: ["md", "markdown", "txt"] }],
-      }));
-    if (typeof selected !== "string" || !(await this.leaveDocument())) return;
-    await this.load(selected);
-  }
-
-  async load(path: string): Promise<void> {
+  async load(path: string, provided?: LoadedDocument): Promise<void> {
     const generation = this.generation;
-    const loaded = await invoke<LoadedDocument>("read_document", { path });
+    const loaded =
+      provided ?? (await invoke<LoadedDocument>("read_document", { path }));
     if (this.generation !== generation)
       throw new Error(
         "The current document changed while opening this file. Open it again when you are ready.",
@@ -460,15 +440,21 @@ export class DocumentSession {
       path: loaded.path,
       text: loaded.text,
       metadata,
-      dirty: planned.events.length > 0,
+      dirty:
+        planned.events.length > 0 || (!loaded.metadata && Boolean(this.host)),
       externalChange: false,
       error: null,
       status: "",
       activeThread: null,
       composer: false,
+      composerAnchor: this.state.composerAnchor
+        ? relocateAnchor(loaded.text, this.state.composerAnchor)
+        : null,
       selection: { from: 0, to: 0 },
     });
-    await invoke("discard_recovery");
+    await invoke("discard_recovery", {
+      documentId: this.state.metadata.documentId,
+    });
     await invoke("remember_document", { path: loaded.path });
     if (this.state.dirty) await this.recover();
     await invoke("publish_events", {
@@ -477,32 +463,6 @@ export class DocumentSession {
     for (const request of metadata.requests)
       if (request.state === "pending")
         void this.deliver(request.id).catch((error) => this.fail(error));
-  }
-
-  async newDocument(): Promise<void> {
-    if (!(await this.leaveDocument())) return;
-    this.generation += 1;
-    this.savedHash = null;
-    this.sidecarHash = null;
-    this.update({
-      epoch: this.state.epoch + 1,
-      path: null,
-      text: "",
-      metadata: createMetadata(),
-      dirty: false,
-      externalChange: false,
-      activeThread: null,
-      composer: false,
-      error: null,
-      selection: { from: 0, to: 0 },
-    });
-    await invoke("discard_recovery");
-    await invoke("remember_document", { path: null });
-    await invoke("publish_events", {
-      events: [
-        createEvent(this.state.metadata, "document.opened", { path: null }),
-      ],
-    });
   }
 
   onEditorUpdate(update: ViewUpdate): void {
@@ -525,7 +485,12 @@ export class DocumentSession {
           anchor: anchors[thread.id] ?? thread.anchor,
         })),
       };
-      this.update({ text: result.text });
+      this.update({
+        text: result.text,
+        composerAnchor: this.state.composerAnchor
+          ? mapAnchor(result.text, this.state.composerAnchor, update.changes)
+          : null,
+      });
       this.changed(metadata);
     }
     if (update.selectionSet || update.docChanged) {
@@ -535,6 +500,7 @@ export class DocumentSession {
   }
 
   selectThread(identity: string | null): void {
+    this.host?.beforeNavigation();
     this.update({ activeThread: identity, composer: false });
     this.view?.dispatch({
       effects: [
@@ -554,6 +520,19 @@ export class DocumentSession {
           y: "nearest",
         }),
       });
+    this.host?.afterNavigation();
+  }
+
+  restoreFocus(): void {
+    if (this.state.settings) return;
+    if (this.state.composer) {
+      this.view?.dom
+        .closest(".document-container")
+        ?.querySelector<HTMLTextAreaElement>(".new-aside textarea")
+        ?.focus();
+      return;
+    }
+    this.view?.focus();
   }
 
   startComment(): void {
@@ -566,8 +545,18 @@ export class DocumentSession {
         setSelectionAction.of("hidden"),
       ],
     });
-    this.update({ composer: true, activeThread: null, focus: false });
-    document.querySelector<HTMLTextAreaElement>(".new-aside textarea")?.focus();
+    this.update({
+      composer: true,
+      activeThread: null,
+      focus: false,
+      composerAnchor:
+        this.state.composerAnchor ??
+        captureAnchor(this.state.text, this.state.selection),
+    });
+    this.view?.dom
+      .closest(".document-container")
+      ?.querySelector<HTMLTextAreaElement>(".new-aside textarea")
+      ?.focus();
   }
 
   async comment(
@@ -575,6 +564,12 @@ export class DocumentSession {
     permission: AgentRequest["permission"],
     threadId?: string,
   ): Promise<void> {
+    if (!threadId && this.state.composerAnchor?.status === "detached")
+      throw Error(
+        "This passage was removed. Start a new aside on another passage. Your draft text stays saved.",
+      );
+    const draftKey = threadId ?? "new";
+    const draft = this.state.drafts[draftKey];
     let metadata = this.state.metadata;
     let request: AgentRequest;
     if (threadId) {
@@ -616,7 +611,7 @@ export class DocumentSession {
       const created = createConversation(
         this.state.text,
         metadata,
-        this.state.selection,
+        this.state.composerAnchor ?? this.state.selection,
         content,
         permission,
       );
@@ -632,9 +627,17 @@ export class DocumentSession {
         }),
       });
     }
+    this.update({ composerAnchor: null });
     this.changed(metadata);
     this.selectThread(request.threadId);
     await this.recover();
+    if (draft && this.state.drafts[draftKey] === draft)
+      this.update({
+        drafts: {
+          ...this.state.drafts,
+          [draftKey]: { content: "", permission: false },
+        },
+      });
     await this.deliver(request.id);
   }
 
@@ -756,6 +759,7 @@ export class DocumentSession {
         inline: preferences.placement === "inline",
       }),
     });
+    this.host?.preference(preferences);
     await invoke("store_preferences", { preferences });
   }
 
@@ -917,8 +921,8 @@ export class DocumentSession {
 
   async command(command: string): Promise<void> {
     try {
-      if (command === "open") await this.openDocument();
-      if (command === "new") await this.newDocument();
+      if (command === "open") await this.host?.openDocument();
+      if (command === "new") await this.host?.newDocument();
       if (command === "save") await this.persist();
       if (command === "save-as") await this.saveAs();
       if (command === "comment") {
@@ -957,6 +961,7 @@ export class DocumentSession {
         await this.leavePreviewFullscreen();
         this.update({ focus: !this.state.focus, composer: false });
       }
+      if (command === "close" && this.host) return this.host.close();
       if (command === "close") {
         clearTimeout(this.autosaveTimer);
         clearTimeout(this.recoveryTimer);
@@ -1110,18 +1115,6 @@ export class DocumentSession {
         revision: this.state.metadata.revision,
         selection: this.state.selection,
         metadata: this.state.metadata,
-      };
-    }
-    if (method === "document_open") {
-      const parsed = z
-        .object({ path: z.string().min(1) })
-        .strict()
-        .parse(parameters);
-      await this.openDocument(parsed.path);
-      return {
-        path: this.state.path,
-        documentId: this.state.metadata.documentId,
-        revision: this.state.metadata.revision,
       };
     }
     if (method === "request_retry") {
@@ -1359,6 +1352,7 @@ export class DocumentSession {
     if (method === "ui_state") {
       z.object({}).strict().parse(parameters);
       const geometry = [
+        ".library-sidebar",
         ".writing-pane",
         ".titlebar",
         ".workspace",
@@ -1373,7 +1367,12 @@ export class DocumentSession {
         ".preview-content",
         ".document-menu",
       ].map((selector) => {
-        const element = document.querySelector(selector);
+        const element =
+          selector === ".library-sidebar"
+            ? document.querySelector(selector)
+            : this.view?.dom
+                .closest(".document-container")
+                ?.querySelector(selector);
         const rectangle = element?.getBoundingClientRect();
         return {
           selector,
@@ -1887,6 +1886,7 @@ export class DocumentSession {
     if (method === "editor_select") {
       const parsed = z
         .object({
+          documentId: z.string().uuid().optional(),
           revision: z.number().int().nonnegative(),
           from: z.number().int().nonnegative(),
           to: z.number().int().nonnegative(),
@@ -1980,6 +1980,7 @@ export class DocumentSession {
         this.sidecarHash = saved.sidecarHash;
         this.update({
           path: parsed.path,
+          metadata: { ...this.state.metadata, documentHash: saved.hash },
           dirty: generation !== this.generation,
           status: "Moved",
         });
@@ -1990,7 +1991,10 @@ export class DocumentSession {
     }
     if (method === "document_save") {
       const parsed = z
-        .object({ path: z.string().min(1).optional() })
+        .object({
+          documentId: z.string().uuid().optional(),
+          path: z.string().min(1).optional(),
+        })
         .strict()
         .parse(parameters);
       if (parsed.path && parsed.path !== this.state.path) {
@@ -2005,5 +2009,3 @@ export class DocumentSession {
     throw new Error("Unknown inknb tool.");
   }
 }
-
-export const session = new DocumentSession();

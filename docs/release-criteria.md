@@ -1,6 +1,24 @@
 # Release criteria
 
-Evidence appears in [release verification](release-verification.md). An unchecked criterion means the release is incomplete.
+Evidence appears in [release verification](release-verification.md). Unchecked release criteria identify unfinished work. Planned presentation criteria describe a later release.
+
+## Library and navigation
+
+- [x] Named documents and collections survive restart.
+- [x] Search finds verbatim text across collections.
+- [x] Document switches retain Undo, selection, scroll, conversations, and drafts.
+- [x] Back and Forward restore visits without changing text Undo history.
+- [x] A new visit after Back clears the forward branch.
+- [x] Separate recovery records preserve concurrent document changes.
+- [x] Background agent replies and attachments reach their original document.
+- [x] Draft clearing checks the submitted draft identity after local recovery.
+- [x] Native screenshots confirm sidebar, navigation, asides, and preview at normal and compact sizes.
+
+## Planned presentation work
+
+- [ ] An agent formats a separate presentation without changing verbatim text.
+- [ ] Preview feedback attaches to the corresponding source passage.
+- [ ] Asides cite source passages and earlier conversation turns.
 
 ## Documents
 

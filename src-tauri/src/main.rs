@@ -2,8 +2,8 @@ use base64::Engine;
 use inknb_core::events::{EventInput, EventQuery, EventStore};
 use inknb_core::protocol::{socket_path, ControlRequest, ControlResponse};
 use inknb_core::storage::{
-    application_directory, atomic_write, file_hash, load_document, save_document, sidecar_path,
-    store_recovery, LoadedDocument, SavedDocument, Snapshot,
+    application_directory, atomic_write, file_hash, load_document, recovery_path, save_document,
+    sidecar_path, store_recovery, LoadedDocument, SavedDocument, Snapshot,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
@@ -34,7 +34,10 @@ struct DesktopState {
 struct Bootstrap {
     preferences: Option<Value>,
     recovery: Option<Snapshot>,
+    recoveries: Vec<Snapshot>,
+    library: Option<Value>,
     last_path: Option<String>,
+    requested_path: Option<String>,
     command_path: String,
     codex_path: Option<String>,
     socket_path: String,
@@ -56,7 +59,30 @@ fn bootstrap(state: State<DesktopState>) -> Result<Bootstrap, String> {
         .map(serde_json::from_value)
         .transpose()
         .map_err(|error| error.to_string())?;
-    if let Some(snapshot) = &mut recovery {
+    if let Some(snapshot) = &recovery {
+        store_recovery(&state.directory, snapshot)?;
+        fs::rename(
+            state.directory.join("recovery.json"),
+            state.directory.join("recovery-migrated.json"),
+        )
+        .map_err(|error| error.to_string())?;
+    }
+    let mut recoveries = Vec::new();
+    let recovery_directory = state.directory.join("recoveries");
+    if recovery_directory.exists() {
+        for entry in fs::read_dir(&recovery_directory).map_err(|error| error.to_string())? {
+            let path = entry.map_err(|error| error.to_string())?.path();
+            if path.extension().and_then(|extension| extension.to_str()) != Some("json") {
+                continue;
+            }
+            let snapshot = serde_json::from_slice::<Snapshot>(
+                &fs::read(path).map_err(|error| error.to_string())?,
+            )
+            .map_err(|error| error.to_string())?;
+            recoveries.push(snapshot);
+        }
+    }
+    for snapshot in &mut recoveries {
         if let Some(path) = &snapshot.path {
             let new_hash = inknb_core::storage::fingerprint(snapshot.text.as_bytes());
             let mut metadata = snapshot.metadata.clone();
@@ -91,6 +117,12 @@ fn bootstrap(state: State<DesktopState>) -> Result<Bootstrap, String> {
             .map_err(|error| error.to_string())?
             .append(&snapshot.events)?;
     }
+    recovery = recovery.and_then(|legacy| {
+        recoveries
+            .iter()
+            .find(|snapshot| snapshot.metadata["documentId"] == legacy.metadata["documentId"])
+            .cloned()
+    });
     let stored_path = read("workspace.json")?.and_then(|value| value.as_str().map(String::from));
     let requested_path = state
         .open_path
@@ -101,7 +133,10 @@ fn bootstrap(state: State<DesktopState>) -> Result<Bootstrap, String> {
     Ok(Bootstrap {
         preferences: read("preferences.json")?,
         recovery,
-        last_path: requested_path.or(stored_path),
+        recoveries,
+        library: read("library.json")?,
+        last_path: requested_path.clone().or(stored_path),
+        requested_path,
         command_path: executable
             .with_file_name("inknb")
             .to_string_lossy()
@@ -243,16 +278,35 @@ async fn move_document(
 }
 
 #[tauri::command]
-fn discard_recovery(state: State<DesktopState>) -> Result<(), String> {
+fn discard_recovery(state: State<DesktopState>, document_id: String) -> Result<(), String> {
     let _guard = state
         .persistence
         .lock()
         .map_err(|error| error.to_string())?;
-    let path = state.directory.join("recovery.json");
+    let path = recovery_path(&state.directory, &json!({"documentId": document_id}))?;
     if path.exists() {
         fs::remove_file(path).map_err(|error| error.to_string())?;
     }
     Ok(())
+}
+
+#[tauri::command]
+fn store_library(state: State<DesktopState>, library: Value) -> Result<(), String> {
+    atomic_write(
+        &state.directory.join("library.json"),
+        &serde_json::to_vec_pretty(&library).map_err(|error| error.to_string())?,
+    )
+}
+
+#[tauri::command]
+fn allocate_document(state: State<DesktopState>, document_id: String) -> Result<String, String> {
+    let identity = uuid::Uuid::parse_str(&document_id).map_err(|error| error.to_string())?;
+    let directory = state.directory.join("documents");
+    fs::create_dir_all(&directory).map_err(|error| error.to_string())?;
+    Ok(directory
+        .join(format!("{identity}.txt"))
+        .to_string_lossy()
+        .into_owned())
 }
 
 #[tauri::command]
@@ -981,6 +1035,8 @@ fn main() {
             discard_recovery,
             store_preferences,
             remember_document,
+            store_library,
+            allocate_document,
             inspect_files,
             source_fingerprint,
             relative_asset_path,

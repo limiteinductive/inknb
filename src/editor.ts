@@ -1,4 +1,4 @@
-import { EditorState, Text } from "@codemirror/state";
+import { EditorSelection, EditorState, Text } from "@codemirror/state";
 import type { Range } from "@codemirror/state";
 import { createElement } from "react";
 import { createRoot } from "react-dom/client";
@@ -22,9 +22,6 @@ import {
   historyKeymap,
   indentWithTab,
 } from "@codemirror/commands";
-import { HighlightStyle, syntaxHighlighting } from "@codemirror/language";
-import { tags } from "@lezer/highlight";
-import { markdown, markdownKeymap } from "@codemirror/lang-markdown";
 import { search, searchKeymap } from "@codemirror/search";
 import {
   agentEditField,
@@ -35,7 +32,7 @@ import {
   selectionActionField,
   setSelectionAction,
 } from "./text-state";
-import { session } from "./session";
+import type { DocumentSession } from "./session";
 import { threadHasStaleSources } from "./domain";
 
 class ConversationMarker extends GutterMarker {
@@ -83,6 +80,7 @@ class InlineConversation extends WidgetType {
 
 export function createEditor(
   host: HTMLElement,
+  session: DocumentSession,
   render: (host: HTMLElement, identity: string) => () => void,
 ): EditorView {
   const snapshot = session.getSnapshot();
@@ -119,6 +117,10 @@ export function createEditor(
     parent: host,
     state: EditorState.create({
       doc: Text.of(snapshot.text.split("\n")),
+      selection: EditorSelection.range(
+        Math.min(snapshot.selection.from, snapshot.text.length),
+        Math.min(snapshot.selection.to, snapshot.text.length),
+      ),
       extensions: [
         EditorState.lineSeparator.of("\n"),
         EditorView.contentAttributes.of({
@@ -137,7 +139,10 @@ export function createEditor(
             ]),
           ),
         ),
-        conversationField,
+        conversationField.init(() => ({
+          identity: snapshot.activeThread,
+          inline: snapshot.preferences.placement === "inline",
+        })),
         selectionActionField,
         tooltips({
           tooltipSpace(view) {
@@ -279,31 +284,6 @@ export function createEditor(
         agentEditHistory,
         anchorHistory,
         decorations,
-        markdown(),
-        syntaxHighlighting(
-          HighlightStyle.define([
-            {
-              tag: tags.heading1,
-              fontSize: "1.7em",
-              fontWeight: "500",
-              letterSpacing: "-.025em",
-            },
-            { tag: tags.heading2, fontSize: "1.3em", fontWeight: "500" },
-            { tag: tags.heading3, fontWeight: "600" },
-            { tag: tags.strong, fontWeight: "600" },
-            { tag: tags.emphasis, fontStyle: "italic" },
-            {
-              tag: tags.monospace,
-              fontFamily: "var(--mono-font)",
-              fontSize: ".8em",
-            },
-            { tag: [tags.link, tags.url], color: "var(--accent)" },
-            {
-              tag: [tags.processingInstruction, tags.meta],
-              color: "var(--faint)",
-            },
-          ]),
-        ),
         search({ top: true }),
         dropCursor(),
         placeholder("Begin here."),
@@ -366,7 +346,6 @@ export function createEditor(
               return true;
             },
           },
-          ...markdownKeymap,
           ...defaultKeymap,
           ...historyKeymap,
           ...searchKeymap,

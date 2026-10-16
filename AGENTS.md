@@ -2,9 +2,9 @@
 
 This is a personal project. Use fresh code, public dependencies, and synthetic fixtures. Keep private company code, research, data, paths, and assets out of this repository and its history.
 
-The user authorizes architecture and implementation decisions without approval checkpoints. Record consequential decisions in the architecture document.
+Present consequential design decisions to the user. Record agreed decisions in the architecture document.
 
-Keep Markdown lossless. All human and agent mutations pass through the same live document transaction owner. Agent operations carry explicit revision and text preconditions.
+Preserve human verbatim text. Each document owns its live transactions, selection, Undo history, drafts, and recovery. Agent operations carry explicit revision and text preconditions.
 
 Keep model selection, credentials, context management, and agent execution in external agent environments. The app provides tools and transport adapters.
 
@@ -14,4 +14,4 @@ Exercise the actual desktop app with computer use. Capture and inspect screensho
 
 Verify release criteria from current evidence. Screenshots and successful tool calls alone do not establish functional completion.
 
-Write focused behavior and integration tests. Keep prose direct. Do not use em dashes or inline code comments. Use descriptive names.
+Run existing checks and exercise the desktop app. Add tests only when the user asks. Keep prose direct. Do not use em dashes or inline code comments. Use descriptive names.

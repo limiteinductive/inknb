@@ -6,13 +6,13 @@ import {
   useLayoutEffect,
   useRef,
   useState,
+  useSyncExternalStore,
 } from "react";
 import { createRoot } from "react-dom/client";
 import {
   Button,
   Dialog,
   Heading,
-  Input,
   Label,
   Menu,
   MenuItem,
@@ -35,65 +35,42 @@ import {
   ChevronRight,
   FileText,
   Focus,
-  ImagePlus,
   MessageSquarePlus,
   Plus,
   Settings2,
-  Table2,
   X,
 } from "lucide-react";
-import type { LucideIcon } from "lucide-react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
-import { ask, open } from "@tauri-apps/plugin-dialog";
+import { ask } from "@tauri-apps/plugin-dialog";
 import { getCurrentWindow } from "@tauri-apps/api/window";
-import { session } from "./session";
 import ComponentHost from "./ComponentHost";
 import { createEditor } from "./editor";
 import type { Source } from "./domain";
-import { figureMarkdown, tableMarkdown, threadHasStaleSources } from "./domain";
-import { useSession } from "./use-session";
+import { threadHasStaleSources } from "./domain";
+import { SessionContext, useDocumentSession, useSession } from "./use-session";
+import { workspace } from "./workspace";
+import Library from "./Library";
+import DocumentNavigation from "./DocumentNavigation";
+import IconButton from "./IconButton";
 import "./style.css";
 
 const Preview = lazy(() => import("./Preview"));
 
-function IconButton({
-  icon: Icon,
-  label,
-  onPress,
-  active = false,
-  agentControl,
-}: {
-  icon: LucideIcon;
-  label: string;
-  onPress: () => void;
-  active?: boolean;
-  agentControl?: string;
-}) {
-  return (
-    <Button
-      className={`icon-button ${active ? "active" : ""}`}
-      aria-label={label}
-      data-inknb-control={agentControl}
-      onPress={onPress}
-    >
-      <Icon size={17} strokeWidth={1.6} />
-    </Button>
-  );
-}
-
 function Composer({ threadId }: { threadId?: string }) {
+  const session = useDocumentSession();
   const state = useSession();
-  const [content, setContent] = useState("");
-  const [permission, setPermission] = useState(false);
+  const draftKey = threadId ?? "new";
+  const { content, permission } = state.drafts[draftKey] ?? {
+    content: "",
+    permission: false,
+  };
   const [sending, setSending] = useState(false);
   async function send() {
     if (sending || !content.trim()) return;
     setSending(true);
     try {
       await session.comment(content, permission ? "edit" : "read", threadId);
-      setContent("");
-      setPermission(false);
     } catch (error) {
       session.fail(error);
     } finally {
@@ -110,7 +87,11 @@ function Composer({ threadId }: { threadId?: string }) {
     >
       <TextField
         value={content}
-        onChange={setContent}
+        onChange={(content) =>
+          session.update({
+            drafts: { ...state.drafts, [draftKey]: { content, permission } },
+          })
+        }
         aria-label={
           threadId ? "Reply to conversation" : "Request to your agent"
         }
@@ -132,7 +113,11 @@ function Composer({ threadId }: { threadId?: string }) {
         <Switch
           className="permission"
           isSelected={permission}
-          onChange={setPermission}
+          onChange={(permission) =>
+            session.update({
+              drafts: { ...state.drafts, [draftKey]: { content, permission } },
+            })
+          }
         >
           <span className="switch-track">
             <span />
@@ -162,6 +147,7 @@ function Composer({ threadId }: { threadId?: string }) {
 }
 
 function SourceChip({ source }: { source: Source }) {
+  const session = useDocumentSession();
   const [expanded, setExpanded] = useState(false);
   return (
     <div className={`source ${source.status}`}>
@@ -209,6 +195,7 @@ function SourceChip({ source }: { source: Source }) {
 }
 
 function Conversation({ identity }: { identity: string }) {
+  const session = useDocumentSession();
   const state = useSession();
   const thread = state.metadata.threads.find(
     (thread) => thread.id === identity,
@@ -421,6 +408,7 @@ function Conversation({ identity }: { identity: string }) {
 }
 
 function Settings() {
+  const session = useDocumentSession();
   const state = useSession();
   const preferences = state.preferences;
   return (
@@ -553,17 +541,17 @@ function Settings() {
   );
 }
 
-function App() {
+function DocumentApp({ active }: { active: boolean }) {
+  const library = useSyncExternalStore(
+    workspace.subscribe,
+    workspace.getSnapshot,
+  );
+  const session = useDocumentSession();
   const state = useSession();
   const editorHost = useRef<HTMLDivElement>(null);
-  const [table, setTable] = useState(false);
-  const [columns, setColumns] = useState("Column 1, Column 2");
   const [documentMenuOpen, setDocumentMenuOpen] = useState(false);
   const [railTop, setRailTop] = useState(90);
   const [showResolved, setShowResolved] = useState(false);
-  useEffect(() => {
-    void session.initialize();
-  }, []);
   useEffect(() => {
     const activity = () => {
       document.documentElement.dataset.active = String(
@@ -580,90 +568,15 @@ function App() {
       document.removeEventListener("visibilitychange", activity);
     };
   }, []);
-  useEffect(() => {
-    const subscriptions = [
-      getCurrentWindow().onResized(() => {
-        if (session.getSnapshot().previewMode !== "fullscreen") return;
-        void getCurrentWindow()
-          .isFullscreen()
-          .then((fullscreen) => {
-            if (!fullscreen) void session.command("preview-fullscreen-ended");
-          });
-      }),
-      listen<string>(
-        "inknb-menu",
-        (event) => void session.command(event.payload),
-      ),
-      listen<string>(
-        "inknb-open",
-        (event) =>
-          void session
-            .openDocument(event.payload)
-            .catch((error) => session.fail(error)),
-      ),
-      listen<{ id: string; method: string; params: unknown }>(
-        "inknb-control",
-        (event) => {
-          void session.control(event.payload.method, event.payload.params).then(
-            (result) =>
-              invoke("complete_control", {
-                requestId: event.payload.id,
-                result,
-                error: null,
-              }),
-            (error) =>
-              invoke("complete_control", {
-                requestId: event.payload.id,
-                result: null,
-                error: error instanceof Error ? error.message : String(error),
-              }),
-          );
-        },
-      ),
-    ];
-    const polling = setInterval(() => void session.checkFiles(), 1800);
-    const shortcut = (event: KeyboardEvent) => {
-      if (
-        event.defaultPrevented ||
-        !(event.metaKey || event.ctrlKey) ||
-        event.altKey
-      )
-        return;
-      const key = event.key.toLowerCase();
-      const command =
-        key === "s"
-          ? event.shiftKey
-            ? "save-as"
-            : "save"
-          : key === "o"
-            ? "open"
-            : key === "n"
-              ? "new"
-              : key === ","
-                ? "settings"
-                : key === "a" && event.shiftKey
-                  ? "comment"
-                  : key === "f" && event.shiftKey
-                    ? "focus"
-                    : null;
-      if (command) {
-        event.preventDefault();
-        void session.command(command);
-      }
-    };
-    window.addEventListener("keydown", shortcut);
-    return () => {
-      clearInterval(polling);
-      window.removeEventListener("keydown", shortcut);
-      for (const subscription of subscriptions)
-        void subscription.then((unlisten) => unlisten());
-    };
-  }, []);
   useLayoutEffect(() => {
     if (!state.ready || !editorHost.current) return;
-    const view = createEditor(editorHost.current, (host, identity) => {
+    const view = createEditor(editorHost.current, session, (host, identity) => {
       const root = createRoot(host);
-      root.render(<Conversation identity={identity} />);
+      root.render(
+        <SessionContext value={session}>
+          <Conversation identity={identity} />
+        </SessionContext>,
+      );
       return () => root.unmount();
     });
     return () => {
@@ -671,6 +584,25 @@ function App() {
       view.destroy();
     };
   }, [state.ready, state.epoch]);
+  useLayoutEffect(() => {
+    if (!active || !state.ready || !session.view) return;
+    const entry = workspace
+      .getSnapshot()
+      .documents.find(
+        (candidate) => candidate.id === state.metadata.documentId,
+      );
+    const frame = requestAnimationFrame(() => {
+      session.view?.requestMeasure();
+      session.view?.scrollDOM.scrollTo({
+        top: entry?.scrollTop ?? 0,
+        behavior: "instant",
+      });
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [state.ready, state.epoch]);
+  useLayoutEffect(() => {
+    if (active && state.ready) session.restoreFocus();
+  }, [active, state.ready, state.epoch, state.composer]);
   useEffect(() => {
     const media = matchMedia("(prefers-color-scheme: dark)");
     const apply = () => {
@@ -700,11 +632,20 @@ function App() {
     );
   }, [state.preferences]);
   useEffect(() => {
-    const name = state.path?.split("/").at(-1) ?? "Untitled";
+    if (!active) return;
+    const name =
+      library.documents.find((entry) => entry.id === state.metadata.documentId)
+        ?.title ?? "Untitled";
     void getCurrentWindow().setTitle(
       `${name}${state.dirty ? " •" : ""} · ink and butter`,
     );
-  }, [state.path, state.dirty]);
+  }, [
+    state.path,
+    state.dirty,
+    active,
+    library.documents,
+    state.metadata.documentId,
+  ]);
   useEffect(() => {
     function positionRail() {
       const current = session.getSnapshot();
@@ -744,44 +685,11 @@ function App() {
     (thread) => thread.id === state.activeThread,
   );
   const title =
-    state.path
-      ?.split("/")
-      .at(-1)
-      ?.replace(/\.(md|markdown)$/, "") ?? "Untitled";
+    library.documents.find((entry) => entry.id === state.metadata.documentId)
+      ?.title ?? "Untitled";
   const wordCount = state.text.trim()
     ? state.text.trim().split(/\s+/u).length
     : 0;
-  async function insertFigure() {
-    try {
-      const path = await open({
-        title: "Choose a figure",
-        multiple: false,
-        defaultPath: state.path?.slice(0, state.path.lastIndexOf("/") + 1),
-      });
-      if (typeof path !== "string") return;
-      const relative = await invoke<string>("relative_asset_path", {
-        documentPath: state.path,
-        assetPath: path,
-      });
-      const figureName =
-        path
-          .split("/")
-          .at(-1)
-          ?.replace(/\.[^.]+$/, "") ?? "Figure";
-      const selection = session.getSnapshot().selection;
-      session.view?.dispatch({
-        changes: {
-          ...selection,
-          insert: figureMarkdown(figureName, relative),
-        },
-        scrollIntoView: true,
-        userEvent: "input.figure",
-      });
-      session.view?.focus();
-    } catch (error) {
-      session.fail(error);
-    }
-  }
   return (
     <div
       className={`app ${state.focus ? "focus-mode" : ""} ${state.previewMode === "panel" && !state.focus ? "preview-open" : ""} ${state.previewMode === "fullscreen" ? "preview-fullscreen" : ""} placement-${state.preferences.placement}`}
@@ -789,12 +697,13 @@ function App() {
       <section className="writing-pane" aria-label="Writing workspace">
         <header className="titlebar" data-tauri-drag-region>
           <div className="window-inset" />
+          {!library.sidebarOpen && <DocumentNavigation />}
           <MenuTrigger
-            isOpen={documentMenuOpen}
+            isOpen={documentMenuOpen && active}
             onOpenChange={setDocumentMenuOpen}
           >
             <Button className="document-name">
-              {title}
+              <span className="document-title">{title}</span>
               <ChevronDown size={12} />
               {state.dirty && (
                 <span className="unsaved-dot" aria-label="Unsaved changes" />
@@ -809,14 +718,6 @@ function App() {
                 aria-label="Document actions"
                 onAction={(action) => {
                   setDocumentMenuOpen(false);
-                  if (action === "figure") {
-                    void insertFigure();
-                    return;
-                  }
-                  if (action === "table") {
-                    setTable(true);
-                    return;
-                  }
                   void session.command(String(action));
                 }}
               >
@@ -836,14 +737,6 @@ function App() {
                   Save as…<kbd>⇧⌘S</kbd>
                 </MenuItem>
                 <Separator />
-                <MenuItem id="figure">
-                  <ImagePlus size={15} />
-                  Insert figure…
-                </MenuItem>
-                <MenuItem id="table">
-                  <Table2 size={15} />
-                  Insert table…
-                </MenuItem>
                 <MenuItem id="preview">
                   <FileText size={15} />
                   Reading preview
@@ -959,14 +852,20 @@ function App() {
                       icon={X}
                       label="Cancel aside"
                       agentControl="aside.cancel"
-                      onPress={() => session.update({ composer: false })}
+                      onPress={() =>
+                        session.update({
+                          composer: false,
+                          composerAnchor: null,
+                        })
+                      }
                     />
                   </div>
                   <p className="composer-context">
-                    {state.selection.to > state.selection.from
+                    {(state.composerAnchor ?? state.selection).to >
+                    (state.composerAnchor ?? state.selection).from
                       ? state.text.slice(
-                          state.selection.from,
-                          state.selection.to,
+                          (state.composerAnchor ?? state.selection).from,
+                          (state.composerAnchor ?? state.selection).to,
                         )
                       : "At your cursor"}
                   </p>
@@ -1092,45 +991,182 @@ function App() {
           <Preview />
         </Suspense>
       )}
-      {state.settings && <Settings />}
+      {active && state.settings && <Settings />}
+    </div>
+  );
+}
+
+function App() {
+  const restoreWritingFocus = useRef(false);
+  const [compact, setCompact] = useState(
+    () => window.matchMedia("(max-width: 980px)").matches,
+  );
+  const library = useSyncExternalStore(
+    workspace.subscribe,
+    workspace.getSnapshot,
+  );
+  useEffect(() => {
+    if (library.sidebarOpen || !restoreWritingFocus.current) return;
+    restoreWritingFocus.current = false;
+    workspace.active?.restoreFocus();
+  }, [library.sidebarOpen]);
+  useEffect(() => {
+    void workspace.initialize();
+  }, []);
+  useEffect(() => {
+    const query = window.matchMedia("(max-width: 980px)");
+    const resize = () => setCompact(query.matches);
+    query.addEventListener("change", resize);
+    return () => query.removeEventListener("change", resize);
+  }, []);
+  useEffect(() => {
+    const subscriptions = [
+      getCurrentWindow().onResized(() => {
+        const session = workspace.active;
+        if (session?.getSnapshot().previewMode !== "fullscreen") return;
+        void getCurrentWindow()
+          .isFullscreen()
+          .then((fullscreen) => {
+            if (!fullscreen) void session.command("preview-fullscreen-ended");
+          });
+      }),
+      listen<string>(
+        "inknb-menu",
+        (event) =>
+          void workspace
+            .command(event.payload)
+            .catch((error) => workspace.fail(error)),
+      ),
+      listen<string>(
+        "inknb-open",
+        (event) =>
+          void workspace
+            .openDocument(event.payload)
+            .catch((error) => workspace.fail(error)),
+      ),
+      listen<{ id: string; method: string; params: unknown }>(
+        "inknb-control",
+        (event) => {
+          void workspace
+            .control(event.payload.method, event.payload.params)
+            .then(
+              (result) =>
+                invoke("complete_control", {
+                  requestId: event.payload.id,
+                  result,
+                  error: null,
+                }),
+              (error) =>
+                invoke("complete_control", {
+                  requestId: event.payload.id,
+                  result: null,
+                  error: error instanceof Error ? error.message : String(error),
+                }),
+            );
+        },
+      ),
+    ];
+    const polling = setInterval(() => {
+      for (const session of workspace.sessions.values())
+        void session.checkFiles();
+    }, 1800);
+    const shortcut = (event: KeyboardEvent) => {
+      if (
+        event.defaultPrevented ||
+        !(event.metaKey || event.ctrlKey) ||
+        event.altKey
+      )
+        return;
+      const key = event.key.toLowerCase();
+      const command =
+        key === "["
+          ? "back"
+          : key === "]"
+            ? "forward"
+            : key === "s"
+              ? event.shiftKey
+                ? "save-as"
+                : "save"
+              : key === "o"
+                ? "open"
+                : key === "n"
+                  ? "new"
+                  : key === ","
+                    ? "settings"
+                    : key === "a" && event.shiftKey
+                      ? "comment"
+                      : key === "f" && event.shiftKey
+                        ? "focus"
+                        : null;
+      if (!command) return;
+      event.preventDefault();
+      void workspace.command(command).catch((error) => workspace.fail(error));
+    };
+    window.addEventListener("keydown", shortcut, true);
+    return () => {
+      clearInterval(polling);
+      window.removeEventListener("keydown", shortcut, true);
+      for (const subscription of subscriptions)
+        void subscription.then((unlisten) => unlisten());
+    };
+  }, []);
+  if (!library.ready)
+    return (
+      <div className="startup-state">
+        {library.error ?? "Opening your writing…"}
+      </div>
+    );
+  const active = workspace.active?.getSnapshot();
+  const sidebar =
+    library.sidebarOpen &&
+    !active?.focus &&
+    active?.previewMode !== "fullscreen";
+  return (
+    <div
+      className={`library-shell ${sidebar && !compact ? "library-visible" : ""}`}
+    >
+      {sidebar && !compact && <Library />}
       <ModalOverlay
-        isOpen={table}
-        onOpenChange={setTable}
+        isOpen={sidebar && compact}
+        onOpenChange={(open) => workspace.update({ sidebarOpen: open })}
         isDismissable
-        className="modal-overlay"
+        className="modal-overlay library-overlay"
       >
-        <Modal className="small-modal">
-          <Dialog aria-label="Insert table">
-            <Heading slot="title">Insert a table</Heading>
-            <TextField className="field" value={columns} onChange={setColumns}>
-              <Label>Column names, separated by commas</Label>
-              <Input autoFocus />
-            </TextField>
-            <div className="modal-actions">
-              <Button className="text-button" onPress={() => setTable(false)}>
-                Cancel
-              </Button>
-              <Button
-                className="primary-button"
-                onPress={() => {
-                  const names = columns
-                    .split(",")
-                    .map((column) => column.trim());
-                  const insert = tableMarkdown(names, [names.map(() => " ")]);
-                  session.view?.dispatch({
-                    changes: { ...session.getSnapshot().selection, insert },
-                    userEvent: "input.table",
-                  });
-                  setTable(false);
-                  session.view?.focus();
-                }}
-              >
-                Insert
-              </Button>
-            </div>
+        <Modal className="library-modal">
+          <Dialog aria-label="Document library">
+            <Library
+              onNavigate={() => {
+                restoreWritingFocus.current = true;
+                workspace.update({ sidebarOpen: false });
+              }}
+            />
           </Dialog>
         </Modal>
       </ModalOverlay>
+      <div className="document-stack">
+        {library.error && (
+          <div className="notice" role="alert">
+            {library.error}
+            <Button
+              className="text-button"
+              onPress={() => workspace.update({ error: null })}
+            >
+              Dismiss
+            </Button>
+          </div>
+        )}
+        {[...workspace.sessions].map(([identity, session]) => (
+          <div
+            className="document-container"
+            key={identity}
+            hidden={identity !== library.activeId}
+          >
+            <SessionContext value={session}>
+              <DocumentApp active={identity === library.activeId} />
+            </SessionContext>
+          </div>
+        ))}
+      </div>
     </div>
   );
 }

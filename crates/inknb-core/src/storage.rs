@@ -130,7 +130,17 @@ pub fn load_document(path: &Path) -> Result<LoadedDocument, String> {
 
 pub fn store_recovery(directory: &Path, snapshot: &Snapshot) -> Result<(), String> {
     let bytes = serde_json::to_vec(snapshot).map_err(|error| error.to_string())?;
-    atomic_write(&directory.join("recovery.json"), &bytes)
+    atomic_write(&recovery_path(directory, &snapshot.metadata)?, &bytes)
+}
+
+pub fn recovery_path(directory: &Path, metadata: &Value) -> Result<PathBuf, String> {
+    let Some(identity) = metadata["documentId"].as_str() else {
+        return Ok(directory.join("recovery.json"));
+    };
+    let identity = Uuid::parse_str(identity).map_err(|error| error.to_string())?;
+    let recoveries = directory.join("recoveries");
+    fs::create_dir_all(&recoveries).map_err(|error| error.to_string())?;
+    Ok(recoveries.join(format!("{identity}.json")))
 }
 
 pub fn save_document(directory: &Path, snapshot: &Snapshot) -> Result<SavedDocument, String> {
@@ -168,7 +178,8 @@ pub fn save_document(directory: &Path, snapshot: &Snapshot) -> Result<SavedDocum
     if let Some(event) = &snapshot.save_event {
         crate::events::EventStore::open(directory)?.append(std::slice::from_ref(event))?;
     }
-    fs::remove_file(directory.join("recovery.json")).map_err(|error| error.to_string())?;
+    fs::remove_file(recovery_path(directory, &snapshot.metadata)?)
+        .map_err(|error| error.to_string())?;
     Ok(SavedDocument { hash, sidecar_hash })
 }
 
