@@ -172,3 +172,15 @@ Capture: `3ff8c236-3b6f-4dc3-9506-41a28efb1448`.
 The separate agent presentation model and linked aside references remain planned. Claude channel support remains unverified. The macOS bundle uses ad hoc signing without notarization.
 
 The archive passed extraction, signature verification, and binary comparisons. Synthetic test entries and files moved into a recoverable local backup. The original document retained its exact text, metadata, and path. The original window size and appearance were restored.
+
+## Quiet document header, version 0.4.1
+
+Build: `0.4.1+52b4e54eac06`. Date: 2026-10-15.
+
+The document title is plain text. New and Open remain in the sidebar. Save and Save As remain in the native File menu and keyboard shortcuts. The Preview action appears while its pane is closed.
+
+TypeScript, formatting, all 19 existing frontend tests, and the production build passed. Native inspection confirmed that the title exposes no menu. Native clicks checked preview opening, closing, and the native File menu.
+
+Screenshots received visual inspection at 1728 by 1084 and 700 by 480. Captures: `cf6e44cf-5f55-4bf5-9967-a76bdce65ce6` and `cd8f6ee3-9207-45aa-a508-03db93d92d78`. The screenshots remain local because they contain the current document.
+
+The original text and metadata matched the pre-update snapshot. The window size, sidebar, and preview state were restored. The signed archive passed extraction, signature verification, and binary comparisons.

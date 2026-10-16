@@ -1,6 +1,6 @@
 # Architecture
 
-Status: version 0.4.0 passed local release verification. See [release verification](release-verification.md).
+Status: version 0.4.1 passed local release verification. See [release verification](release-verification.md).
 
 ## Naming
 
@@ -33,6 +33,8 @@ The workspace design is `long-term`. It owns document sessions, titles, collecti
 Each document retains its editor, Undo history, selection, conversations, and unsent drafts during navigation. The library searches exact document text and titles. Collections contain document references.
 
 The sidebar header owns its toggle and Back and Forward controls. The writing header owns those controls while the sidebar is hidden. Narrow windows show the library in a dismissible modal drawer. Navigation closes that drawer and restores writing focus.
+
+The document title is static text. The sidebar provides New and Open actions. The native File menu and keyboard shortcuts provide Save and Save As. The Preview action appears while its pane is closed.
 
 Back and Forward restore visited documents and explicit passage jumps. Typing and scrolling do not add visits. A new visit after Back removes the forward branch. Navigation does not enter text Undo history.
 

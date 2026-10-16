@@ -22,7 +22,6 @@ import {
   Popover,
   Radio,
   RadioGroup,
-  Separator,
   Switch,
   TextArea,
   TextField,
@@ -30,7 +29,6 @@ import {
 import {
   ArrowLeft,
   ArrowUp,
-  Check,
   ChevronDown,
   ChevronRight,
   FileText,
@@ -549,7 +547,6 @@ function DocumentApp({ active }: { active: boolean }) {
   const session = useDocumentSession();
   const state = useSession();
   const editorHost = useRef<HTMLDivElement>(null);
-  const [documentMenuOpen, setDocumentMenuOpen] = useState(false);
   const [railTop, setRailTop] = useState(90);
   const [showResolved, setShowResolved] = useState(false);
   useEffect(() => {
@@ -698,52 +695,12 @@ function DocumentApp({ active }: { active: boolean }) {
         <header className="titlebar" data-tauri-drag-region>
           <div className="window-inset" />
           {!library.sidebarOpen && <DocumentNavigation />}
-          <MenuTrigger
-            isOpen={documentMenuOpen && active}
-            onOpenChange={setDocumentMenuOpen}
-          >
-            <Button className="document-name">
-              <span className="document-title">{title}</span>
-              <ChevronDown size={12} />
-              {state.dirty && (
-                <span className="unsaved-dot" aria-label="Unsaved changes" />
-              )}
-            </Button>
-            <Popover
-              className="document-menu"
-              placement="bottom start"
-              offset={5}
-            >
-              <Menu
-                aria-label="Document actions"
-                onAction={(action) => {
-                  setDocumentMenuOpen(false);
-                  void session.command(String(action));
-                }}
-              >
-                <MenuItem id="new">
-                  <Plus size={15} />
-                  New document<kbd>⌘N</kbd>
-                </MenuItem>
-                <MenuItem id="open">
-                  <FileText size={15} />
-                  Open…<kbd>⌘O</kbd>
-                </MenuItem>
-                <MenuItem id="save">
-                  <Check size={15} />
-                  Save<kbd>⌘S</kbd>
-                </MenuItem>
-                <MenuItem id="save-as">
-                  Save as…<kbd>⇧⌘S</kbd>
-                </MenuItem>
-                <Separator />
-                <MenuItem id="preview">
-                  <FileText size={15} />
-                  Reading preview
-                </MenuItem>
-              </Menu>
-            </Popover>
-          </MenuTrigger>
+          <div className="document-name" title={title}>
+            <span className="document-title">{title}</span>
+            {state.dirty && (
+              <span className="unsaved-dot" aria-label="Unsaved changes" />
+            )}
+          </div>
           <div className="header-spacer" data-tauri-drag-region />
           <div className="toolbar">
             <IconButton
@@ -828,14 +785,16 @@ function DocumentApp({ active }: { active: boolean }) {
             <aside className="margin" aria-label="Asides">
               <div className="margin-label">
                 <span>ASIDES {threads.length || ""}</span>
-                <Button
-                  className="text-button"
-                  aria-label="Open reading preview"
-                  data-inknb-control="preview.open"
-                  onPress={() => void session.command("preview")}
-                >
-                  Preview
-                </Button>
+                {state.previewMode === "closed" && (
+                  <Button
+                    className="text-button"
+                    aria-label="Open reading preview"
+                    data-inknb-control="preview.open"
+                    onPress={() => void session.command("preview")}
+                  >
+                    Preview
+                  </Button>
+                )}
               </div>
               {state.composer ? (
                 <div
