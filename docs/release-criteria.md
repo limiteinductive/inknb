@@ -45,6 +45,18 @@ Evidence appears in [release verification](release-verification.md). An unchecke
 - [x] Executable hooks retry unacknowledged failures and reconnect after restart.
 - [x] Independent backends can post findings without gaining prose edit permission.
 
+## Components and UI control
+
+- [x] Agents register immutable local packages and load them without a desktop rebuild.
+- [x] Component state survives native input, code updates, save, and restart.
+- [x] Component revisions reject conflicting state writes.
+- [x] Concurrent retries mount one instance for one component identity.
+- [x] Local JavaScript modules load inside component packages.
+- [x] Component interactions reach an external backend and return visible results.
+- [x] Frame isolation blocks manuscript access, native commands, network requests, and remote navigation.
+- [x] Agent UI actions expose declared controls and reject stale snapshots.
+- [x] Native edit acceptance and permission controls remain human actions.
+
 ## Interface
 
 - [x] Writing, conversation, source, proposal, pending, error, and empty states receive screenshot review.

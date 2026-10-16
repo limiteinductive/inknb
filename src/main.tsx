@@ -46,6 +46,7 @@ import { listen } from "@tauri-apps/api/event";
 import { ask, open } from "@tauri-apps/plugin-dialog";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { session } from "./session";
+import ComponentHost from "./ComponentHost";
 import { createEditor } from "./editor";
 import type { Source } from "./domain";
 import { figureMarkdown, tableMarkdown, threadHasStaleSources } from "./domain";
@@ -59,16 +60,19 @@ function IconButton({
   label,
   onPress,
   active = false,
+  agentControl,
 }: {
   icon: LucideIcon;
   label: string;
   onPress: () => void;
   active?: boolean;
+  agentControl?: string;
 }) {
   return (
     <Button
       className={`icon-button ${active ? "active" : ""}`}
       aria-label={label}
+      data-inknb-control={agentControl}
       onPress={onPress}
     >
       <Icon size={17} strokeWidth={1.6} />
@@ -159,7 +163,10 @@ function SourceChip({ source }: { source: Source }) {
   const [expanded, setExpanded] = useState(false);
   return (
     <div className={`source ${source.status}`}>
-      <Button onPress={() => setExpanded(!expanded)}>
+      <Button
+        data-inknb-control={`source:${source.id}`}
+        onPress={() => setExpanded(!expanded)}
+      >
         <FileText size={13} />
         <span>{source.label}</span>
         {source.status !== "current" && (
@@ -232,6 +239,7 @@ function Conversation({ identity }: { identity: string }) {
           <IconButton
             icon={X}
             label="Close conversation"
+            agentControl="conversation.close"
             onPress={() => session.selectThread(null)}
           />
         </span>
@@ -302,6 +310,32 @@ function Conversation({ identity }: { identity: string }) {
           </article>
         ))}
       </div>
+      {thread.components
+        .filter((component) => !component.hidden)
+        .map((component) => (
+          <ComponentHost key={component.id} instance={component} />
+        ))}
+      {thread.components
+        .filter((component) => component.hidden)
+        .map((component) => (
+          <Button
+            key={component.id}
+            className="text-button"
+            data-inknb-control={`component-show:${component.id}`}
+            onPress={() =>
+              void session
+                .control("component_update", {
+                  documentId: state.metadata.documentId,
+                  componentId: component.id,
+                  revision: component.revision,
+                  hidden: false,
+                })
+                .catch((error) => session.fail(error))
+            }
+          >
+            Show {component.title}
+          </Button>
+        ))}
       {proposals.map((proposal) => (
         <div className="proposal" key={proposal.id}>
           <div className="eyebrow">
@@ -401,6 +435,7 @@ function Settings() {
             <IconButton
               icon={X}
               label="Close settings"
+              agentControl="settings.close"
               onPress={() => session.update({ settings: false })}
             />
           </div>
@@ -814,6 +849,7 @@ function App() {
           <IconButton
             icon={Focus}
             label="Toggle focus mode"
+            agentControl="focus.toggle"
             active={state.focus}
             onPress={() => void session.command("focus")}
           />
@@ -821,12 +857,14 @@ function App() {
           <IconButton
             icon={MessageSquarePlus}
             label="Add aside"
+            agentControl="aside.add"
             active={state.composer}
             onPress={() => session.startComment()}
           />
           <IconButton
             icon={Settings2}
             label="Open settings"
+            agentControl="settings.open"
             onPress={() => session.update({ settings: true })}
           />
         </div>
@@ -902,6 +940,7 @@ function App() {
                   <IconButton
                     icon={X}
                     label="Cancel aside"
+                    agentControl="aside.cancel"
                     onPress={() => session.update({ composer: false })}
                   />
                 </div>
@@ -915,7 +954,13 @@ function App() {
             ) : activeThread &&
               (state.preferences.placement === "margin" ||
                 activeThread.anchor.status === "detached") ? (
-              <div className="active-thread" style={{ top: railTop }}>
+              <div
+                className="active-thread"
+                style={{ top: railTop }}
+                data-inknb-control={`conversation:${activeThread.id}`}
+                data-inknb-scroll="true"
+                aria-label="Conversation scroll area"
+              >
                 <Conversation identity={activeThread.id} />
               </div>
             ) : (
@@ -925,6 +970,7 @@ function App() {
                     <Button
                       key={thread.id}
                       className="thread-preview"
+                      data-inknb-control={`thread:${thread.id}`}
                       onPress={() => session.selectThread(thread.id)}
                     >
                       <span
@@ -1010,6 +1056,7 @@ function App() {
         </span>
         <Button
           className="focus-exit"
+          data-inknb-control="focus.leave"
           onPress={() => void session.command("focus")}
         >
           Leave focus <Focus size={13} />

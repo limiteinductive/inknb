@@ -7,12 +7,15 @@ import { EditorView } from "@codemirror/view";
 import type { ViewUpdate } from "@codemirror/view";
 import { z } from "zod";
 import { createEvent, planAutomation } from "./automation";
+import { checkComponentValue, componentRuntimes } from "./component-bridge";
+import { actOnInterface, inspectInterface } from "./ui-control";
 import type { EventInput } from "./automation";
 import {
   applyChanges,
   captureAnchor,
   createConversation,
   createMetadata,
+  componentSchema,
   createProposal,
   defaultPreferences,
   figureMarkdown,
@@ -978,6 +981,72 @@ export class DocumentSession {
     return { messageId: messageId };
   }
 
+  hideComponent(componentId: string): void {
+    this.changed({
+      ...this.state.metadata,
+      threads: this.state.metadata.threads.map((thread) => ({
+        ...thread,
+        components: thread.components.map((component) =>
+          component.id === componentId
+            ? { ...component, hidden: true, revision: component.revision + 1 }
+            : component,
+        ),
+      })),
+    });
+  }
+
+  async componentMessage(
+    componentId: string,
+    message:
+      | { type: "event"; name: string; payload: unknown }
+      | { type: "state"; revision: number; state: unknown },
+  ): Promise<unknown> {
+    const component = this.state.metadata.threads
+      .flatMap((thread) => thread.components)
+      .find((component) => component.id === componentId);
+    if (!component || component.hidden)
+      throw new Error("This component is no longer open.");
+    if (message.type === "event") {
+      checkComponentValue(message.payload);
+      this.pendingEvents.push(
+        createEvent(this.state.metadata, "component.event", {
+          componentId,
+          name: message.name,
+          payload: message.payload,
+          componentRevision: component.revision,
+        }),
+      );
+      this.changed();
+    } else {
+      if (message.revision !== component.revision)
+        throw new Error(
+          "Component state changed. Read the latest context before saving.",
+        );
+      checkComponentValue(message.state);
+      const next = componentSchema.parse({
+        ...component,
+        state: message.state,
+        revision: component.revision + 1,
+      });
+      this.changed({
+        ...this.state.metadata,
+        threads: this.state.metadata.threads.map((thread) => ({
+          ...thread,
+          components: thread.components.map((candidate) =>
+            candidate.id === componentId ? next : candidate,
+          ),
+        })),
+      });
+    }
+    await this.recover();
+    return {
+      componentId,
+      revision: this.state.metadata.threads
+        .flatMap((thread) => thread.components)
+        .find((component) => component.id === componentId)?.revision,
+    };
+  }
+
   async control(method: string, parameters: unknown): Promise<unknown> {
     if (!this.state.ready || !this.view)
       throw new Error("The editor is starting.");
@@ -1064,6 +1133,178 @@ export class DocumentSession {
       await this.bind(binding, parsed.documentId);
       return { documentId: parsed.documentId, binding };
     }
+    if (method === "ui_inspect") {
+      z.object({}).strict().parse(parameters);
+      return {
+        documentId: this.state.metadata.documentId,
+        ...(await inspectInterface()),
+      };
+    }
+    if (method === "ui_action") {
+      const documentId = z
+        .object({ documentId: z.string().uuid() })
+        .passthrough()
+        .parse(parameters).documentId;
+      if (documentId !== this.state.metadata.documentId)
+        throw new Error(
+          "The open document changed. Inspect the interface again.",
+        );
+      return actOnInterface(parameters);
+    }
+    if (method === "component_read") {
+      const parsed = z
+        .object({ componentId: z.string().uuid() })
+        .strict()
+        .parse(parameters);
+      const component = this.state.metadata.threads
+        .flatMap((thread) => thread.components)
+        .find((component) => component.id === parsed.componentId);
+      if (!component) throw new Error("This component no longer exists.");
+      const runtime = componentRuntimes.get(component.id);
+      return {
+        component,
+        status: component.hidden ? "hidden" : (runtime?.status ?? "closed"),
+        error: runtime?.error ?? null,
+      };
+    }
+    if (method === "component_mount") {
+      const parsed = z
+        .object({
+          documentId: z.string().uuid(),
+          revision: z.number().int().nonnegative(),
+          threadId: z.string().uuid(),
+          componentId: z.string().uuid(),
+          bundleId: z.string().regex(/^[a-f0-9]{64}$/),
+          data: z.json(),
+          state: z.json(),
+        })
+        .strict()
+        .parse(parameters);
+      if (parsed.documentId !== this.state.metadata.documentId)
+        throw new Error("The open document changed.");
+      const epoch = this.state.epoch;
+      const bundle = await invoke<{ manifest: { title: string } }>(
+        "component_info",
+        { bundleId: parsed.bundleId },
+      );
+      if (epoch !== this.state.epoch)
+        throw new Error(
+          "The open document changed while loading the component package.",
+        );
+      const existing = this.state.metadata.threads
+        .flatMap((thread) => thread.components)
+        .find((component) => component.id === parsed.componentId);
+      if (existing) {
+        if (
+          existing.bundleId !== parsed.bundleId ||
+          !this.state.metadata.threads
+            .find((thread) => thread.id === parsed.threadId)
+            ?.components.some(
+              (component) => component.id === parsed.componentId,
+            )
+        )
+          throw new Error(
+            "This component identity belongs to another instance.",
+          );
+        return existing;
+      }
+      const thread = this.state.metadata.threads.find(
+        (thread) => thread.id === parsed.threadId,
+      );
+      if (
+        epoch !== this.state.epoch ||
+        parsed.revision !== this.state.metadata.revision ||
+        !thread ||
+        thread.resolved
+      )
+        throw new Error(
+          "Read the current document and an open aside before mounting a component.",
+        );
+      checkComponentValue(parsed.data);
+      checkComponentValue(parsed.state);
+      const component = componentSchema.parse({
+        id: parsed.componentId,
+        bundleId: parsed.bundleId,
+        title: bundle.manifest.title,
+        revision: 0,
+        data: parsed.data,
+        state: parsed.state,
+        hidden: false,
+      });
+      this.changed({
+        ...this.state.metadata,
+        threads: this.state.metadata.threads.map((thread) =>
+          thread.id === parsed.threadId
+            ? { ...thread, components: [...thread.components, component] }
+            : thread,
+        ),
+      });
+      await this.recover();
+      return component;
+    }
+    if (method === "component_update" || method === "component_unmount") {
+      const parsed = z
+        .object({
+          documentId: z.string().uuid(),
+          componentId: z.string().uuid(),
+          revision: z.number().int().nonnegative(),
+          bundleId: z
+            .string()
+            .regex(/^[a-f0-9]{64}$/)
+            .optional(),
+          data: z.json().optional(),
+          state: z.json().optional(),
+          hidden: z.boolean().optional(),
+        })
+        .strict()
+        .parse(parameters);
+      if (parsed.documentId !== this.state.metadata.documentId)
+        throw new Error("The open document changed.");
+      const epoch = this.state.epoch;
+      const bundle = parsed.bundleId
+        ? await invoke<{ manifest: { title: string } }>("component_info", {
+            bundleId: parsed.bundleId,
+          })
+        : null;
+      const component = this.state.metadata.threads
+        .flatMap((thread) => thread.components)
+        .find((component) => component.id === parsed.componentId);
+      if (
+        epoch !== this.state.epoch ||
+        !component ||
+        component.revision !== parsed.revision
+      )
+        throw new Error(
+          "This component changed. Read its latest state before updating it.",
+        );
+      if (parsed.data !== undefined) checkComponentValue(parsed.data);
+      if (parsed.state !== undefined) checkComponentValue(parsed.state);
+      const updated = componentSchema.parse({
+        ...component,
+        bundleId: parsed.bundleId ?? component.bundleId,
+        title: bundle?.manifest.title ?? component.title,
+        data: parsed.data === undefined ? component.data : parsed.data,
+        state: parsed.state === undefined ? component.state : parsed.state,
+        hidden: parsed.hidden ?? component.hidden,
+        revision: component.revision + 1,
+      });
+      this.changed({
+        ...this.state.metadata,
+        threads: this.state.metadata.threads.map((thread) => ({
+          ...thread,
+          components:
+            method === "component_unmount"
+              ? thread.components.filter(
+                  (candidate) => candidate.id !== component.id,
+                )
+              : thread.components.map((candidate) =>
+                  candidate.id === component.id ? updated : candidate,
+                ),
+        })),
+      });
+      await this.recover();
+      return method === "component_unmount" ? { removed: true } : updated;
+    }
     if (method === "ui_state") {
       z.object({}).strict().parse(parameters);
       const geometry = [
@@ -1127,6 +1368,11 @@ export class DocumentSession {
         dirty: this.state.dirty,
         externalChange: this.state.externalChange,
         geometry,
+        components: [...componentRuntimes].map(([id, runtime]) => ({
+          id,
+          status: runtime.status,
+          error: runtime.error,
+        })),
       };
     }
     if (method === "window_resize") {
@@ -1367,6 +1613,7 @@ export class DocumentSession {
         createdRevision: parsed.revision,
         createdAt: new Date().toISOString(),
         resolved: false,
+        components: [],
         anchorSuggestions: [],
         messages: [
           {

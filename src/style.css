@@ -1084,3 +1084,34 @@ html[data-active="false"] *::after {
   margin: -16px -16px 9px;
   border-bottom: 1px solid var(--line-soft);
 }
+
+.component-card {
+  margin: 16px 0;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  overflow: hidden;
+  background: var(--paper);
+}
+.component-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 9px 10px 9px 13px;
+  border-bottom: 1px solid var(--line-soft);
+  color: var(--muted);
+  font-size: 11px;
+}
+.component-card iframe {
+  display: block;
+  width: 100%;
+  border: 0;
+  background: transparent;
+}
+.component-error,
+.component-card > .quiet-note {
+  padding: 10px 13px;
+}
+.component-error p {
+  margin: 0 0 8px;
+}

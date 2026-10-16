@@ -15,7 +15,11 @@ export type EventKind =
   | "conversation.updated"
   | "anchor.detached"
   | "anchor.reattached"
-  | "connection.changed";
+  | "connection.changed"
+  | "component.mounted"
+  | "component.updated"
+  | "component.removed"
+  | "component.event";
 
 export interface EventInput {
   id: string;
@@ -51,6 +55,33 @@ export function planAutomation(
     const before = previous.threads.find(
       (candidate) => candidate.id === thread.id,
     );
+    for (const component of thread.components) {
+      const earlier = before?.components.find(
+        (candidate) => candidate.id === component.id,
+      );
+      if (!earlier || earlier.revision !== component.revision)
+        events.push(
+          createEvent(
+            next,
+            earlier ? "component.updated" : "component.mounted",
+            {
+              threadId: thread.id,
+              componentId: component.id,
+              bundleId: component.bundleId,
+              componentRevision: component.revision,
+            },
+          ),
+        );
+    }
+    for (const component of before?.components ?? []) {
+      if (!thread.components.some((candidate) => candidate.id === component.id))
+        events.push(
+          createEvent(next, "component.removed", {
+            threadId: thread.id,
+            componentId: component.id,
+          }),
+        );
+    }
     if (
       !before ||
       before.resolved !== thread.resolved ||

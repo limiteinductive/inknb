@@ -1,0 +1,132 @@
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>Evidence browser</title>
+    <style>
+      body {
+        padding: 14px;
+      }
+      h1 {
+        font: 500 12px/1.4 var(--interface-font);
+        margin: 0 0 12px;
+        color: var(--muted);
+      }
+      label {
+        display: block;
+        font-size: 11px;
+        color: var(--muted);
+        margin-bottom: 6px;
+      }
+      select {
+        width: 100%;
+        padding: 7px 9px;
+        background: var(--surface);
+        border: 1px solid var(--line);
+        border-radius: 5px;
+      }
+      .metrics {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 12px;
+        margin: 18px 0;
+      }
+      .value {
+        font: 27px/1.2 var(--writing-font);
+        font-variant-numeric: tabular-nums;
+      }
+      .caption {
+        font-size: 10px;
+        color: var(--muted);
+        margin-top: 4px;
+      }
+      .bar {
+        height: 4px;
+        background: var(--line-soft);
+        border-radius: 3px;
+        margin: 12px 0 16px;
+        overflow: hidden;
+      }
+      .bar span {
+        display: block;
+        height: 100%;
+        background: var(--accent);
+        border-radius: 3px;
+        transition: width var(--reveal);
+      }
+      button {
+        padding: 7px 10px;
+        border: 1px solid var(--accent-line);
+        border-radius: 5px;
+        background: var(--accent-wash);
+        color: var(--accent);
+        width: 100%;
+      }
+      #status {
+        font-size: 11px;
+        color: var(--muted);
+        margin: 10px 0 0;
+        min-height: 18px;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>Watering schedules</h1>
+    <label for="schedule">Schedule</label>
+    <select id="schedule" aria-label="Schedule"></select>
+    <div class="metrics">
+      <div>
+        <div class="value" id="water"></div>
+        <div class="caption">litres per week</div>
+      </div>
+      <div>
+        <div class="value" id="plants"></div>
+        <div class="caption">plants observed</div>
+      </div>
+    </div>
+    <div class="bar" aria-hidden="true"><span id="bar"></span></div>
+    <button id="inspect">Ask about this result</button>
+    <p id="status" role="status"></p>
+    <script>
+      const schedule = document.getElementById("schedule");
+      inknb.subscribe((context) => {
+        const rows = context.data.schedules ?? [];
+        schedule.replaceChildren(
+          ...rows.map((row) => {
+            const option = document.createElement("option");
+            option.value = row.name;
+            option.textContent = row.name;
+            return option;
+          }),
+        );
+        schedule.value = context.state.selected ?? rows[0]?.name ?? "";
+        const row = rows.find((row) => row.name === schedule.value);
+        document.getElementById("water").textContent = row?.water ?? "0";
+        document.getElementById("plants").textContent = row?.plants ?? "0";
+        document.getElementById("status").textContent =
+          context.data.answer?.schedule === schedule.value
+            ? context.data.answer.text
+            : "";
+        document.getElementById("bar").style.width =
+          `${Math.min(100, (Number(row?.water ?? 0) / 30) * 100)}%`;
+      });
+      schedule.addEventListener("change", async () => {
+        try {
+          await inknb.setState({ selected: schedule.value });
+          document.getElementById("status").textContent = "Selection saved.";
+        } catch (error) {
+          document.getElementById("status").textContent = String(error);
+        }
+      });
+      document.getElementById("inspect").addEventListener("click", async () => {
+        try {
+          await inknb.emit("inspect-result", { schedule: schedule.value });
+          document.getElementById("status").textContent =
+            "Sent to the evidence backend.";
+        } catch (error) {
+          document.getElementById("status").textContent = String(error);
+        }
+      });
+    </script>
+  </body>
+</html>

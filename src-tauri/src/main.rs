@@ -129,6 +129,22 @@ fn find_executable(name: &str) -> Option<String> {
 }
 
 #[tauri::command]
+async fn component_info(
+    bundle_id: String,
+) -> Result<inknb_core::components::RegisteredComponent, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let directory = application_directory()?;
+        let bundle = inknb_core::components::load(&directory, &bundle_id)?;
+        Ok(inknb_core::components::RegisteredComponent {
+            bundle_id,
+            manifest: bundle.manifest,
+        })
+    })
+    .await
+    .map_err(|error| error.to_string())?
+}
+
+#[tauri::command]
 async fn read_document(path: String) -> Result<LoadedDocument, String> {
     tauri::async_runtime::spawn_blocking(move || load_document(Path::new(&path)))
         .await
@@ -692,8 +708,18 @@ async fn serve_connection(
                 return Err("This tool takes no parameters.".into());
             }
             Ok(
-                json!({"version":1,"transport":"unix-json-lines","socketPath":socket_path()?,"eventDelivery":"at-least-once","streamMethod":"events_subscribe","tools":inknb_core::protocol::tools()}),
+                json!({"version":1,"transport":"unix-json-lines","socketPath":socket_path()?,"eventDelivery":"at-least-once","streamMethod":"events_subscribe","componentGuide":include_str!("../../docs/components.md"),"tools":inknb_core::protocol::tools()}),
             )
+        } else if method == "component_register" {
+            #[derive(Deserialize)]
+            #[serde(deny_unknown_fields)]
+            struct Registration { path: String }
+            let registration: Registration = serde_json::from_value(request.params).map_err(|error| error.to_string())?;
+            tauri::async_runtime::spawn_blocking(move || {
+                let directory = application_directory()?;
+                inknb_core::components::register(&directory, Path::new(&registration.path))
+                    .and_then(|bundle| serde_json::to_value(bundle).map_err(|error| error.to_string()))
+            }).await.map_err(|error| error.to_string())?
         } else if method == "request_delivery" {
             #[derive(Deserialize)]
             #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -863,6 +889,78 @@ fn main() {
     let events = EventStore::open(&directory).expect("The automation journal could not be opened.");
     let app = tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri::plugin::Builder::<tauri::Wry>::new("component-navigation")
+            .on_navigation(|_, url| {
+                matches!(url.scheme(), "tauri" | "inknb-component" | "about")
+                    || (cfg!(debug_assertions) && url.scheme() == "http" && url.host_str() == Some("127.0.0.1") && url.port() == Some(1420))
+            }).build())
+        .register_asynchronous_uri_scheme_protocol("inknb-component", |_, request, responder| {
+            tauri::async_runtime::spawn_blocking(move || {
+                let result = (|| -> Result<(Vec<u8>, &str), String> {
+                    if request.method() != "GET" {
+                        return Err("Use GET for component assets.".into());
+                    }
+                    let path = percent_encoding::percent_decode_str(request.uri().path())
+                        .decode_utf8()
+                        .map_err(|error| error.to_string())?;
+                    if path == "/runtime/v1.js" {
+                        return Ok((
+                            include_bytes!("../../component-runtime/runtime.js").to_vec(),
+                            "text/javascript",
+                        ));
+                    }
+                    let (identity, file) = path
+                        .trim_start_matches('/')
+                        .split_once('/')
+                        .ok_or("Unknown component asset.")?;
+                    if Path::new(file)
+                        .components()
+                        .any(|part| !matches!(part, std::path::Component::Normal(_)))
+                    {
+                        return Err("Invalid component asset path.".into());
+                    }
+                    let bundle = inknb_core::components::load(&application_directory()?, identity)?;
+                    let bytes = bundle
+                        .files
+                        .get(file)
+                        .ok_or("Unknown component asset.")?
+                        .clone();
+                    let mime = match Path::new(file)
+                        .extension()
+                        .and_then(|extension| extension.to_str())
+                        .unwrap_or_default()
+                    {
+                        "html" => "text/html; charset=utf-8",
+                        "js" | "mjs" => "text/javascript",
+                        "css" => "text/css",
+                        "svg" => "image/svg+xml",
+                        "png" => "image/png",
+                        "jpg" | "jpeg" => "image/jpeg",
+                        "webp" => "image/webp",
+                        "woff2" => "font/woff2",
+                        "json" => "application/json",
+                        _ => "application/octet-stream",
+                    };
+                    if file == bundle.manifest.entry {
+                        let mut html = br#"<!doctype html><script src="inknb-component://localhost/runtime/v1.js"></script>"#.to_vec();
+                        html.extend(bytes);
+                        return Ok((html, mime));
+                    }
+                    Ok((bytes, mime))
+                })();
+                let (status, bytes, mime) = match result {
+                    Ok((bytes, mime)) => (200, bytes, mime),
+                    Err(_) => (404, b"Component unavailable".to_vec(), "text/plain"),
+                };
+                let response = tauri::http::Response::builder().status(status)
+                .header("Content-Type", mime)
+                .header("Access-Control-Allow-Origin", "*")
+                .header("X-Content-Type-Options", "nosniff")
+                .header("Content-Security-Policy", "default-src 'none'; script-src inknb-component: 'unsafe-inline'; style-src inknb-component: 'unsafe-inline'; img-src inknb-component: data: blob:; font-src inknb-component: data:; connect-src 'none'; frame-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'; sandbox allow-scripts")
+                .body(bytes).unwrap();
+                responder.respond(response);
+            });
+        })
         .manage(DesktopState {
             directory,
             persistence: Mutex::new(()),
@@ -874,6 +972,7 @@ fn main() {
         })
         .invoke_handler(tauri::generate_handler![
             bootstrap,
+            component_info,
             read_document,
             write_recovery,
             publish_events,

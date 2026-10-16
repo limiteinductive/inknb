@@ -99,6 +99,10 @@ impl EventStore {
                 "anchor.detached",
                 "anchor.reattached",
                 "connection.changed",
+                "component.mounted",
+                "component.updated",
+                "component.removed",
+                "component.event",
             ]
             .contains(&event.kind.as_str())
             {

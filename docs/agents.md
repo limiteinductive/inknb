@@ -62,3 +62,11 @@ Use `figure_propose` and `table_propose` to prepare insertions from actual asset
 External backends use `events_read`, `events_ack`, and the `events_subscribe` socket stream. The CLI offers `watch` and `hook`. See [the automation contract](automation.md).
 
 A failed send remains visible to the agent in the work queue. Call `request_retry` only after confirming that the earlier attempt did not queue. A completed reply is idempotent by message ID.
+
+## Interactive components
+
+Read `protocol_info.componentGuide` for the package and runtime contract. Build the package in your external environment. Register compiled local assets with `component_register`. Mount an instance on an open aside, then use `component_read` and `component_update` for state and code changes.
+
+Use `ui_inspect` before `ui_action`. Act on returned control identities and the current document. Native acceptance and permission controls remain human actions. Inspect a rendered screenshot after each meaningful UI change.
+
+Component events use the durable event stream. External hooks handle backend work and write results through the same component tools. Component events confer no manuscript edit grants.

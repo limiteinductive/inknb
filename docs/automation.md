@@ -114,4 +114,10 @@ Use `figure_propose` and `table_propose` for requested insertions. `document_mov
 
 Read the current document before acting on an event. Events describe a committed observation. A newer document revision can supersede it.
 
-Annotation format 2 reads format 1 sidecars directly. Earlier app releases do not understand maintenance requests in format 2.
+Annotation format 3 reads formats 1 and 2. Earlier app releases do not preserve component instances.
+
+## Component events
+
+`component.mounted` and `component.updated` include `threadId`, `componentId`, `bundleId`, and `componentRevision`. `component.removed` includes the thread and component identities. `component.event` includes `componentId`, `name`, `payload`, and `componentRevision`.
+
+Read current component state before handling an interaction. Use its revision with `component_update`. The [component contract](components.md) defines the local runtime and UI tools.

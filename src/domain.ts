@@ -39,6 +39,18 @@ export const messageSchema = z.object({
     .optional(),
 });
 
+export const componentSchema = z.object({
+  id: z.string().uuid(),
+  bundleId: z.string().regex(/^[a-f0-9]{64}$/),
+  title: z.string(),
+  revision: z.number().int().nonnegative(),
+  data: z.json(),
+  state: z.json(),
+  hidden: z.boolean(),
+});
+
+export type ComponentInstance = z.infer<typeof componentSchema>;
+
 export const threadSchema = z.object({
   id: z.string().uuid(),
   anchor: anchorSchema,
@@ -47,6 +59,7 @@ export const threadSchema = z.object({
   createdAt: z.string(),
   resolved: z.boolean(),
   messages: z.array(messageSchema),
+  components: z.array(componentSchema).default([]),
   anchorSuggestions: z
     .array(
       z.object({
@@ -116,7 +129,9 @@ export const proposalSchema = z.object({
 });
 
 export const metadataSchema = z.object({
-  version: z.union([z.literal(1), z.literal(2)]).transform(() => 2 as const),
+  version: z
+    .union([z.literal(1), z.literal(2), z.literal(3)])
+    .transform(() => 3 as const),
   documentId: z.string().uuid(),
   revision: z.number().int().nonnegative(),
   documentHash: z.string(),
@@ -177,7 +192,7 @@ export const defaultPreferences: Preferences = {
 
 export function createMetadata(): Metadata {
   return {
-    version: 2,
+    version: 3,
     documentId: crypto.randomUUID(),
     revision: 0,
     documentHash: "",
@@ -365,6 +380,7 @@ export function createConversation(
     createdAt,
     resolved: false,
     messages: [message],
+    components: [],
     anchorSuggestions: [],
   };
   const request: AgentRequest = {

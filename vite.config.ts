@@ -16,11 +16,16 @@ const sources = [
   "src-tauri/tauri.conf.json",
   "app-icon.svg",
   "vite.config.ts",
-  ...["src", "crates", "src-tauri/src", "src-tauri/capabilities"].flatMap(
-    (directory) =>
-      readdirSync(directory, { recursive: true }).map((entry) =>
-        path.join(directory, String(entry)),
-      ),
+  ...[
+    "src",
+    "crates",
+    "src-tauri/src",
+    "src-tauri/capabilities",
+    "component-runtime",
+  ].flatMap((directory) =>
+    readdirSync(directory, { recursive: true }).map((entry) =>
+      path.join(directory, String(entry)),
+    ),
   ),
 ].sort();
 for (const source of sources) {

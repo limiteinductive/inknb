@@ -50,6 +50,12 @@ External backends can subscribe to local events, replay missed work, and post an
 
 See [the automation contract](docs/automation.md) and [the figure-reference backend](examples/check-figure-references.mjs).
 
+## Build components
+
+Agents can register local HTML, CSS, and JavaScript packages and attach interactive components to asides. Data, state, and code updates work while the app runs. Components inherit the writing theme and use the existing margin or inline layout.
+
+`ui_inspect` and `ui_action` expose navigation and component controls. Native edit acceptance and permission grants stay under human control. See [the component contract](docs/components.md), [the evidence component](examples/evidence-component), and [its external backend](examples/evidence-backend.mjs).
+
 ## Local data
 
 Markdown stays in the file you opened. `<filename>.aside.json` stores conversations, request permissions, proposed edits, and source fingerprints. Keep both files when moving a document.

@@ -18,7 +18,7 @@ CodeMirror applies local typing immediately. Serialized persistence snapshots fo
 
 ## Files
 
-The document remains a UTF-8 Markdown file. The adjacent `<filename>.aside.json` sidecar uses annotation format 2. It reads format 1 directly and stores a versioned document identity, annotations, requests, proposals, and provenance. A recovery snapshot contains the latest unsaved text and metadata.
+The document remains a UTF-8 Markdown file. The adjacent `<filename>.aside.json` sidecar uses annotation format 3. It reads formats 1 and 2 directly and stores a versioned document identity, annotations, requests, proposals, and provenance. A recovery snapshot contains the latest unsaved text and metadata.
 
 Writes use temporary files and atomic replacement. Recovery remains available until the document and sidecar both persist. External changes compare against the last saved fingerprint. Conflicting changes require an explicit reconciliation action in the app.
 
@@ -59,6 +59,16 @@ Human and maintenance requests share one queue. Maintenance work permits replies
 Pending proposals follow unrelated edits. Changes to their passage create refresh work. Source changes create fingerprint-scoped reviews. Detached passages receive exact or human-confirmed attachment candidates.
 
 Document moves retain recovery journals until files and events commit. Local figure and document references inside the document folder retain their relative paths.
+
+## Agent components
+
+The component design is `long-term`. Immutable local packages define interactive HTML, CSS, and JavaScript. Package registration stores content by fingerprint. Sidecars store instance references, data, state, and component revisions.
+
+Instances belong to asides and use their existing anchors and placement. Components publish durable events for external backends. The host serializes state updates with revision preconditions. Mounting and data updates preserve the manuscript and cursor.
+
+The host serves package assets through a custom protocol. Sandboxed frames receive an explicit bridge for context, state, and events. Components have no native command or manuscript access. Host UI actions expose a declared set of navigation controls. Human edit acceptance and permission controls remain excluded.
+
+See [the component contract](components.md) for the runtime API and package format.
 
 ## Interface
 

@@ -245,6 +245,9 @@ export function createEditor(
       ],
     }),
   });
+  view.scrollDOM.setAttribute("aria-label", "Writing surface");
+  view.scrollDOM.dataset.inknbControl = "manuscript";
+  view.scrollDOM.dataset.inknbScroll = "true";
   session.view = view;
   return view;
 }

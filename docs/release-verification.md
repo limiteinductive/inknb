@@ -1,61 +1,66 @@
 # Release verification
 
-Version: 0.2.0. Build: `0.2.0+7d38569352c4`. Date: 2026-10-15.
+Version: 0.3.0. Build: `0.3.0+fb8580b3b8e9`. Date: 2026-10-15.
 
-Agents now receive source reviews, proposal refreshes, and anchor repairs through the existing request queue. Maintenance requests permit replies and proposals. They grant no direct prose edit permission.
+Agents can load custom interactive components and operate declared UI controls. Components attach to asides and retain their data and state. Code updates require no desktop rebuild.
 
-## Live workflows
+## Live component workflow
 
-A real existing Codex session joined a synthetic manuscript through the packaged CLI. An unrelated insertion preserved a pending suggestion at its new position. Changing the suggested passage queued refresh work. Codex read the current text and returned a replacement proposal. Acceptance and Undo worked through the desktop app.
+A local evidence package loaded into a synthetic document. Native input selected a schedule and saved its state. Agent UI actions selected another schedule. A backend hook received the component event and returned an answer into the same card. The manuscript stayed unchanged.
 
-Two changes to a local CSV created separate fingerprint-scoped reviews. Codex read each file version and explained the new plant count and water use beside the affected paragraph. It identified missing comparison data and replication evidence. The prose stayed under human control.
+A new package fingerprint replaced the live code. Data and selection survived. The desktop build identity stayed unchanged. A local module package also loaded relative JavaScript imports and used the runtime's ready promise.
 
-Replacing a conclusion detached its discussion. Codex returned a candidate for the new conclusion. The native app showed that candidate for human confirmation. Confirmation reattached the discussion and completed its repair request.
+A real existing Codex session read the component contract and registered the package through MCP. It selected Daily, requested a backend result, and inspected a rendered screenshot. The backend returned four plants and 21 litres. Codex verified that text, revision, permissions, and proposals stayed unchanged.
 
-Figure and table tools prepared pending insertions without changing prose. Maintenance work could not use direct edits. A document move preserved the Markdown, annotations, and local references, including an asset in a pending proposal.
+A source-frame probe could not read the parent document or access the native bridge. A reachable loopback server received no requests from a fetch attempt or remote navigation. The frame remained in standards mode.
 
-An independent Node backend subscribed through `inknb hook`. It posted a missing-figure finding and resolved its own finding after the file became available. Its named checkpoint survived app restarts. A separate handler failed once, received the same event identity again, and acknowledged it after success.
+An intentionally failing component showed a local error. Other components stayed ready. Replacing the failing code restored its card.
 
 ## Checks
 
-| Check                            | Result                                                            |
-| -------------------------------- | ----------------------------------------------------------------- |
-| TypeScript and release build     | Passed                                                            |
-| Frontend behavior tests          | 17 passed                                                         |
-| Rust storage and event tests     | 6 passed                                                          |
-| Rust Clippy with warnings denied | Passed                                                            |
-| Packaged MCP server              | Version 0.2.0, 26 tools                                           |
-| Event replay                     | Stable IDs, duplicate rejection, durable checkpoints              |
-| Delivery receipts                | Completed sends preserved; uncertain sends require reconciliation |
-| Source review guards             | Newer fingerprints and generic reply bypass rejected              |
-| Proposal refresh                 | Unrelated typing preserved; affected text requested refresh       |
-| External annotations             | Read-only findings; human discussions protected                   |
-| Document move                    | Markdown, sidecar, relative assets, and recovery verified         |
+| Check                                  | Result                                                                     |
+| -------------------------------------- | -------------------------------------------------------------------------- |
+| TypeScript and release build           | Passed                                                                     |
+| Frontend behavior tests                | 19 passed                                                                  |
+| Rust storage, event, and package tests | 7 passed                                                                   |
+| Rust Clippy with warnings denied       | Passed                                                                     |
+| MCP tools                              | Version 0.3.0, 33 tools                                                    |
+| Package registration                   | Immutable capture; symbolic links rejected                                 |
+| Component state                        | Saved, revision guarded, and preserved after code updates                  |
+| Backend integration                    | Durable interaction event and visible response                             |
+| Agent UI actions                       | Host navigation and component input verified                               |
+| Human controls                         | Acceptance, permission grants, message submission, and resolution excluded |
+| UI preconditions                       | Stale snapshots rejected                                                   |
+| Isolation                              | Parent access, native bridge, network, and remote navigation blocked       |
 
-The interface and package checks below identify the final build. Earlier connection evidence remains in [version 0.1.2](release-0.1.2.md).
+Earlier automation evidence remains in [version 0.2.0](release-0.2.0.md). The final package and layout checks appear below.
 
 ## Compatibility
 
-Annotation format 2 reads format 1 sidecars. Earlier app releases cannot read the new maintenance requests. Keep the current app when using updated annotations.
+Annotation format 3 reads formats 1 and 2. Earlier app versions do not preserve component instances. Registered code remains in local application support data. Sidecars contain references and state.
 
-The event journal stays in local application support data. It uses SQLite with full synchronization. The protocol uses the existing same-user Unix socket. It opens no TCP listener.
+The component guide is available through `protocol_info.componentGuide`. Agents keep build tools, dependencies, models, credentials, and backend processes in their external environment.
 
 This Apple Silicon build uses ad hoc signing. It has no Developer ID notarization. Claude channel support remains unverified on this machine.
 
 ## Final package and interface
 
-The installed build preserved the complete synthetic document across restart. The document identity, revision, path, text, and metadata matched exactly. The packaged MCP server exposed all 26 tools. An unsupported socket version returned an explicit error.
+The final build repeated the real Codex interaction through MCP. It preserved manuscript text, hash, revision, permissions, proposals, and messages. Concurrent mount retries created one instance. Complete saved metadata matched after restart.
 
-Native computer use exercised the conversation, source disclosure, scrolling, menus, and a new document. The sticky conversation heading retained Resolve and Close controls. Screenshots received visual inspection at 1180 by 820 and 700 by 480.
+A failing frame emitted four timer events before its error. Its event count stayed at four after the host stopped the frame. Corrected code restored the instance. Agent actions also entered and left focus mode.
 
-The final review used Dark appearance. Automatic approval review rejected a temporary Light appearance check. Dark stayed unchanged. The earlier light appearance review remains in version 0.1.2.
+Native computer use checked the selector, settings, placement controls, and document menu. Margin and inline screenshots received visual inspection at 1180 by 820. The compact margin received inspection at 700 by 480. Dark appearance and the original writing preferences remained unchanged.
 
-The extracted release archive passed local signature verification. Its desktop and CLI binaries matched the installed app. The personal GitHub repository remained private. The app was left on an empty document after the synthetic checks.
+The extracted archive passed local signature verification. Its CLI and desktop binaries matched the installed app. The app was left on an empty document. No component frames or test backend processes remained open.
 
-![Reviewed source beside the manuscript](screenshots/inknb-automation-final-dark.png)
+![Interactive component and backend answer in the margin](screenshots/inknb-components-margin.png)
 
-Capture: `6ae4f552-98a1-4a3d-a7f0-99e606221ba1`.
+Capture: `06757cc7-8289-4209-b606-0f05e8e4b1d4`.
 
-![Compact margin conversation](screenshots/inknb-automation-compact-dark.png)
+![The same component inline](screenshots/inknb-components-inline.png)
 
-Capture: `f903b469-10e9-4419-8dd9-f0aa3f182e1b`.
+Capture: `70274550-9fd6-4dd7-be9e-875375869f52`.
+
+![Compact component layout](screenshots/inknb-components-compact.png)
+
+Capture: `da173bc3-8cf1-4905-a955-5723e45dc87f`.

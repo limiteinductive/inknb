@@ -128,7 +128,7 @@ describe("writing maintenance", () => {
     delete serialized.requests[0].trigger;
     delete serialized.threads[0].anchorSuggestions;
     const loaded = metadataSchema.parse(serialized);
-    expect(loaded.version).toBe(2);
+    expect(loaded.version).toBe(3);
     expect(loaded.requests[0].trigger.kind).toBe("human");
     expect(loaded.threads[0].anchorSuggestions).toEqual([]);
   });
