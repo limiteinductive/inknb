@@ -8,6 +8,22 @@ export const selectConversation = StateEffect.define<{
   identity: string | null;
   inline: boolean;
 }>();
+export const setSelectionAction = StateEffect.define<
+  "hidden" | "selecting" | "ready"
+>();
+export const selectionActionField = StateField.define<
+  "hidden" | "selecting" | "ready"
+>({
+  create: () => "hidden",
+  update(value, transaction) {
+    let next = value;
+    if (transaction.docChanged) next = "hidden";
+    else if (transaction.selection && next !== "selecting") next = "ready";
+    for (const effect of transaction.effects)
+      if (effect.is(setSelectionAction)) next = effect.value;
+    return next;
+  },
+});
 export const recordAgentEdit = StateEffect.define<{
   identity: string;
   status: "applied" | "undone";

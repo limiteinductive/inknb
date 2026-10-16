@@ -76,3 +76,25 @@ TypeScript, the release build, formatting, and all 19 existing frontend tests pa
 ![Conversation border after scrolling](screenshots/inknb-corner.png)
 
 Capture: `4a0c36db-ed2e-454e-9065-4a48f54a2239`. Compact capture: `58c0e0c4-465c-4b84-8da9-1b350fe65ff3`.
+
+## Selection action, version 0.3.2
+
+Build: `0.3.2+e0220bddab73`. Date: 2026-10-15.
+
+A completed selection exposes a speech bubble action beside the text. Its icon matches the header. Activation preserves the selection and focuses the request box. Repeated activation also focuses an existing draft.
+
+TypeScript, formatting, the release build, and all 19 existing frontend tests passed. Native computer use checked keyboard selection, selection clearing, and Escape. Local UI tools checked activation, selection offsets, repeated focus, and unchanged document data.
+
+Screenshots received visual inspection at 1180 by 820 and 700 by 480. Wrapped selections use their full bounds for placement. A selection that fills the viewport keeps the action near its active end.
+
+The final checks used a separate synthetic document. The original sample document, saved aside, and writing preferences remained intact. WebKit snapshots omit native selection paint. Live selection offsets provide the selection evidence.
+
+Drafts currently use the live editor selection until submission. Fixed draft anchors and linked message references remain proposed changes.
+
+![Selection bubble beside the passage](screenshots/inknb-selection-bubble.png)
+
+Capture: `52ce393f-702d-4238-a489-88f23fa54de9`.
+
+![Selection bubble in a compact window](screenshots/inknb-selection-compact.png)
+
+Capture: `4a7aa86a-c3ba-4963-a288-def7e3786976`. Large selection capture: `f7f86bb1-249c-428f-a7e1-1a6ed4b6cf73`.

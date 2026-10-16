@@ -39,6 +39,7 @@ import {
   recordAgentEdit,
   restoreAnchors,
   selectConversation,
+  setSelectionAction,
 } from "./text-state";
 
 interface LoadedDocument {
@@ -533,10 +534,13 @@ export class DocumentSession {
   selectThread(identity: string | null): void {
     this.update({ activeThread: identity, composer: false });
     this.view?.dispatch({
-      effects: selectConversation.of({
-        identity,
-        inline: this.state.preferences.placement === "inline",
-      }),
+      effects: [
+        selectConversation.of({
+          identity,
+          inline: this.state.preferences.placement === "inline",
+        }),
+        setSelectionAction.of("hidden"),
+      ],
     });
     const thread = this.state.metadata.threads.find(
       (thread) => thread.id === identity,
@@ -551,12 +555,16 @@ export class DocumentSession {
 
   startComment(): void {
     this.view?.dispatch({
-      effects: selectConversation.of({
-        identity: null,
-        inline: this.state.preferences.placement === "inline",
-      }),
+      effects: [
+        selectConversation.of({
+          identity: null,
+          inline: this.state.preferences.placement === "inline",
+        }),
+        setSelectionAction.of("hidden"),
+      ],
     });
     this.update({ composer: true, activeThread: null, focus: false });
+    document.querySelector<HTMLTextAreaElement>(".new-aside textarea")?.focus();
   }
 
   async comment(

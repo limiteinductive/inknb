@@ -80,7 +80,9 @@ Unattached conversations open in the margin in either placement. The writer can 
 
 The text column retains its geometry when a margin thread opens. Typing has no animation. Short transitions identify opened threads and applied changes. Reduced motion removes positional animation.
 
-The editor uses platform-native selection and caret rendering.
+The editor uses platform-native selection and caret rendering. A completed selection exposes one aside action at its active end. CodeMirror owns action placement, clipping, and scrolling. Opening an aside preserves the editor selection and focuses the composer. The interaction design is `long-term`.
+
+The selection action uses the same speech bubble icon as the header. Placement uses the full selection bounds when space is available. Selections that fill the viewport use the active end. Drafts currently use the live editor selection until submission.
 
 The figure picker accepts local files without format restrictions. It inserts an escaped Markdown reference. The document's external build determines format support.
 

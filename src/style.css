@@ -179,6 +179,20 @@ textarea {
 .editor-host .cm-line {
   padding: 0 2px;
 }
+.editor-host .cm-tooltip.selection-aside {
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: var(--surface);
+  box-shadow: 0 3px 14px var(--shadow-strong);
+  color: var(--muted);
+}
+.editor-host .cm-tooltip.selection-aside:hover {
+  background: var(--hover);
+  color: var(--ink);
+}
 .cm-placeholder {
   color: var(--placeholder);
   font-style: italic;
