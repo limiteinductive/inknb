@@ -27,6 +27,7 @@ import {
   TextField,
 } from "react-aria-components";
 import {
+  ArrowLeft,
   ArrowUp,
   Check,
   ChevronDown,
@@ -227,24 +228,22 @@ function Conversation({ identity }: { identity: string }) {
       data-inknb-scroll="true"
       aria-label="Conversation"
     >
-      <div className="thread-heading">
-        <span className="eyebrow">aside</span>
-        <span className="thread-actions">
-          <IconButton
-            icon={Check}
-            label={
-              thread.resolved ? "Reopen conversation" : "Resolve conversation"
-            }
-            active={thread.resolved}
-            onPress={() => session.resolve(identity)}
-          />
-          <IconButton
-            icon={X}
-            label="Close conversation"
-            agentControl="conversation.close"
-            onPress={() => session.selectThread(null)}
-          />
-        </span>
+      <div className="thread-heading conversation-heading">
+        <Button
+          className="text-button"
+          aria-label="Back to asides"
+          data-inknb-control="conversation.close"
+          onPress={() => session.selectThread(null)}
+        >
+          <ArrowLeft size={14} strokeWidth={1.6} aria-hidden="true" />
+          Asides
+        </Button>
+        <Button
+          className="text-button"
+          onPress={() => session.resolve(identity)}
+        >
+          {thread.resolved ? "Reopen" : "Mark done"}
+        </Button>
       </div>
       {thread.anchor.status !== "attached" && (
         <div className="anchor-alert">

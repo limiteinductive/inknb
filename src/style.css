@@ -343,13 +343,19 @@ kbd {
 .thread-heading > .eyebrow:first-child {
   color: var(--accent);
 }
-.thread-actions {
-  display: inline-flex;
-  gap: 0;
+.conversation-heading {
+  margin: -6px -7px 9px;
 }
-.thread-actions .icon-button {
-  height: 25px;
-  width: 25px;
+.conversation-heading .text-button {
+  min-height: 28px;
+  padding: 4px 7px;
+  white-space: nowrap;
+  transition:
+    background var(--feedback),
+    color var(--feedback);
+}
+.conversation-heading .text-button:hover {
+  background: var(--hover);
 }
 .anchor-quote {
   font: italic 12px/1.6 var(--writing-font);

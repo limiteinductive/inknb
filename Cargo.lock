@@ -1533,7 +1533,7 @@ dependencies = [
 
 [[package]]
 name = "inknb"
-version = "0.3.2"
+version = "0.3.3"
 dependencies = [
  "inknb-core",
  "serde_json",
@@ -1541,7 +1541,7 @@ dependencies = [
 
 [[package]]
 name = "inknb-core"
-version = "0.3.2"
+version = "0.3.3"
 dependencies = [
  "dirs 6.0.0",
  "rusqlite",
@@ -1554,7 +1554,7 @@ dependencies = [
 
 [[package]]
 name = "inknb-desktop"
-version = "0.3.2"
+version = "0.3.3"
 dependencies = [
  "base64 0.22.1",
  "block2",

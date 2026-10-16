@@ -98,3 +98,23 @@ Capture: `52ce393f-702d-4238-a489-88f23fa54de9`.
 ![Selection bubble in a compact window](screenshots/inknb-selection-compact.png)
 
 Capture: `4a7aa86a-c3ba-4963-a288-def7e3786976`. Large selection capture: `f7f86bb1-249c-428f-a7e1-1a6ed4b6cf73`.
+
+## Conversation labels, version 0.3.3
+
+Build: `0.3.3+58c43f162c3f`. Date: 2026-10-15.
+
+The conversation header shows Asides with a back arrow. This action returns to the list. Mark done resolves the discussion and becomes Reopen. Both actions retain the conversation and manuscript.
+
+TypeScript, formatting, the release build, and all 19 existing frontend tests passed. Native clicks verified resolution, reopening, and navigation. The local socket confirmed unchanged manuscript text and messages.
+
+Screenshots received visual inspection at 1180 by 820 and 700 by 480. A separate scrolling capture could not complete. The app snapshot guard rejected it, and native screen capture was unavailable.
+
+The original document, annotations, selection, active aside, window size, and writing preferences were restored.
+
+![Labeled conversation controls](screenshots/inknb-header.png)
+
+Capture: `837d1383-ff88-4cd1-bead-76911eb62b3b`.
+
+![Labeled controls in a compact window](screenshots/inknb-header-compact.png)
+
+Capture: `3a8ee2f5-17a4-419c-bcb2-649c1a676c2b`. Resolved capture: `883679ef-dcf3-4d9c-8193-3edf99e521cf`.
