@@ -55,14 +55,18 @@ export default function DocumentOutline({ active }: { active: boolean }) {
     if (!element || !viewport) return;
     const observer = new ResizeObserver((entries) => {
       for (const entry of entries) {
-        if (entry.target === element) setAvailableWidth(entry.contentRect.width);
+        if (entry.target === element) {
+          const reserved = element.closest<HTMLElement>(".document-body")?.dataset.asidesReserved === "true";
+          const proseWidth = state.preferences.line_width + Number.parseFloat(getComputedStyle(element).getPropertyValue("--document-column-inset"));
+          setAvailableWidth(reserved ? Math.min(entry.contentRect.width, proseWidth) : entry.contentRect.width);
+        }
         if (entry.target === viewport) setViewportHeight(entry.contentRect.height);
       }
     });
     observer.observe(element);
     observer.observe(viewport);
     return () => observer.disconnect();
-  }, [active, visible, state.pageVisible]);
+  }, [active, visible, state.pageVisible, state.preferences.line_width]);
   useEffect(() => {
     const viewport =
       container.current?.closest<HTMLElement>(".document-scroll");

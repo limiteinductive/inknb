@@ -100,6 +100,7 @@
   --control-title-size: 14px;
   --control-title-line-height: 20px;
   --writing-width: 620px;
+  --document-column-inset: 104px;
   --feedback: 120ms;
   --reveal: 220ms;
   --navigation-motion: 240ms;

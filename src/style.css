@@ -111,7 +111,7 @@ button,
   background: var(--material-reading);
 }
 .document-body {
-  --document-column-width: calc(var(--writing-width) + 104px);
+  --document-column-width: max(calc(var(--writing-width) + var(--document-column-inset)), var(--table-column-width, 0px));
   --document-layout-width: calc(var(--document-column-width) + var(--aside-card-width) + 72px);
   background: var(--material-reading);
 }

@@ -702,8 +702,10 @@ export class NativeEditor extends NativeDocumentModel {
     host.prepend(this.findDialog);
     this.geometryObserver = new ResizeObserver(() => this.requestMeasure());
     this.geometryObserver.observe(this.dom);
+    this.geometryObserver.observe(host);
     this.dom.addEventListener("scroll", this.onObjectScroll, true);
     this.focusHost = this.dom.closest<HTMLElement>(".document-body");
+    if (this.focusHost) this.geometryObserver.observe(this.focusHost);
     this.focusHost?.addEventListener("inknb-aside-focus", this.onAsideFocus);
     this.selectionActions = window.document.createElement("div");
     this.selectionActions.className = "native-selection-action";
@@ -1071,6 +1073,7 @@ export class NativeEditor extends NativeDocumentModel {
   refresh(): void {
     if (!this.destroyed) {
       this.editor.updateState(this.editor.state);
+      this.measureTables();
       this.positionRegionHighlight();
     }
   }
@@ -1202,8 +1205,23 @@ export class NativeEditor extends NativeDocumentModel {
   }
 
   requestMeasure(): void {
+    this.measureTables();
     this.positionRegionHighlight();
     this.dom.dispatchEvent(new Event("inknb-source-layout", { bubbles: true }));
+  }
+
+  private measureTables(): void {
+    const host = this.dom.parentElement;
+    const workspace = host?.closest<HTMLElement>(".workspace");
+    if (!this.focusHost || !host || !workspace) return;
+    const tables = [...this.dom.querySelectorAll<HTMLTableElement>(
+      ".native-table:not(:is(td, th, li, blockquote) .native-table) > .tableWrapper > table",
+    )].filter(table => table.getClientRects().length > 0);
+    const tableWidth = Math.max(0, ...tables.map(table => table.getBoundingClientRect().width));
+    const inset = workspace.getBoundingClientRect().width - host.getBoundingClientRect().width;
+    const width = `${tables.length ? Math.ceil(tableWidth + inset) : 0}px`;
+    if (this.focusHost.style.getPropertyValue("--table-column-width") !== width)
+      this.focusHost.style.setProperty("--table-column-width", width);
   }
   focus(): void {
     this.editor.focus();
