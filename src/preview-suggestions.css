@@ -68,6 +68,12 @@ del[data-change="removed"] {
   border: 1px solid var(--line-soft, #ecedef);
   border-radius: 8px;
 }
+.change-content > :first-child {
+  margin-block-start: 0;
+}
+.change-content > :last-child {
+  margin-block-end: 0;
+}
 .change-content .tableWrapper {
   max-width: 100%;
   overflow-x: auto;
@@ -100,11 +106,9 @@ del[data-change="removed"] {
 }
 .change-content [data-change="removed"]:not(del) {
   background: color-mix(in srgb, var(--danger, #b64c4c) 7%, transparent);
-  box-shadow: -2px 0 var(--danger, #b64c4c);
 }
 .change-content [data-change="added"]:not(ins) {
   background: color-mix(in srgb, var(--suggestion, #507b5c) 9%, transparent);
-  box-shadow: -2px 0 var(--suggestion, #507b5c);
 }
 .change-content .change-empty {
   color: var(--muted, #717b8c);

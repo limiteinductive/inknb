@@ -1,6 +1,12 @@
 import { useLayoutEffect, useState } from "react";
 import { Button } from "react-aria-components";
-import { Check, ChevronLeft, ChevronRight, ListChecks } from "lucide-react";
+import {
+  Check,
+  ChevronDown,
+  ChevronLeft,
+  ChevronRight,
+  ListChecks,
+} from "lucide-react";
 import { invoke } from "@tauri-apps/api/core";
 import { useAsideSession, useAsideState } from "./use-session";
 import { currentSuggestions, reviewSuggestion } from "./suggestions";
@@ -144,6 +150,16 @@ export function InlineSuggestion({ identity }: { identity: string }) {
       data-inknb-suggestion={identity}
     >
       <div className="inline-suggestion-heading">
+        <IconButton
+          icon={ChevronDown}
+          label="Collapse suggestion"
+          agentControl={`proposal.collapse:${identity}`}
+          onPress={() =>
+            selected.threadId
+              ? session.collapseThread(selected.threadId)
+              : session.update({ reviewProposalId: null })
+          }
+        />
         <span>Suggested change</span>
         <Button
           className="text-button"
@@ -152,17 +168,6 @@ export function InlineSuggestion({ identity }: { identity: string }) {
           data-inknb-control={`proposal.original:${identity}`}
         >
           {original ? "Show suggestion" : "Show original"}
-        </Button>
-        <Button
-          className="text-button"
-          onPress={() =>
-            selected.threadId
-              ? session.collapseThread(selected.threadId)
-              : session.update({ reviewProposalId: null })
-          }
-          data-inknb-control={`proposal.collapse:${identity}`}
-        >
-          Collapse aside
         </Button>
       </div>
       <div
