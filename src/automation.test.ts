@@ -77,6 +77,7 @@ describe("writing maintenance", () => {
       author: "agent",
       createdAt: new Date().toISOString(),
       content: "Initial result.",
+      images: [],
       sources: [
         {
           id: crypto.randomUUID(),
@@ -128,7 +129,7 @@ describe("writing maintenance", () => {
     delete serialized.requests[0].trigger;
     delete serialized.threads[0].anchorSuggestions;
     const loaded = metadataSchema.parse(serialized);
-    expect(loaded.version).toBe(3);
+    expect(loaded.version).toBe(12);
     expect(loaded.requests[0].trigger.kind).toBe("human");
     expect(loaded.threads[0].anchorSuggestions).toEqual([]);
   });

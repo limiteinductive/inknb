@@ -4,15 +4,18 @@ import { invoke } from "@tauri-apps/api/core";
 import { X } from "lucide-react";
 import { componentMessage, componentRuntimes } from "./component-bridge";
 import type { ComponentInstance } from "./domain";
-import { useDocumentSession, useSession } from "./use-session";
+import { useAsideSession, useAsideState } from "./use-session";
+import { showContextMenu } from "./context-menu";
+import { scrollbarTheme } from "./scrollbars";
+import { reportFramePointer } from "./geometry";
 
 export default function ComponentHost({
   instance,
 }: {
   instance: ComponentInstance;
 }) {
-  const session = useDocumentSession();
-  const state = useSession();
+  const session = useAsideSession();
+  const state = useAsideState();
   const frame = useRef<HTMLIFrameElement>(null);
   const [entry, setEntry] = useState<string | null>(null);
   const [height, setHeight] = useState(180);
@@ -86,9 +89,10 @@ export default function ComponentHost({
         revision: component?.revision,
         data: component?.data,
         state: component?.state,
+        scrollbars: scrollbarTheme(),
         theme: {
           appearance: document.documentElement.dataset.theme,
-          reduceMotion: current.preferences.reduceMotion,
+          reduceMotion: current.preferences.reduce_motion,
           tokens: Object.fromEntries(
             [
               "--ink",
@@ -134,6 +138,20 @@ export default function ComponentHost({
       const parsed = componentMessage.safeParse(event.data);
       if (!parsed.success) return;
       const message = parsed.data;
+      if (message.type === "pointerPosition") {
+        reportFramePointer(frame.current, message.top);
+        return;
+      }
+      if (message.type === "contextmenu") {
+        const bounds = frame.current.getBoundingClientRect();
+        void showContextMenu({
+          left: bounds.left + message.left,
+          top: bounds.top + message.top,
+          editable: message.editable,
+          copy: message.copy,
+        }).catch((error) => session.fail(error));
+        return;
+      }
       if (message.type === "ready") {
         if (runtime.status === "error") return;
         clearTimeout(startup);
@@ -243,7 +261,7 @@ export default function ComponentHost({
         <iframe
           key={`${instance.bundleId}:${reload}`}
           ref={frame}
-          title={instance.title}
+          aria-label={instance.title}
           data-inknb-component={instance.id}
           sandbox="allow-scripts"
           referrerPolicy="no-referrer"

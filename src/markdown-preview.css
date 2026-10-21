@@ -1,0 +1,80 @@
+html {
+  background: var(--material-reading);
+  color: var(--ink);
+}
+body {
+  margin: 0;
+}
+* {
+  box-sizing: border-box;
+}
+.rendered-markdown {
+  position: relative;
+  max-width: 720px;
+  margin: 0 auto;
+  padding: 32px clamp(24px, 4vw, 64px) 100px;
+  font: 17px/1.8 var(--writing-font);
+  overflow-wrap: anywhere;
+}
+.rendered-markdown h1 {
+  font-size: 34px;
+  font-weight: 500;
+  letter-spacing: -0.6px;
+  line-height: 1.3;
+}
+.rendered-markdown h2 {
+  font-size: 25px;
+  font-weight: 500;
+}
+.rendered-markdown pre {
+  font: 12px/1.7 var(--mono-font);
+  white-space: pre-wrap;
+  padding: 14px;
+  background: var(--hover);
+}
+.markdown-table {
+  position: relative;
+  left: 50%;
+  width: max-content;
+  min-width: 100%;
+  max-width: calc(100vw - 48px);
+  margin-block: 1.5em;
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+  transform: translateX(-50%);
+}
+.markdown-table:focus-visible {
+  box-shadow: inset 0 -1px var(--accent-line);
+}
+.rendered-markdown table {
+  border-collapse: collapse;
+  width: max-content;
+  min-width: 100%;
+  font-size: 13px;
+  overflow-wrap: normal;
+  word-break: normal;
+}
+.rendered-markdown td,
+.rendered-markdown th {
+  border-bottom: 1px solid var(--line);
+  padding: 8px;
+  text-align: left;
+  vertical-align: top;
+}
+.markdown-table-cell {
+  display: inline-block;
+  width: max-content;
+  min-width: min-content;
+  max-width: 32ch;
+  vertical-align: top;
+}
+.rendered-markdown img {
+  max-width: 100%;
+}
+.rendered-markdown a {
+  color: var(--accent);
+}
+.suggestion-removal {
+  color: var(--suggestion);
+  font: 13px/1.6 var(--interface-font, system-ui);
+}

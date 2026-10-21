@@ -1,7 +1,7 @@
 import { useSyncExternalStore } from "react";
 import { ArrowLeft, ArrowRight, PanelLeft } from "lucide-react";
 import IconButton from "./IconButton";
-import { workspace } from "./workspace";
+import { workspace } from "./window-workspace";
 
 export default function DocumentNavigation({
   onNavigate,

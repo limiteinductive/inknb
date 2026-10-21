@@ -2,21 +2,85 @@
   color-scheme: light;
   --paper: #f9f8f2;
   --surface: #fdfcf8;
+  --paper-grain: url("./assets/paper-grain.svg");
+  --paper-light: #ffffff14;
+  --paper-shade: #76684c06;
+  --paper-texture:
+    linear-gradient(135deg, var(--paper-light), var(--paper-shade)),
+    var(--paper-grain);
+  --paper-reading-texture:
+    linear-gradient(
+      color-mix(in srgb, var(--surface) 80%, transparent),
+      color-mix(in srgb, var(--surface) 80%, transparent)
+    ),
+    var(--paper-grain);
+  --paper-note-texture:
+    linear-gradient(
+      color-mix(in srgb, var(--surface) 15%, transparent),
+      color-mix(in srgb, var(--surface) 15%, transparent)
+    ),
+    var(--paper-grain);
+  --material-reading: var(--paper-reading-texture), var(--surface);
+  --material-note: var(--paper-note-texture), var(--surface);
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-6: 24px;
+  --space-8: 32px;
+  --text-body-size: 13px;
+  --text-body-height: 20px;
+  --text-detail-size: 12px;
+  --text-detail-height: 16px;
+  --text-heading-size: 14px;
+  --text-heading-height: 20px;
+  --text-section-size: 16px;
+  --text-section-height: 24px;
+  --weight-medium: 500;
+  --weight-heading: 600;
+  --panel-inset: var(--space-4);
+  --panel-width: 360px;
+  --panel-width-wide: 440px;
+  --control-small-height: 28px;
+  --control-row-height: 32px;
+  --menu-min-width: 208px;
+  --menu-max-width: 320px;
+  --radius-control: 6px;
+  --radius-card: 12px;
+  --radius-panel: 12px;
+  --elevation-card: 0 4px 16px var(--shadow);
+  --elevation-panel: 0 8px 24px var(--shadow);
+  --toolbar-glint: #ffffffb3;
+  --toolbar-surface: #eeece3;
+  --toolbar-divider: #c9c8bf;
+  --toolbar-edge: #303b5214;
+  --toolbar-shadow: #17213a0a;
+  --library-surface: var(--paper);
+  --library-selected: #eee1ab66;
+  --library-selection-accent: #887139;
+  --library-hover: #26324706;
+  --library-line: #2b3c5818;
+  --library-muted: #5d6573;
   --ink: #2d3443;
-  --muted: #697184;
-  --faint: #6d7180;
-  --placeholder: #697184;
-  --line: #e0e2e5;
-  --line-soft: #ecedef;
-  --hover: #edeef1;
+  --scrollbar-thumb: color-mix(in srgb, var(--ink) 22%, transparent);
+  --scrollbar-thumb-hover: color-mix(in srgb, var(--ink) 38%, transparent);
+  --muted: #555e6d;
+  --faint: #59616f;
+  --placeholder: #555e6d;
+  --line: #d9d8d0;
+  --line-soft: #e8e6df;
+  --hover: #eae8e0;
   --accent: #334b9c;
   --on-accent: #fafbff;
   --accent-wash: #e0e6f5;
   --accent-line: #c7cfe1;
   --selection: #d8e0f4;
+  --passage-highlight: #d8c77929;
+  --passage-focus: #d8c77966;
   --source: #726326;
   --source-wash: #f0e8c6;
   --danger: #a04443;
+  --suggestion: #507b5c;
   --warning: #795622;
   --warning-wash: #f0e8c6;
   --switch: #ced3df;
@@ -26,22 +90,45 @@
   --interface-font: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
   --writing-font: "Iowan Old Style", "Palatino Linotype", Georgia, serif;
   --mono-font: "SFMono-Regular", Menlo, monospace;
-  --writing-size: 19px;
+  --writing-size: 17px;
+  --aside-text-size: 15px;
+  --aside-detail-size: 12px;
+  --control-size: 30px;
+  --badge-size: 14px;
+  --label-size: 12px;
+  --label-line-height: 16px;
+  --control-title-size: 14px;
+  --control-title-line-height: 20px;
   --writing-width: 620px;
   --feedback: 120ms;
   --reveal: 220ms;
+  --navigation-motion: 240ms;
+  --navigation-ease: cubic-bezier(0.22, 1, 0.36, 1);
 }
 :root[data-theme="dark"] {
   color-scheme: dark;
   --paper: #1e2330;
+  --paper-light: #ffffff06;
+  --paper-shade: #0000000a;
   --surface: #272d3b;
+  --toolbar-glint: #ffffff1c;
+  --toolbar-surface: #303746;
+  --toolbar-divider: #50596b;
+  --toolbar-edge: #ffffff1f;
+  --toolbar-shadow: #0000001f;
+  --library-selected: #e2d49c1a;
+  --library-selection-accent: #eee1ab99;
+  --library-hover: #dce4f308;
+  --library-line: #d2dceb18;
+  --library-muted: #a4aec4;
   --ink: #e2e6f0;
+  --suggestion: #8fb89b;
   --muted: #a4aec4;
   --faint: #9ea9bf;
   --placeholder: #a4aec4;
-  --line: #3a4358;
-  --line-soft: #303849;
-  --hover: #313b50;
+  --line: #414958;
+  --line-soft: #343c4a;
+  --hover: #363e4d;
   --accent: #a0b5fb;
   --on-accent: #1b294d;
   --accent-wash: #303e65;
@@ -62,4 +149,13 @@
 }
 :root[data-typeface="monospace"] {
   --writing-font: "SFMono-Regular", Menlo, monospace;
+}
+
+@media (prefers-contrast: more), (prefers-reduced-transparency: reduce) {
+  :root {
+    --paper-grain: none;
+    --paper-texture: none;
+    --paper-reading-texture: none;
+    --paper-note-texture: none;
+  }
 }

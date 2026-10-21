@@ -1,9 +1,11 @@
+import { documentScroll } from "./document-scroll";
 import { z } from "zod";
+import type { PointerEvent } from "react";
 import { componentRuntimes } from "./component-bridge";
 
 const actionSchema = z
   .object({
-    documentId: z.string().uuid(),
+    documentId: z.string().uuid().nullable(),
     snapshotId: z.string().uuid(),
     target: z.string(),
     action: z.enum(["activate", "focus", "scroll", "setValue"]),
@@ -17,6 +19,48 @@ const targets = new Map<
   string,
   (parameters: z.infer<typeof actionSchema>) => Promise<unknown>
 >();
+
+interface PointerObservation {
+  clientX: number;
+  clientY: number;
+  buttons: number;
+  pointerType: string;
+  defaultPrevented: boolean;
+  timestamp: number;
+}
+interface ControlPointerTrace {
+  down?: PointerObservation;
+  move?: PointerObservation;
+  up?: PointerObservation;
+  cancel?: PointerObservation;
+}
+const pointerTraces = new WeakMap<HTMLElement, ControlPointerTrace>();
+
+export function recordControlPointer(
+  event: PointerEvent<HTMLDivElement>,
+): void {
+  const previous = pointerTraces.get(event.currentTarget);
+  if (
+    event.type === "pointermove" &&
+    event.buttons === 0 &&
+    (!previous?.down || previous.up || previous.cancel)
+  )
+    return;
+  const observation: PointerObservation = {
+    clientX: event.clientX,
+    clientY: event.clientY,
+    buttons: event.buttons,
+    pointerType: event.pointerType,
+    defaultPrevented: event.defaultPrevented,
+    timestamp: event.timeStamp,
+  };
+  const trace = event.type === "pointerdown" ? {} : (previous ?? {});
+  if (event.type === "pointerdown") trace.down = observation;
+  if (event.type === "pointermove") trace.move = observation;
+  if (event.type === "pointerup") trace.up = observation;
+  if (event.type === "pointercancel") trace.cancel = observation;
+  pointerTraces.set(event.currentTarget, trace);
+}
 
 function isVisible(element: Element | null): boolean {
   return (
@@ -37,6 +81,7 @@ export async function inspectInterface() {
     .filter(isVisible)
     .map((element) => {
       const identity = element.dataset.inknbControl!;
+      const style = getComputedStyle(element);
       const label =
         element.getAttribute("aria-label") ??
         element.textContent?.trim() ??
@@ -57,10 +102,13 @@ export async function inspectInterface() {
           parameters.action === "scroll" &&
           element.dataset.inknbScroll === "true"
         )
-          element.scrollTo({ top: parameters.top ?? 0, behavior: "instant" });
+          documentScroll(element).scrollTo({
+            top: parameters.top ?? 0,
+            behavior: "instant",
+          });
         else if (
           parameters.action === "activate" &&
-          element.tagName === "BUTTON"
+          element.matches('button,[role="menuitem"],input[type="checkbox"]')
         )
           element.click();
         else throw new Error("This action is unavailable for this control.");
@@ -69,11 +117,31 @@ export async function inspectInterface() {
       return {
         id: identity,
         label,
-        role: element.tagName.toLowerCase(),
+        role: element.getAttribute("role") ?? element.tagName.toLowerCase(),
+        ariaDisabled: element.getAttribute("aria-disabled"),
+        ariaDisabledReflection: element.ariaDisabled,
+        ariaDisabledReflectionType: typeof element.ariaDisabled,
+        separatorState: element.dataset.separator,
+        pointer: pointerTraces.get(element) ?? null,
+        focusVisible:
+          element.hasAttribute("data-focus-visible") ||
+          element.matches(":focus-visible"),
+        style: {
+          pointerEvents: style.pointerEvents,
+          userSelect: style.userSelect,
+          outline: style.outline,
+          outlineOffset: style.outlineOffset,
+        },
         disabled: element.matches(":disabled"),
         rectangle: element.getBoundingClientRect().toJSON(),
-        scrollTop: element.scrollTop,
-        scrollHeight: element.scrollHeight,
+        scrollTop:
+          element.dataset.inknbScroll === "true"
+            ? documentScroll(element).scrollTop
+            : element.scrollTop,
+        scrollHeight:
+          element.dataset.inknbScroll === "true"
+            ? documentScroll(element).scrollHeight
+            : element.scrollHeight,
       };
     });
   const components = await Promise.all(

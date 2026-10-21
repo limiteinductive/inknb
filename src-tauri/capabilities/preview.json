@@ -1,0 +1,16 @@
+{
+  "identifier": "preview",
+  "windows": ["preview"],
+  "permissions": [
+    "core:event:allow-listen",
+    "core:event:allow-unlisten",
+    "core:menu:allow-new",
+    "core:menu:allow-popup",
+    "core:resources:allow-close",
+    "core:window:allow-is-fullscreen",
+    "core:window:allow-set-fullscreen",
+    "core:window:allow-set-title",
+    "core:window:allow-set-theme",
+    "core:window:allow-start-dragging"
+  ]
+}

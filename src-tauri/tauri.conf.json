@@ -1,7 +1,7 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "ink and butter",
-  "version": "0.4.2",
+  "version": "0.5.1",
   "identifier": "io.github.limiteinductive.aside",
   "build": {
     "beforeDevCommand": "npm run dev",
@@ -12,34 +12,63 @@
   "app": {
     "windows": [
       {
-        "label": "main",
+        "label": "host",
         "title": "ink and butter",
         "width": 1180,
         "height": 820,
         "minWidth": 700,
         "minHeight": 480,
+        "dragDropEnabled": false,
         "titleBarStyle": "Overlay",
+        "trafficLightPosition": { "x": 20, "y": 28 },
         "hiddenTitle": true,
-        "backgroundColor": "#f9f8f2"
+        "backgroundColor": "#f9f8f2",
+        "visible": false,
+        "skipTaskbar": true,
+        "backgroundThrottling": "disabled"
       }
     ],
     "security": {
-      "csp": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: asset: http://asset.localhost; connect-src ipc: http://ipc.localhost; font-src 'self' data:; object-src 'none'; frame-src inknb-component:"
+      "csp": "default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; worker-src 'self' blob:; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: asset: http://asset.localhost; connect-src 'self' ipc: http://ipc.localhost; font-src 'self' data: blob:; object-src 'none'; frame-src inknb-component: inknb-preview:"
     }
   },
   "bundle": {
     "active": true,
-    "targets": ["app"],
+    "targets": [
+      "app"
+    ],
     "category": "Productivity",
-    "icon": ["icons/512x512.png"],
+    "icon": [
+      "icons/512x512.png"
+    ],
     "shortDescription": "A quiet place to write with your agent beside you.",
     "macOS": {
-      "minimumSystemVersion": "13.0"
+      "minimumSystemVersion": "13.0",
+      "infoPlist": "Info.plist"
     },
     "fileAssociations": [
       {
-        "ext": ["md", "markdown"],
+        "ext": [
+          "md",
+          "markdown"
+        ],
         "name": "Markdown",
+        "role": "Editor"
+      },
+      {
+        "ext": [
+          "html",
+          "htm"
+        ],
+        "name": "HTML",
+        "role": "Editor"
+      },
+      {
+        "ext": [
+          "tex",
+          "latex"
+        ],
+        "name": "LaTeX",
         "role": "Editor"
       }
     ]

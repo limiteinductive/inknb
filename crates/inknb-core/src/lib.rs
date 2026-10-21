@@ -1,4 +1,9 @@
+pub mod activity;
 pub mod components;
+pub mod configuration;
 pub mod events;
+pub mod history;
+pub mod previews;
+pub mod profile;
 pub mod protocol;
 pub mod storage;

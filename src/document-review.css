@@ -1,0 +1,124 @@
+.review-button {
+  position: relative;
+}
+.review-count {
+  position: absolute;
+  inset-block-start: -4px;
+  inset-inline-end: -4px;
+  background: var(--accent);
+  color: var(--on-accent);
+}
+.suggestion-anchor {
+  text-decoration: underline;
+  text-decoration-color: color-mix(in srgb, var(--suggestion) 65%, transparent);
+  text-decoration-thickness: 2px;
+  text-underline-offset: 4px;
+  cursor: pointer;
+}
+.suggestion-anchor-focused {
+  background: var(--passage-highlight);
+  text-decoration-color: var(--suggestion);
+}
+.suggestion-block-anchor {
+  box-shadow: -2px 0 color-mix(in srgb, var(--suggestion) 40%, transparent);
+  cursor: pointer;
+}
+.suggestion-block-focused {
+  box-shadow: -3px 0 var(--suggestion);
+}
+.suggestion-insertion {
+  display: inline-grid;
+  place-items: center;
+  min-width: 14px;
+  height: 16px;
+  margin-inline: 2px;
+  color: var(--suggestion);
+  font: 12px/1 var(--interface-font);
+  text-decoration: none;
+  border-radius: 3px;
+  background: var(--hover);
+}
+
+.suggestion-deletion {
+  text-decoration-line: line-through;
+  text-decoration-color: var(--danger);
+}
+
+.suggestion-replaced {
+  display: none !important;
+}
+.inline-suggestion-host {
+  display: block;
+  margin-block: 1em;
+}
+.inline-suggestion {
+  border-inline-start: 2px solid var(--suggestion);
+  padding-inline-start: 20px;
+}
+.inline-suggestion-heading,
+.inline-suggestion-actions {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  font: 12px/1.5 var(--interface-font);
+}
+.inline-suggestion-heading {
+  color: var(--muted);
+  margin-bottom: 16px;
+  flex-wrap: wrap;
+}
+.inline-suggestion-heading > span {
+  margin-inline-end: auto;
+}
+.inline-suggestion-heading button {
+  font: inherit;
+}
+.inline-suggestion-content .change-comparison {
+  display: block;
+}
+.inline-suggestion-content .change-version {
+  padding: 0;
+  border: 0;
+  background: none;
+}
+.inline-suggestion-content .change-version-label,
+.inline-suggestion-content[data-version="suggested"]
+  .change-version:first-child,
+.inline-suggestion-content[data-version="current"] .change-version:last-child {
+  display: none;
+}
+.inline-suggestion-content {
+  font: inherit;
+  overflow-wrap: break-word;
+}
+.inline-suggestion-actions {
+  margin-top: 18px;
+  flex-wrap: wrap;
+}
+.inline-suggestion-actions .primary-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.review-navigation {
+  margin-inline-start: auto;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+.review-error {
+  color: var(--danger);
+  font: 13px/1.5 var(--interface-font);
+}
+.inline-suggestion-content .change-content {
+  padding: 0;
+  border: 0;
+  background: none;
+  border-radius: 0;
+}
+
+.inline-suggestion-content .change-content table {
+  font-size: 0.88em;
+}

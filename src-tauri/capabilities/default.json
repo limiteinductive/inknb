@@ -1,6 +1,9 @@
 {
   "identifier": "main",
-  "windows": ["main"],
+  "windows": [
+    "host",
+    "writing-*"
+  ],
   "permissions": [
     "core:default",
     "dialog:allow-open",

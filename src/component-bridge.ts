@@ -1,7 +1,17 @@
 import { z } from "zod";
+import { pointerPositionSchema } from "./geometry";
 
 export const componentMessage = z.discriminatedUnion("type", [
+  pointerPositionSchema.extend({ inknb: z.literal(1) }),
   z.object({ inknb: z.literal(1), type: z.literal("ready") }),
+  z.object({
+    inknb: z.literal(1),
+    type: z.literal("contextmenu"),
+    left: z.number().finite(),
+    top: z.number().finite(),
+    editable: z.boolean(),
+    copy: z.boolean(),
+  }),
   z.object({
     inknb: z.literal(1),
     type: z.literal("height"),

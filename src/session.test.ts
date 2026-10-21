@@ -93,7 +93,7 @@ describe("agent-owned connections", () => {
     await expect(session.bind(binding, crypto.randomUUID())).rejects.toThrow(
       "open document changed",
     );
-    expect(session.getSnapshot().metadata.binding).toBeNull();
+    expect(session.getSnapshot().metadata.defaultAgentId).toBeNull();
     await session.bind(binding, metadata.documentId);
     expect(session.getSnapshot().metadata.requests[0].state).toBe("failed");
     expect(
@@ -104,7 +104,7 @@ describe("agent-owned connections", () => {
 
     await session.bind(null, metadata.documentId);
     await session.deliver(conversation.request.id);
-    expect(session.getSnapshot().metadata.binding).toBeNull();
+    expect(session.getSnapshot().metadata.defaultAgentId).toBeNull();
     expect(
       vi
         .mocked(invoke)
@@ -130,7 +130,8 @@ describe("agent-owned connections", () => {
       label: "Codex",
       commandPath: "/usr/local/bin/codex",
     };
-    metadata.binding = binding;
+    metadata.agents = [{ ...binding, id: `${binding.provider}:${binding.sessionId}` }];
+    metadata.defaultAgentId = metadata.agents[0].id;
     const conversation = createConversation(
       "A garden.",
       metadata,
@@ -164,7 +165,7 @@ test("attachment confirmation clears candidates and completes its repair work", 
     "Keep this attached.",
     "read",
   );
-  conversation.thread.anchor.status = "detached";
+  conversation.thread.anchor!.status = "detached";
   conversation.thread.anchorSuggestions.push({
     id: crypto.randomUUID(),
     label: "Garden",
@@ -186,7 +187,7 @@ test("attachment confirmation clears candidates and completes its repair work", 
   });
   session.update({ text: "A garden.", metadata });
   session.reanchor(conversation.thread.id, { from: 0, to: 9 });
-  expect(session.getSnapshot().metadata.threads[0].anchor.status).toBe(
+  expect(session.getSnapshot().metadata.threads[0].anchor!.status).toBe(
     "attached",
   );
   expect(session.getSnapshot().metadata.threads[0].anchorSuggestions).toEqual(
@@ -211,7 +212,10 @@ test("waits for recovered delivery reconciliation before enabling the editor", a
   vi.mocked(invoke).mockImplementation((method) => {
     if (method === "bootstrap")
       return Promise.resolve({
-        preferences: { ...defaultPreferences, autosave: false },
+        configuration: {
+          revision: 1,
+          effective: { ...defaultPreferences, autosave: false },
+        },
         recovery: {
           path: null,
           text: "A garden.",

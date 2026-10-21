@@ -1,8 +1,10 @@
+import { defaultAgent } from "./domain";
 import type { AgentRequest, Metadata } from "./domain";
 
 export type EventKind =
   | "document.opened"
   | "document.changed"
+  | "document.access_changed"
   | "document.saved"
   | "document.moved"
   | "request.created"
@@ -15,11 +17,19 @@ export type EventKind =
   | "conversation.updated"
   | "anchor.detached"
   | "anchor.reattached"
+  | "decision.created"
+  | "decision.answered"
+  | "decision.acknowledged"
+  | "decision.withdrawn"
+  | "decision.superseded"
   | "connection.changed"
   | "component.mounted"
   | "component.updated"
   | "component.removed"
-  | "component.event";
+  | "component.event"
+  | "preview.published"
+  | "preview.rendered"
+  | "preview.build";
 
 export interface EventInput {
   id: string;
@@ -48,13 +58,120 @@ export function createEvent(
 export function planAutomation(
   previous: Metadata,
   next: Metadata,
+  actor = "You",
 ): { metadata: Metadata; events: EventInput[] } {
   const events: EventInput[] = [];
   const reviews: AgentRequest[] = [];
+  next = {
+    ...next,
+    threads: next.threads.map((thread) => {
+      if (thread.kind !== "suggestion") return thread;
+      const proposal = next.proposals
+        .filter((proposal) => proposal.threadId === thread.id)
+        .at(-1);
+      const before = previous.proposals.find(
+        (candidate) => candidate.id === proposal?.id,
+      );
+      if (!proposal || before?.status === proposal.status) return thread;
+      if (proposal.status === "undone")
+        return { ...thread, resolved: false, resolution: null };
+      if (!["applied", "rejected"].includes(proposal.status)) return thread;
+      return {
+        ...thread,
+        resolved: true,
+        resolution: {
+          reason:
+            proposal.status === "applied"
+              ? "Suggestion applied."
+              : "Suggestion dismissed.",
+          outcome: "done" as const,
+          actor: "You",
+          createdAt: new Date().toISOString(),
+          lastMessageId: thread.messages.at(-1)?.id ?? null,
+        },
+      };
+    }),
+  };
+  next = {
+    ...next,
+    threads: next.threads.map((thread) => {
+      const before = previous.threads.find(
+        (candidate) => candidate.id === thread.id,
+      );
+      const changed =
+        !before ||
+        before.resolved !== thread.resolved ||
+        before.messages.length !== thread.messages.length ||
+        before.anchor?.status !== thread.anchor?.status ||
+        JSON.stringify(before.resolution) !==
+          JSON.stringify(thread.resolution) ||
+        JSON.stringify(before.links) !== JSON.stringify(thread.links) ||
+        JSON.stringify(before.anchorSuggestions) !==
+          JSON.stringify(thread.anchorSuggestions);
+      return changed
+        ? { ...thread, updatedAt: new Date().toISOString() }
+        : thread;
+    }),
+  };
+  if (previous.preview?.artifactId !== next.preview?.artifactId)
+    events.push(
+      createEvent(next, "preview.published", { preview: next.preview }),
+    );
+  if (previous.previewLastGood?.artifactId !== next.previewLastGood?.artifactId)
+    events.push(
+      createEvent(next, "preview.rendered", { preview: next.previewLastGood }),
+    );
+  if (
+    JSON.stringify(previous.previewBuild) !== JSON.stringify(next.previewBuild)
+  )
+    events.push(
+      createEvent(next, "preview.build", { build: next.previewBuild }),
+    );
+  for (const decision of next.decisions) {
+    const before = previous.decisions.find((candidate) => candidate.id === decision.id);
+    if (!before || before.status !== decision.status)
+      events.push(createEvent(next, !before ? "decision.created" : `decision.${decision.status === "open" ? "created" : decision.status}`, { decisionId: decision.id, decision }));
+  }
   for (const thread of next.threads) {
     const before = previous.threads.find(
       (candidate) => candidate.id === thread.id,
     );
+    const suggestions = next.threads.filter((candidate) =>
+      candidate.links.some(
+        (link) =>
+          link.relation === "suggestion_for" &&
+          link.documentId === next.documentId &&
+          link.threadId === thread.id,
+      ),
+    );
+    const finished = suggestions.some(
+      (suggestion) =>
+        suggestion.resolved &&
+        !previous.threads.find((candidate) => candidate.id === suggestion.id)
+          ?.resolved,
+    );
+    if (
+      !thread.resolved &&
+      finished &&
+      suggestions.every((suggestion) => suggestion.resolved) &&
+      !next.requests.some(
+        (request) =>
+          request.threadId === thread.id && request.state !== "answered",
+      )
+    )
+      reviews.push({
+        id: crypto.randomUUID(),
+        threadId: thread.id,
+        messageId: null,
+        revision: next.revision,
+        trigger: { kind: "completion_review" },
+        permission: "read",
+        state: "pending",
+        binding: defaultAgent(next),
+        createdAt: new Date().toISOString(),
+        deliveredAt: null,
+        error: null,
+      });
     for (const component of thread.components) {
       const earlier = before?.components.find(
         (candidate) => candidate.id === component.id,
@@ -82,26 +199,32 @@ export function planAutomation(
           }),
         );
     }
-    if (
-      !before ||
-      before.resolved !== thread.resolved ||
-      before.messages.length !== thread.messages.length ||
-      JSON.stringify(before.anchorSuggestions) !==
-        JSON.stringify(thread.anchorSuggestions)
-    )
+    if (before?.updatedAt !== thread.updatedAt)
       events.push(
         createEvent(next, "conversation.updated", {
           threadId: thread.id,
           resolved: thread.resolved,
+          resolution: thread.resolution,
+          links: thread.links,
+          message:
+            thread.messages.at(-1)?.id !== before?.messages.at(-1)?.id
+              ? {
+                  id: thread.messages.at(-1)?.id,
+                  author: thread.messages.at(-1)?.author,
+                  content: thread.messages.at(-1)?.content.slice(0, 240),
+                  awaitingHuman: thread.messages.at(-1)?.awaitingHuman ?? false,
+                  label: thread.messages.at(-1)?.agent?.label ?? "Agent",
+                }
+              : null,
         }),
       );
     if (
       before &&
       !thread.resolved &&
-      (before.anchor.status !== "detached" ||
+      (before.anchor?.status !== "detached" ||
         (before.anchorSuggestions.length > 0 &&
           thread.anchorSuggestions.length === 0)) &&
-      thread.anchor.status === "detached"
+      thread.anchor?.status === "detached"
     ) {
       reviews.push({
         id: crypto.randomUUID(),
@@ -111,7 +234,7 @@ export function planAutomation(
         trigger: { kind: "anchor_detached" },
         permission: "read",
         state: "pending",
-        binding: next.binding,
+        binding: defaultAgent(next),
         createdAt: new Date().toISOString(),
         deliveredAt: null,
         error: null,
@@ -121,8 +244,8 @@ export function planAutomation(
       );
     }
     if (
-      before?.anchor.status === "detached" &&
-      thread.anchor.status === "attached"
+      before?.anchor?.status === "detached" &&
+      thread.anchor?.status === "attached"
     )
       events.push(
         createEvent(next, "anchor.reattached", { threadId: thread.id }),
@@ -169,7 +292,7 @@ export function planAutomation(
             },
             permission: "read",
             state: "pending",
-            binding: next.binding,
+            binding: defaultAgent(next),
             createdAt: new Date().toISOString(),
             deliveredAt: null,
             error: null,
@@ -207,6 +330,7 @@ export function planAutomation(
       );
       if (
         proposal.status === "conflict" &&
+        proposal.threadId &&
         !next.threads.find((thread) => thread.id === proposal.threadId)
           ?.resolved
       )
@@ -218,7 +342,7 @@ export function planAutomation(
           trigger: { kind: "proposal_stale", proposalId: proposal.id },
           permission: "read",
           state: "pending",
-          binding: next.binding,
+          binding: defaultAgent(next),
           createdAt: new Date().toISOString(),
           deliveredAt: null,
           error: null,
@@ -245,7 +369,7 @@ export function planAutomation(
         }
         if (trigger.kind === "anchor_detached")
           superseded =
-            thread?.anchor.status === "attached" ||
+            thread?.anchor?.status === "attached" ||
             reviews.some(
               (review) =>
                 review.trigger.kind === "anchor_detached" &&
@@ -269,15 +393,22 @@ export function planAutomation(
           threadId: request.threadId,
           trigger: request.trigger,
           state: request.state,
+          error: request.error,
         }),
       );
   }
   if (previous.revision !== next.revision)
-    events.push(createEvent(metadata, "document.changed", {}));
-  if (JSON.stringify(previous.binding) !== JSON.stringify(next.binding))
+    events.push(createEvent(metadata, "document.changed", { actor }));
+  if (previous.agentAccess !== next.agentAccess)
+    events.push(
+      createEvent(metadata, "document.access_changed", {
+        agentAccess: next.agentAccess,
+      }),
+    );
+  if (JSON.stringify([previous.agents, previous.defaultAgentId]) !== JSON.stringify([next.agents, next.defaultAgentId]))
     events.push(
       createEvent(metadata, "connection.changed", {
-        provider: next.binding?.provider ?? null,
+        agents: next.agents, defaultAgentId: next.defaultAgentId,
       }),
     );
   return { metadata, events };

@@ -1,5 +1,18 @@
 import { ChangeSet, Text } from "@codemirror/state";
+import type { ChangeDesc } from "@codemirror/state";
 import { z } from "zod";
+import { relativeRectangleSchema } from "./geometry";
+import { nativeDocumentSchema } from "./native-schema";
+import { linkedResourceSchema } from "./resources";
+import { documentPageSchema } from "./document-page";
+import { imageSchema } from "./images";
+import type { ImageAsset } from "./images";
+import {
+  previewAnchorSchema,
+  previewBuildSchema,
+  previewReferenceSchema,
+} from "./preview-model";
+import type { PreviewAnchor } from "./preview-model";
 
 export const selectionSchema = z.object({
   from: z.number().int().nonnegative(),
@@ -11,6 +24,22 @@ export const anchorSchema = selectionSchema.extend({
   before: z.string(),
   after: z.string(),
   status: z.enum(["attached", "changed", "detached"]),
+  native: z
+    .object({
+      quote: z.string(),
+      region: z
+        .object({ identity: z.string(), rectangle: relativeRectangleSchema })
+        .optional(),
+      from: z.object({
+        identity: z.string(),
+        offset: z.number().int().nonnegative(),
+      }),
+      to: z.object({
+        identity: z.string(),
+        offset: z.number().int().nonnegative(),
+      }),
+    })
+    .optional(),
 });
 
 export const sourceSchema = z.object({
@@ -23,20 +52,39 @@ export const sourceSchema = z.object({
   review: z.string().nullable().default(null),
 });
 
+export function responseWords(content: string): RegExpMatchArray[] {
+  return [...content.matchAll(/\S+/gu)];
+}
+
+export const agentAnswerSchema = z
+  .string()
+  .trim()
+  .min(1)
+  .refine(
+    (content) => responseWords(content).length <= 100,
+    "Keep the aside answer to 100 words. Put longer explanations in details.",
+  );
+
+export const agentIdentitySchema = z.object({
+  provider: z.enum(["codex", "claude", "automation"]),
+  sessionId: z.string(),
+  label: z.string(),
+  name: z.string().min(1).max(120).optional(),
+  role: z.string().max(120).optional(),
+  sessionUrl: z.string().url().optional(),
+});
+
 export const messageSchema = z.object({
   id: z.string().uuid(),
   author: z.enum(["human", "agent"]),
   content: z.string(),
+  details: z.string().optional(),
   createdAt: z.string(),
   sources: z.array(sourceSchema),
+  images: z.array(imageSchema).default([]),
   requestId: z.string().uuid().optional(),
-  agent: z
-    .object({
-      provider: z.enum(["codex", "claude", "automation"]),
-      sessionId: z.string(),
-      label: z.string(),
-    })
-    .optional(),
+  awaitingHuman: z.boolean().optional(),
+  agent: agentIdentitySchema.optional(),
 });
 
 export const componentSchema = z.object({
@@ -51,13 +99,43 @@ export const componentSchema = z.object({
 
 export type ComponentInstance = z.infer<typeof componentSchema>;
 
+export const asideReferenceSchema = z.object({
+  documentId: z.string().uuid(),
+  threadId: z.string().uuid(),
+});
+
 export const threadSchema = z.object({
   id: z.string().uuid(),
-  anchor: anchorSchema,
+  kind: z.enum(["discussion", "suggestion"]).default("discussion"),
+  anchor: anchorSchema.nullable(),
+  previewAnchor: previewAnchorSchema.nullable().default(null),
   originalQuote: z.string(),
+  updatedAt: z.string().optional(),
   createdRevision: z.number().int().nonnegative(),
   createdAt: z.string(),
   resolved: z.boolean(),
+  resolution: z
+    .object({
+      reason: z.string(),
+      outcome: z.enum(["done", "superseded"]),
+      actor: z.string(),
+      createdAt: z.string(),
+      lastMessageId: z.string().uuid().nullable(),
+    })
+    .nullable()
+    .default(null),
+  links: z
+    .array(
+      asideReferenceSchema.extend({
+        relation: z.enum([
+          "related",
+          "suggestion_for",
+          "supersedes",
+          "superseded_by",
+        ]),
+      }),
+    )
+    .default([]),
   messages: z.array(messageSchema),
   components: z.array(componentSchema).default([]),
   anchorSuggestions: z
@@ -76,7 +154,39 @@ export const bindingSchema = z.object({
   sessionId: z.string().min(1),
   label: z.string(),
   commandPath: z.string(),
+  name: z.string().min(1).max(120).optional(),
+  role: z.string().max(120).optional(),
+  sessionUrl: z.string().url().optional(),
 });
+
+export const agentConnectionSchema = bindingSchema.extend({ id: z.string().min(1) });
+export const decisionOptionSchema = z.object({
+  label: z.string().trim().min(1).max(80),
+  detail: z.string().max(240),
+});
+export const decisionSchema = z.object({
+  id: z.string().uuid(),
+  question: z.string().trim().min(1).max(100),
+  options: z.array(decisionOptionSchema).min(1).max(3),
+  recommended: z.number().int().nonnegative(),
+  context: z.string().default(""),
+  anchor: anchorSchema.nullable(),
+  creator: agentIdentitySchema,
+  originalAnchor: anchorSchema.nullable(),
+  sourceRevision: z.number().int().nonnegative().nullable(),
+  createdAt: z.string(),
+  status: z.enum(["open", "answered", "acknowledged", "withdrawn", "superseded"]),
+  answer: z.object({
+    text: z.string(),
+    option: z.number().int().nonnegative().nullable(),
+    createdAt: z.string(),
+    origin: z.literal("human"),
+    recordedIn: z.literal("inknb"),
+  }).nullable(),
+  acknowledgement: z.object({ agent: agentIdentitySchema, createdAt: z.string() }).nullable(),
+  supersededBy: z.string().uuid().nullable(),
+  reason: z.string().nullable(),
+}).refine((decision) => decision.recommended < decision.options.length, "Choose an existing recommended option.");
 
 export const requestSchema = z.object({
   id: z.string().uuid(),
@@ -96,6 +206,7 @@ export const requestSchema = z.object({
         proposalId: z.string().uuid(),
       }),
       z.object({ kind: z.literal("anchor_detached") }),
+      z.object({ kind: z.literal("completion_review") }),
     ])
     .default({ kind: "human" }),
   permission: z.enum(["read", "edit"]),
@@ -108,8 +219,8 @@ export const requestSchema = z.object({
 
 export const proposalSchema = z.object({
   id: z.string().uuid(),
-  threadId: z.string().uuid(),
-  requestId: z.string().uuid(),
+  threadId: z.string().uuid().nullable().default(null),
+  requestId: z.string().uuid().nullable().default(null),
   revision: z.number().int().nonnegative(),
   from: z.number().int().nonnegative(),
   to: z.number().int().nonnegative(),
@@ -126,19 +237,129 @@ export const proposalSchema = z.object({
   ]),
   createdAt: z.string(),
   replaces: z.string().uuid().nullable().default(null),
+  creator: agentIdentitySchema.optional(),
 });
 
-export const metadataSchema = z.object({
-  version: z
-    .union([z.literal(1), z.literal(2), z.literal(3)])
-    .transform(() => 3 as const),
-  documentId: z.string().uuid(),
-  revision: z.number().int().nonnegative(),
-  documentHash: z.string(),
-  threads: z.array(threadSchema),
-  requests: z.array(requestSchema),
-  proposals: z.array(proposalSchema),
-  binding: bindingSchema.nullable(),
+export const metadataSchema = z
+  .object({
+    version: z.union([
+      z.literal(1),
+      z.literal(2),
+      z.literal(3),
+      z.literal(4),
+      z.literal(5),
+      z.literal(6),
+      z.literal(7),
+      z.literal(8),
+      z.literal(9),
+      z.literal(10),
+      z.literal(11),
+      z.literal(12),
+    ]),
+    documentId: z.string().uuid(),
+    revision: z.number().int().nonnegative(),
+    documentHash: z.string(),
+    nativeDocument: nativeDocumentSchema.nullable().optional(),
+    threads: z.array(threadSchema),
+    requests: z.array(requestSchema),
+    proposals: z.array(proposalSchema),
+    resources: z.array(linkedResourceSchema).default([]),
+    page: documentPageSchema.nullable().default(null),
+    binding: bindingSchema.nullable().optional(),
+    agents: z.array(agentConnectionSchema).optional(),
+    defaultAgentId: z.string().nullable().optional(),
+    decisions: z.array(decisionSchema).default([]),
+    agentAccess: z.enum(["read", "edit"]).nullable().default(null),
+    preview: previewReferenceSchema.nullable().default(null),
+    previewLastGood: previewReferenceSchema.nullable().default(null),
+    previewBuild: previewBuildSchema.nullable().default(null),
+  })
+  .refine(
+    (metadata) => metadata.version !== 10 || Boolean(metadata.nativeDocument),
+    "A native document is required for metadata version 10.",
+  )
+  .transform((metadata) => {
+    const { binding, ...current } = metadata;
+    const agents = metadata.agents ?? (binding ? [{ ...binding, id: agentId(binding) }] : []);
+    if (new Set(agents.map((agent) => agent.id)).size !== agents.length || agents.some((agent) => agent.id !== agentId(agent)))
+      throw Error("Agent connection identities must be unique and match their sessions.");
+    const defaultAgentId: string | null = metadata.defaultAgentId !== undefined ? metadata.defaultAgentId : (agents.length ? agents[0].id : null);
+    if (defaultAgentId && !agents.some((agent) => agent.id === defaultAgentId))
+      throw Error("The default agent must be connected.");
+    const threads = [...metadata.threads];
+    const proposals = metadata.proposals.map((proposal) => {
+      const origin = threads.find((thread) => thread.id === proposal.threadId);
+      if (
+        !origin ||
+        origin.kind === "suggestion" ||
+        !["pending", "conflict", "superseded"].includes(proposal.status)
+      )
+        return proposal;
+      threads.push({
+        ...origin,
+        id: proposal.id,
+        kind: "suggestion",
+        anchor: {
+          from: proposal.from,
+          to: proposal.to,
+          quote: proposal.expectedText,
+          before: "",
+          after: "",
+          status: proposal.status === "pending" ? "attached" : "changed",
+        },
+        previewAnchor: null,
+        originalQuote: proposal.expectedText,
+        createdAt: proposal.createdAt,
+        resolved: false,
+        resolution: null,
+        messages: [],
+        components: [],
+        anchorSuggestions: [],
+        links: [
+          {
+            documentId: metadata.documentId,
+            threadId: origin.id,
+            relation: "suggestion_for",
+          },
+        ],
+      });
+      return { ...proposal, threadId: proposal.id };
+    });
+    return {
+      ...current,
+      agents,
+      defaultAgentId,
+      threads,
+      proposals,
+      requests: metadata.requests.map((request) => {
+        if (request.trigger.kind !== "proposal_stale") return request;
+        const proposalId = request.trigger.proposalId;
+        return {
+          ...request,
+          threadId:
+            proposals.find((proposal) => proposal.id === proposalId)
+              ?.threadId ?? request.threadId,
+        };
+      }),
+      version: 12 as const,
+      agentAccess:
+        metadata.version < 5
+          ? ("read" as const)
+          : (metadata.agentAccess ??
+            (metadata.version < 9 ? ("read" as const) : null)),
+    };
+  });
+
+const outlineSchema = z.object({
+  presentation: z.enum(["panel", "rail"]).default("panel"),
+  side: z.enum(["left", "right"]).default("left"),
+  width: z.number().int().min(160).max(360).default(200),
+  min_level: z.number().int().min(1).max(6).default(1),
+  max_level: z.number().int().min(1).max(6).default(6),
+  indent: z.number().int().min(0).max(24).default(10),
+  follow: z.boolean().default(true),
+}).refine((outline) => outline.min_level <= outline.max_level, {
+  message: "min_level must not exceed max_level",
 });
 
 export const preferencesSchema = z.object({
@@ -146,22 +367,84 @@ export const preferencesSchema = z.object({
   placement: z.enum(["margin", "inline"]),
   appearance: z.enum(["system", "light", "dark"]),
   typeface: z.enum(["editorial", "system", "monospace"]),
-  fontSize: z.number().min(14).max(28),
-  lineWidth: z.number().min(440).max(820),
-  reduceMotion: z.boolean(),
+  font_size: z.number().min(14).max(28),
+  line_width: z.number().min(440).max(820),
+  reduce_motion: z.boolean(),
   autosave: z.boolean(),
+  agent_edits: z.boolean().default(true),
+  detached_preview: z.enum(["document", "active_document"]).default("document"),
+  library_depth: z.number().int().min(-1).default(1),
+  library_sort: z.enum(["recent", "alphabetical", "manual"]).default("recent"),
+  document_outline: z.boolean().default(true),
+  decision_notifications: z.boolean().default(true),
+  outline: outlineSchema.prefault({}),
 });
+
+export const configurationSchema = z.object({
+  revision: z.number().int().nonnegative(),
+  effective: preferencesSchema,
+});
+export type ConfigurationSnapshot = z.infer<typeof configurationSchema>;
 
 export type Selection = z.infer<typeof selectionSchema>;
 export type Anchor = z.infer<typeof anchorSchema>;
 export type Source = z.infer<typeof sourceSchema>;
 export type Message = z.infer<typeof messageSchema>;
 export type Thread = z.infer<typeof threadSchema>;
+export type AsideReference = z.infer<typeof asideReferenceSchema>;
+export type AgentConnection = z.infer<typeof agentConnectionSchema>;
+export type AgentIdentity = z.infer<typeof agentIdentitySchema>;
+export type Decision = z.infer<typeof decisionSchema>;
 export type Binding = z.infer<typeof bindingSchema>;
 export type AgentRequest = z.infer<typeof requestSchema>;
 export type Proposal = z.infer<typeof proposalSchema>;
 export type Metadata = z.infer<typeof metadataSchema>;
 export type Preferences = z.infer<typeof preferencesSchema>;
+
+export function threadActivity(
+  metadata: Metadata,
+  thread: Thread,
+): string | null {
+  const messages = thread.messages
+    .filter((message) => message.author === "agent")
+    .map((message) => message.id);
+  const components = thread.components.map((component) => ({
+    id: component.id,
+    revision: component.revision,
+  }));
+  const sources = thread.messages.flatMap((message) =>
+    message.sources.map((source) => ({
+      id: source.id,
+      hash: source.status === "current" ? source.hash : source.observedHash,
+      status: source.status,
+    })),
+  );
+  const proposals = metadata.proposals
+    .filter((proposal) => proposal.threadId === thread.id)
+    .map((proposal) => proposal.id);
+  const suggestions = thread.anchorSuggestions.map(
+    (suggestion) => suggestion.id,
+  );
+  if (
+    !messages.length &&
+    !components.length &&
+    !sources.length &&
+    !proposals.length &&
+    !suggestions.length &&
+    !thread.links.length &&
+    !thread.resolution
+  )
+    return null;
+  return JSON.stringify({
+    messages,
+    components,
+    sources,
+    proposals,
+    suggestions,
+    ...(thread.links.length ? { links: thread.links } : {}),
+    ...(thread.resolution ? { resolution: thread.resolution } : {}),
+  });
+}
 
 export interface TextChange {
   from: number;
@@ -184,22 +467,37 @@ export const defaultPreferences: Preferences = {
   placement: "margin",
   appearance: "system",
   typeface: "editorial",
-  fontSize: 19,
-  lineWidth: 620,
-  reduceMotion: false,
+  font_size: 17,
+  line_width: 620,
+  reduce_motion: false,
   autosave: true,
+  agent_edits: true,
+  detached_preview: "document",
+  library_depth: 1,
+  library_sort: "recent",
+  document_outline: true,
+  decision_notifications: true,
+  outline: outlineSchema.parse({}),
 };
 
 export function createMetadata(): Metadata {
   return {
-    version: 3,
+    version: 12,
     documentId: crypto.randomUUID(),
     revision: 0,
     documentHash: "",
     threads: [],
     requests: [],
     proposals: [],
-    binding: null,
+    resources: [],
+    page: null,
+    agents: [],
+    defaultAgentId: null,
+    decisions: [],
+    agentAccess: null,
+    preview: null,
+    previewLastGood: null,
+    previewBuild: null,
   };
 }
 
@@ -299,7 +597,7 @@ export function applyChanges(
   const nextText = changes.apply(Text.of(text.split("\n"))).toString();
   const threads = metadata.threads.map((thread) => ({
     ...thread,
-    anchor: mapAnchor(nextText, thread.anchor, changes),
+    anchor: thread.anchor ? mapAnchor(nextText, thread.anchor, changes) : null,
     anchorSuggestions: thread.anchorSuggestions
       .map((candidate) => ({
         ...candidate,
@@ -324,14 +622,14 @@ export function applyChanges(
   });
   return {
     text: nextText,
-    metadata: { ...metadata, revision, threads, proposals },
+    metadata: { ...metadata, revision, threads, proposals, decisions: metadata.decisions.map((decision) => ({ ...decision, anchor: decision.anchor ? mapAnchor(nextText, decision.anchor, changes) : null })) },
   };
 }
 
 export function mapAnchor(
   nextText: string,
   anchor: Anchor,
-  changes: ChangeSet,
+  changes: ChangeDesc,
 ): Anchor {
   if (anchor.status === "detached") return anchor;
   const isCaret = anchor.from === anchor.to;
@@ -351,19 +649,21 @@ export function mapAnchor(
   const to = Math.max(from, changes.mapPos(anchor.to, toAssociation));
   const status =
     !isCaret && from === to ? "detached" : touched ? "changed" : anchor.status;
-  return { ...captureAnchor(nextText, { from, to }), status };
+  return { ...anchor, ...captureAnchor(nextText, { from, to }), status };
 }
 
 export function createConversation(
   text: string,
   metadata: Metadata,
-  selection: Selection,
+  selection: Selection | null,
   content: string,
   permission: AgentRequest["permission"],
+  previewAnchor: PreviewAnchor | null = null,
+  images: ImageAsset[] = [],
 ): NewConversation {
-  if (content.trim().length === 0)
+  if (content.trim().length === 0 && images.length === 0)
     throw new Error("Write a question or request first.");
-  const anchor = captureAnchor(text, selection);
+  const anchor = selection ? captureAnchor(text, selection) : null;
   const createdAt = new Date().toISOString();
   const message: Message = {
     id: crypto.randomUUID(),
@@ -371,14 +671,19 @@ export function createConversation(
     content: content.trim(),
     createdAt,
     sources: [],
+    images,
   };
   const thread: Thread = {
     id: crypto.randomUUID(),
+    kind: "discussion",
     anchor,
-    originalQuote: anchor.quote,
+    previewAnchor,
+    originalQuote: previewAnchor?.quote || anchor?.quote || "",
     createdRevision: metadata.revision,
     createdAt,
     resolved: false,
+    resolution: null,
+    links: [],
     messages: [message],
     components: [],
     anchorSuggestions: [],
@@ -391,7 +696,7 @@ export function createConversation(
     permission,
     trigger: { kind: "human" },
     state: "pending",
-    binding: metadata.binding,
+    binding: defaultAgent(metadata),
     createdAt,
     deliveredAt: null,
     error: null,
@@ -402,30 +707,26 @@ export function createConversation(
 export function createProposal(
   text: string,
   metadata: Metadata,
-  requestId: string,
+  requestId: string | null,
   revision: number,
   selection: Selection,
   expectedText: string,
   replacement: string,
   explanation: string,
+  threadId: string | null = null,
 ): Proposal {
   validateSelection(text, selection);
   const request = metadata.requests.find(
     (candidate) => candidate.id === requestId,
   );
-  if (!request) throw new Error("The request no longer exists.");
+  if (requestId && !request) throw new Error("The request no longer exists.");
+  if (request && threadId && request.threadId !== threadId)
+    throw Error("The request belongs to another aside.");
+  const contextThreadId = threadId ?? request?.threadId ?? null;
   const thread = metadata.threads.find(
-    (thread) => thread.id === request.threadId,
+    (thread) => thread.id === contextThreadId,
   );
-  if (thread?.resolved) throw new Error("This conversation is resolved.");
-  if (!thread || thread.anchor.status === "detached")
-    throw new Error(
-      "Attach this conversation to a passage before proposing an edit.",
-    );
-  if (selection.from < thread.anchor.from || selection.to > thread.anchor.to)
-    throw new Error(
-      "This edit is outside the passage attached to the human request.",
-    );
+  if (contextThreadId && !thread) throw Error("The aside no longer exists.");
   if (revision !== metadata.revision)
     throw new Error(
       "The document changed. Read the current revision before proposing an edit.",
@@ -434,13 +735,13 @@ export function createProposal(
     throw new Error("The passage no longer matches the expected text.");
   return {
     id: crypto.randomUUID(),
-    threadId: request.threadId,
+    threadId: contextThreadId,
     requestId,
     revision,
     from: selection.from,
     to: selection.to,
     replaces:
-      request.trigger.kind === "proposal_stale"
+      request?.trigger.kind === "proposal_stale"
         ? request.trigger.proposalId
         : null,
     expectedText,
@@ -474,4 +775,18 @@ export function tableMarkdown(columns: string[], rows: string[][]): string {
     .slice(1)
     .map((row) => `| ${row.join(" | ")} |`)
     .join("\n")}\n`;
+}
+
+export function agentId(agent: Pick<Binding, "provider" | "sessionId">): string {
+  return `${agent.provider}:${agent.sessionId}`;
+}
+
+export function defaultAgent(metadata: Metadata): AgentConnection | null {
+  return metadata.agents.find((agent) => agent.id === metadata.defaultAgentId) ?? null;
+}
+
+export function requestAgentId(metadata: Metadata, threadId?: string, choice?: string | null): string | null {
+  if (choice) return choice;
+  const recipient = threadId ? metadata.requests.filter((request) => request.threadId === threadId).at(-1)?.binding : null;
+  return recipient ? agentId(recipient) : metadata.defaultAgentId;
 }

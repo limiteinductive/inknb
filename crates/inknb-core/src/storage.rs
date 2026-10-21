@@ -1,3 +1,5 @@
+use crate::events::EventStore;
+
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use sha2::{Digest, Sha256};
@@ -10,6 +12,8 @@ use uuid::Uuid;
 #[derive(Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Snapshot {
+    #[serde(default)]
+    pub base_text: Option<String>,
     pub path: Option<String>,
     pub text: String,
     pub metadata: Value,
@@ -17,6 +21,8 @@ pub struct Snapshot {
     pub expected_sidecar_hash: Option<String>,
     #[serde(default)]
     pub events: Vec<crate::events::EventInput>,
+    #[serde(default)]
+    pub history: Vec<crate::history::HistoryChange>,
     #[serde(default)]
     pub save_event: Option<crate::events::EventInput>,
 }
@@ -38,10 +44,40 @@ pub struct SavedDocument {
     pub sidecar_hash: String,
 }
 
+impl EventStore {
+    pub fn committed_snapshots(&self) -> Result<Vec<Snapshot>, String> {
+        let mut statement = self
+            .connection
+            .prepare("SELECT content FROM document_snapshots")
+            .map_err(|error| error.to_string())?;
+        let rows = statement
+            .query_map([], |row| row.get::<_, String>(0))
+            .map_err(|error| error.to_string())?;
+        rows.map(|row| {
+            serde_json::from_str(&row.map_err(|error| error.to_string())?)
+                .map_err(|error| error.to_string())
+        })
+        .collect()
+    }
+
+    pub fn forget_snapshot(&mut self, identity: &str) -> Result<(), String> {
+        self.connection
+            .execute(
+                "DELETE FROM document_snapshots WHERE document=?1",
+                [identity],
+            )
+            .map_err(|error| error.to_string())?;
+        Ok(())
+    }
+}
+
 pub fn application_directory() -> Result<PathBuf, String> {
-    let directory = dirs::data_local_dir()
+    let mut directory = dirs::data_local_dir()
         .ok_or("The application support directory is unavailable.")?
         .join("aside");
+    if let Some(profile) = crate::profile::application_profile() {
+        directory = directory.join("profiles").join(profile);
+    }
     fs::create_dir_all(&directory).map_err(|error| error.to_string())?;
     fs::set_permissions(&directory, fs::Permissions::from_mode(0o700))
         .map_err(|error| error.to_string())?;
@@ -151,24 +187,26 @@ pub fn save_document(directory: &Path, snapshot: &Snapshot) -> Result<SavedDocum
             .ok_or("Choose a file location first.")?,
     );
     let sidecar = sidecar_path(path);
-    if file_hash(path)? != snapshot.expected_hash {
-        return Err(
-            "The Markdown file changed outside ink and butter. Reload it or save a separate copy."
-                .into(),
-        );
-    }
-    if file_hash(&sidecar)? != snapshot.expected_sidecar_hash {
-        return Err(
-            "The annotation file changed outside ink and butter. Reload it or save a separate copy.".into(),
-        );
-    }
-    store_recovery(directory, snapshot)?;
     let hash = fingerprint(snapshot.text.as_bytes());
     let mut metadata = snapshot.metadata.clone();
     metadata["documentHash"] = Value::String(hash.clone());
     let annotation_bytes =
         serde_json::to_vec_pretty(&metadata).map_err(|error| error.to_string())?;
     let sidecar_hash = fingerprint(&annotation_bytes);
+    let actual_hash = file_hash(path)?;
+    let actual_sidecar_hash = file_hash(&sidecar)?;
+    if actual_hash != snapshot.expected_hash && actual_hash.as_ref() != Some(&hash) {
+        return Err(
+            "The document changed outside ink and butter. Reload it or save a separate copy."
+                .into(),
+        );
+    }
+    if actual_sidecar_hash != snapshot.expected_sidecar_hash
+        && actual_sidecar_hash.as_ref() != Some(&sidecar_hash)
+    {
+        return Err("The annotation file changed outside ink and butter. Reload it or save a separate copy.".into());
+    }
+    store_recovery(directory, snapshot)?;
     atomic_write(path, snapshot.text.as_bytes())?;
     atomic_write(&sidecar, &annotation_bytes)?;
     atomic_write(
@@ -391,12 +429,14 @@ mod tests {
         let directory = tempfile::tempdir().unwrap();
         let path = directory.path().join("paper.md");
         let mut snapshot = Snapshot {
+            base_text: None,
             path: Some(path.to_string_lossy().into_owned()),
             text: "# Plants\r\n\r\nA 🪴 garden.\n".into(),
             metadata: json!({"version": 1, "documentHash": ""}),
             expected_hash: None,
             expected_sidecar_hash: None,
             events: Vec::new(),
+            history: Vec::new(),
             save_event: None,
         };
         let saved = save_document(directory.path(), &snapshot).unwrap();
@@ -425,12 +465,14 @@ mod tests {
         fs::write(source_directory.join("figs/chart.svg"), "<svg/>").unwrap();
         let source = source_directory.join("draft.md");
         let snapshot = Snapshot {
+            base_text: None,
             path: Some(source.to_string_lossy().into_owned()),
             text: "# Draft\r\n\r\n![Chart](figs/chart.svg)\n".into(),
             metadata: json!({"version":2}),
             expected_hash: None,
             expected_sidecar_hash: None,
             events: Vec::new(),
+            history: Vec::new(),
             save_event: None,
         };
         let saved = save_document(directory.path(), &snapshot).unwrap();

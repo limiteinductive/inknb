@@ -1,5 +1,10 @@
 use base64::Engine;
+use inknb_core::configuration::{
+    Configuration, ConfigurationSnapshot, ConfigurationStore, FontSizeChange, Placement,
+};
 use inknb_core::events::{EventInput, EventQuery, EventStore};
+use inknb_core::history::{HistoryPage, HistoryQuery, HistoryRevision, RevisionQuery};
+use inknb_core::profile::{application_profile, configure_profile};
 use inknb_core::protocol::{socket_path, ControlRequest, ControlResponse};
 use inknb_core::storage::{
     application_directory, atomic_write, file_hash, load_document, recovery_path, save_document,
@@ -7,7 +12,7 @@ use inknb_core::storage::{
 };
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::fs::{self, File, OpenOptions};
 use std::os::fd::AsRawFd;
 use std::os::unix::fs::{OpenOptionsExt, PermissionsExt};
@@ -16,25 +21,161 @@ use std::sync::{Arc, Mutex};
 use tauri::{Emitter, Manager, State};
 use tokio::io::{AsyncBufReadExt, AsyncReadExt, AsyncWriteExt, BufReader};
 use tokio::sync::oneshot;
+mod activity;
+mod images;
+mod preview_window;
+mod space_windows;
 mod window_chrome;
-use window_chrome::{WindowChrome, WindowMode, TOOLBAR_HEIGHT};
+use window_chrome::{WindowChrome, WindowMode};
 
 type PendingResult = oneshot::Sender<Result<Value, String>>;
+
+#[tauri::command]
+async fn register_preview(path: String) -> Result<inknb_core::previews::PreviewInfo, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        inknb_core::previews::register(&application_directory()?, Path::new(&path))
+    })
+    .await
+    .map_err(|error| error.to_string())?
+}
+
+#[tauri::command]
+fn preview_info(artifact_id: String) -> Result<inknb_core::previews::PreviewInfo, String> {
+    inknb_core::previews::info(&application_directory()?, &artifact_id)
+}
+
+#[tauri::command]
+fn preview_file(artifact_id: String, name: String) -> Result<String, String> {
+    Ok(
+        base64::engine::general_purpose::STANDARD.encode(inknb_core::previews::asset(
+            &application_directory()?,
+            &artifact_id,
+            &name,
+        )?),
+    )
+}
+
+#[tauri::command]
+async fn register_markdown_preview(
+    document_id: uuid::Uuid,
+    title: String,
+    source_text: String,
+    html: String,
+    source_map: Vec<inknb_core::previews::SourceMapping>,
+) -> Result<inknb_core::previews::PreviewInfo, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let directory = application_directory()?;
+        let package = directory.join(format!(".preview-{}", uuid::Uuid::new_v4()));
+        fs::create_dir(&package).map_err(|error| error.to_string())?;
+        let result = (|| {
+            atomic_write(&package.join("source.txt"), source_text.as_bytes())?;
+            atomic_write(&package.join("index.html"), html.as_bytes())?;
+            let mut title_end = title.len().min(160);
+            while !title.is_char_boundary(title_end) {
+                title_end -= 1;
+            }
+            let manifest = inknb_core::previews::PreviewManifest {
+                page: None,
+                version: 1,
+                document_id,
+                kind: inknb_core::previews::PreviewKind::Html,
+                title: title[..title_end].to_owned(),
+                entry: "index.html".into(),
+                source: "source.txt".into(),
+                source_map,
+            };
+            atomic_write(
+                &package.join("inknb-preview.json"),
+                &serde_json::to_vec(&manifest).map_err(|error| error.to_string())?,
+            )?;
+            inknb_core::previews::register(&directory, &package)
+        })();
+        let _ = fs::remove_dir_all(package);
+        result
+    })
+    .await
+    .map_err(|error| error.to_string())?
+}
+
+#[derive(Clone, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct CaptureRectangle {
+    left: f64,
+    top: f64,
+    width: f64,
+    height: f64,
+}
+
+#[tauri::command]
+async fn document_capture(
+    window: tauri::WebviewWindow,
+    rectangle: CaptureRectangle,
+) -> Result<Value, String> {
+    if window.label() != "main" {
+        return Err("Choose a region in the document window.".into());
+    }
+    let bytes = capture_window(window.app_handle(), window.label(), Some(rectangle)).await?;
+    images::image_import(
+        base64::engine::general_purpose::STANDARD.encode(bytes),
+        "Selected region.png".into(),
+    )
+}
+
+#[tauri::command]
+async fn preview_capture(
+    window: tauri::WebviewWindow,
+    artifact_id: String,
+    rectangle: CaptureRectangle,
+) -> Result<Value, String> {
+    inknb_core::previews::load(&application_directory()?, &artifact_id)?;
+    let bytes = capture_window(window.app_handle(), window.label(), Some(rectangle)).await?;
+    let identity = inknb_core::storage::fingerprint(&bytes);
+    let directory = application_directory()?.join("preview-captures");
+    fs::create_dir_all(&directory).map_err(|error| error.to_string())?;
+    atomic_write(&directory.join(format!("{identity}.png")), &bytes)?;
+    Ok(json!({
+        "id": identity,
+        "width": u32::from_be_bytes(bytes[16..20].try_into().unwrap()),
+        "height": u32::from_be_bytes(bytes[20..24].try_into().unwrap()),
+    }))
+}
+
+#[tauri::command]
+fn preview_capture_read(capture_id: String) -> Result<String, String> {
+    if capture_id.len() != 64 || !capture_id.bytes().all(|value| value.is_ascii_hexdigit()) {
+        return Err("Use a preview capture identity.".into());
+    }
+    let bytes = fs::read(
+        application_directory()?
+            .join("preview-captures")
+            .join(format!("{capture_id}.png")),
+    )
+    .map_err(|error| error.to_string())?;
+    if inknb_core::storage::fingerprint(&bytes) != capture_id {
+        return Err("The preview capture changed.".into());
+    }
+    Ok(base64::engine::general_purpose::STANDARD.encode(bytes))
+}
 
 struct DesktopState {
     directory: PathBuf,
     persistence: Mutex<()>,
+    configuration: Mutex<ConfigurationStore>,
     events: Mutex<EventStore>,
     event_notification: tokio::sync::Notify,
     pending: Mutex<HashMap<String, PendingResult>>,
     open_path: Mutex<Option<String>>,
+    focused_window: Mutex<Option<String>>,
+    host_lifecycle: Mutex<space_windows::HostLifecycle>,
+    ready_windows: Mutex<HashSet<String>>,
+    window_ready: tokio::sync::Notify,
     _lock: File,
 }
 
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 struct Bootstrap {
-    preferences: Option<Value>,
+    configuration: ConfigurationSnapshot,
     recovery: Option<Snapshot>,
     recoveries: Vec<Snapshot>,
     library: Option<Value>,
@@ -43,10 +184,18 @@ struct Bootstrap {
     command_path: String,
     codex_path: Option<String>,
     socket_path: String,
+    profile: Option<String>,
 }
 
 #[tauri::command]
 fn bootstrap(state: State<DesktopState>) -> Result<Bootstrap, String> {
+    *state
+        .host_lifecycle
+        .lock()
+        .map_err(|error| error.to_string())? = space_windows::HostLifecycle {
+        phase: space_windows::HostPhase::LoadingDocuments,
+        message: Some("Reading saved documents".into()),
+    };
     inknb_core::storage::recover_move(&state.directory)?;
     let read = |name: &str| -> Result<Option<Value>, String> {
         let path = state.directory.join(name);
@@ -84,6 +233,16 @@ fn bootstrap(state: State<DesktopState>) -> Result<Bootstrap, String> {
             recoveries.push(snapshot);
         }
     }
+    let committed = state
+        .events
+        .lock()
+        .map_err(|error| error.to_string())?
+        .committed_snapshots()?;
+    for snapshot in committed {
+        recoveries
+            .retain(|previous| previous.metadata["documentId"] != snapshot.metadata["documentId"]);
+        recoveries.push(snapshot);
+    }
     for snapshot in &mut recoveries {
         if let Some(path) = &snapshot.path {
             let new_hash = inknb_core::storage::fingerprint(snapshot.text.as_bytes());
@@ -94,6 +253,9 @@ fn bootstrap(state: State<DesktopState>) -> Result<Bootstrap, String> {
             );
             let actual_hash = file_hash(Path::new(path))?;
             let actual_sidecar_hash = file_hash(&sidecar_path(Path::new(path)))?;
+            if actual_hash.as_ref() == Some(&new_hash) {
+                snapshot.base_text = Some(snapshot.text.clone());
+            }
             if actual_hash.as_ref() == Some(&new_hash)
                 && actual_sidecar_hash.as_ref() == Some(&new_sidecar_hash)
             {
@@ -117,7 +279,7 @@ fn bootstrap(state: State<DesktopState>) -> Result<Bootstrap, String> {
             .events
             .lock()
             .map_err(|error| error.to_string())?
-            .append(&snapshot.events)?;
+            .commit_snapshot(snapshot)?;
     }
     recovery = recovery.and_then(|legacy| {
         recoveries
@@ -132,11 +294,34 @@ fn bootstrap(state: State<DesktopState>) -> Result<Bootstrap, String> {
         .map_err(|error| error.to_string())?
         .take();
     let executable = std::env::current_exe().map_err(|error| error.to_string())?;
+    let mut library = read("library.json")?;
+    if let Some(documents) = library
+        .as_mut()
+        .and_then(|library| library["documents"].as_array_mut())
+    {
+        for document in documents {
+            if document.get("modifiedAt").is_some() {
+                continue;
+            }
+            let modified_at = document["path"]
+                .as_str()
+                .and_then(|path| fs::metadata(path).ok())
+                .and_then(|metadata| metadata.modified().ok())
+                .and_then(|modified| modified.duration_since(std::time::UNIX_EPOCH).ok())
+                .map(|duration| duration.as_secs_f64() * 1000.0)
+                .unwrap_or(0.0);
+            document["modifiedAt"] = json!(modified_at);
+        }
+    }
     Ok(Bootstrap {
-        preferences: read("preferences.json")?,
+        configuration: state
+            .configuration
+            .lock()
+            .map_err(|error| error.to_string())?
+            .snapshot(),
         recovery,
         recoveries,
-        library: read("library.json")?,
+        library,
         last_path: requested_path.clone().or(stored_path),
         requested_path,
         command_path: executable
@@ -145,6 +330,7 @@ fn bootstrap(state: State<DesktopState>) -> Result<Bootstrap, String> {
             .into_owned(),
         codex_path: find_executable("codex"),
         socket_path: socket_path()?.to_string_lossy().into_owned(),
+        profile: application_profile().map(str::to_owned),
     })
 }
 
@@ -196,12 +382,11 @@ async fn write_recovery(app: tauri::AppHandle, snapshot: Snapshot) -> Result<(),
             .persistence
             .lock()
             .map_err(|error| error.to_string())?;
-        store_recovery(&state.directory, &snapshot)?;
         state
             .events
             .lock()
             .map_err(|error| error.to_string())?
-            .append(&snapshot.events)?;
+            .commit_snapshot(&snapshot)?;
         state.event_notification.notify_waiters();
         Ok(())
     })
@@ -220,14 +405,21 @@ async fn persist_document(
             .persistence
             .lock()
             .map_err(|error| error.to_string())?;
-        store_recovery(&state.directory, &snapshot)?;
         state
             .events
             .lock()
             .map_err(|error| error.to_string())?
-            .append(&snapshot.events)?;
-        state.event_notification.notify_waiters();
+            .commit_snapshot(&snapshot)?;
         let saved = save_document(&state.directory, &snapshot)?;
+        state
+            .events
+            .lock()
+            .map_err(|error| error.to_string())?
+            .forget_snapshot(
+                snapshot.metadata["documentId"]
+                    .as_str()
+                    .ok_or("The document needs an identity.")?,
+            )?;
         state.event_notification.notify_waiters();
         Ok(saved)
     })
@@ -280,16 +472,26 @@ async fn move_document(
 }
 
 #[tauri::command]
-fn discard_recovery(state: State<DesktopState>, document_id: String) -> Result<(), String> {
-    let _guard = state
-        .persistence
-        .lock()
-        .map_err(|error| error.to_string())?;
-    let path = recovery_path(&state.directory, &json!({"documentId": document_id}))?;
-    if path.exists() {
-        fs::remove_file(path).map_err(|error| error.to_string())?;
-    }
-    Ok(())
+async fn discard_recovery(app: tauri::AppHandle, document_id: String) -> Result<(), String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let state = app.state::<DesktopState>();
+        let _guard = state
+            .persistence
+            .lock()
+            .map_err(|error| error.to_string())?;
+        let path = recovery_path(&state.directory, &json!({"documentId": document_id}))?;
+        if path.exists() {
+            fs::remove_file(path).map_err(|error| error.to_string())?;
+        }
+        state
+            .events
+            .lock()
+            .map_err(|error| error.to_string())?
+            .forget_snapshot(&document_id)?;
+        Ok(())
+    })
+    .await
+    .map_err(|error| error.to_string())?
 }
 
 #[tauri::command]
@@ -312,9 +514,49 @@ fn allocate_document(state: State<DesktopState>, document_id: String) -> Result<
 }
 
 #[tauri::command]
-fn store_preferences(state: State<DesktopState>, preferences: Value) -> Result<(), String> {
-    let bytes = serde_json::to_vec_pretty(&preferences).map_err(|error| error.to_string())?;
-    atomic_write(&state.directory.join("preferences.json"), &bytes)
+fn configuration_read(app: tauri::AppHandle) -> Result<ConfigurationSnapshot, String> {
+    let state = app.state::<DesktopState>();
+    let mut configuration = state
+        .configuration
+        .lock()
+        .map_err(|error| error.to_string())?;
+    if configuration.refresh() {
+        app.emit_to("host", "inknb-configuration", configuration.snapshot())
+            .map_err(|error| error.to_string())?;
+    }
+    Ok(configuration.snapshot())
+}
+
+#[tauri::command]
+fn configuration_placement(
+    app: tauri::AppHandle,
+    placement: Placement,
+) -> Result<ConfigurationSnapshot, String> {
+    let state = app.state::<DesktopState>();
+    let mut configuration = state
+        .configuration
+        .lock()
+        .map_err(|error| error.to_string())?;
+    let snapshot = configuration.set_placement(placement)?;
+    app.emit_to("host", "inknb-configuration", &snapshot)
+        .map_err(|error| error.to_string())?;
+    Ok(snapshot)
+}
+
+#[tauri::command]
+fn configuration_font_size(
+    app: tauri::AppHandle,
+    change: FontSizeChange,
+) -> Result<ConfigurationSnapshot, String> {
+    let state = app.state::<DesktopState>();
+    let mut configuration = state
+        .configuration
+        .lock()
+        .map_err(|error| error.to_string())?;
+    let snapshot = configuration.change_font_size(change)?;
+    app.emit_to("host", "inknb-configuration", &snapshot)
+        .map_err(|error| error.to_string())?;
+    Ok(snapshot)
 }
 
 #[tauri::command]
@@ -437,10 +679,97 @@ fn preview_assets(
     Ok(assets)
 }
 
+#[derive(Deserialize)]
+#[serde(rename_all = "kebab-case")]
+enum EditingAction {
+    Undo,
+    Redo,
+    Cut,
+    Copy,
+    Paste,
+    SelectAll,
+}
+
 #[tauri::command]
-fn open_reference(document_path: Option<String>, reference: String) -> Result<(), String> {
+fn clipboard_write(text: String) -> Result<(), String> {
+    use objc2_app_kit::{NSPasteboard, NSPasteboardTypeString};
+    use objc2_foundation::NSString;
+
+    let pasteboard = NSPasteboard::generalPasteboard();
+    pasteboard.clearContents();
+    let written =
+        unsafe { pasteboard.setString_forType(&NSString::from_str(&text), NSPasteboardTypeString) };
+    if !written {
+        return Err("macOS could not copy this text.".into());
+    }
+    Ok(())
+}
+
+#[tauri::command]
+fn editing_action(window: tauri::WebviewWindow, action: EditingAction) -> Result<(), String> {
+    window
+        .with_webview(move |_| {
+            let main_thread = objc2::MainThreadMarker::new().unwrap();
+            let application = objc2_app_kit::NSApplication::sharedApplication(main_thread);
+            let selector = match action {
+                EditingAction::Undo => objc2::sel!(undo:),
+                EditingAction::Redo => objc2::sel!(redo:),
+                EditingAction::Cut => objc2::sel!(cut:),
+                EditingAction::Copy => objc2::sel!(copy:),
+                EditingAction::Paste => objc2::sel!(paste:),
+                EditingAction::SelectAll => objc2::sel!(selectAll:),
+            };
+            unsafe {
+                application.sendAction_to_from(selector, None, None);
+            }
+        })
+        .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+async fn open_reference(
+    app: tauri::AppHandle,
+    document_path: Option<String>,
+    reference: String,
+) -> Result<(), String> {
+    if let Ok(url) = tauri::Url::parse(&reference) {
+        if url.scheme() == "inknb" && matches!(url.host_str(), Some("document" | "aside")) {
+            let parts: Vec<_> = url.path().trim_matches('/').split('/').collect();
+            let document_id = parts
+                .first()
+                .ok_or("The document link is incomplete.")?
+                .parse::<uuid::Uuid>()
+                .map_err(|error| error.to_string())?;
+            let (method, parameters) = if url.host_str() == Some("aside") && parts.len() == 2 {
+                let thread_id = parts[1]
+                    .parse::<uuid::Uuid>()
+                    .map_err(|error| error.to_string())?;
+                (
+                    "aside_open",
+                    json!({ "documentId": document_id, "threadId": thread_id }),
+                )
+            } else if url.host_str() == Some("document") && parts.len() == 1 {
+                ("document_activate", json!({ "documentId": document_id }))
+            } else {
+                return Err("The document link is incomplete.".into());
+            };
+            dispatch_to(
+                &app,
+                "host",
+                ControlRequest {
+                    agent_id: None,
+                    version: 1,
+                    id: uuid::Uuid::new_v4().to_string(),
+                    method: method.into(),
+                    params: parameters,
+                },
+            )
+            .await?;
+            return Ok(());
+        }
+    }
     let destination = match tauri::Url::parse(&reference) {
-        Ok(url) if matches!(url.scheme(), "http" | "https") => url.to_string(),
+        Ok(url) if matches!(url.scheme(), "http" | "https" | "codex" | "claude") => url.to_string(),
         Ok(_) => return Err("This link type cannot be opened from ink and butter.".into()),
         Err(_) => {
             let decoded = percent_encoding::percent_decode_str(&reference)
@@ -592,6 +921,27 @@ async fn deliver_codex(
 }
 
 #[tauri::command]
+fn history_read(state: State<DesktopState>, query: HistoryQuery) -> Result<HistoryPage, String> {
+    state
+        .events
+        .lock()
+        .map_err(|error| error.to_string())?
+        .read_history(&query)
+}
+
+#[tauri::command]
+fn revision_read(
+    state: State<DesktopState>,
+    query: RevisionQuery,
+) -> Result<HistoryRevision, String> {
+    state
+        .events
+        .lock()
+        .map_err(|error| error.to_string())?
+        .read_revision(&query)
+}
+
+#[tauri::command]
 fn delivery_receipts(
     state: State<DesktopState>,
     requests: Vec<String>,
@@ -616,7 +966,7 @@ fn reset_delivery(state: State<DesktopState>, request_id: String) -> Result<(), 
 fn complete_control(
     state: State<DesktopState>,
     request_id: String,
-    result: Option<Value>,
+    result: Value,
     error: Option<String>,
 ) -> Result<(), String> {
     if let Some(sender) = state
@@ -625,22 +975,50 @@ fn complete_control(
         .map_err(|error| error.to_string())?
         .remove(&request_id)
     {
-        let response =
-            result.ok_or_else(|| error.unwrap_or("The editor returned no result.".into()));
+        let response = match error {
+            Some(message) => Err(message),
+            None => Ok(result),
+        };
         let _ = sender.send(response);
     }
     Ok(())
 }
 
 async fn dispatch(app: &tauri::AppHandle, request: ControlRequest) -> Result<Value, String> {
-    let (sender, receiver) = oneshot::channel();
+    dispatch_to(app, "host", request).await
+}
+
+async fn dispatch_to(
+    app: &tauri::AppHandle,
+    label: &str,
+    request: ControlRequest,
+) -> Result<Value, String> {
     let state = app.state::<DesktopState>();
+    if label.starts_with("writing-") {
+        tokio::time::timeout(std::time::Duration::from_secs(10), async {
+            loop {
+                let notification = state.window_ready.notified();
+                if state
+                    .ready_windows
+                    .lock()
+                    .map_err(|error| error.to_string())?
+                    .contains(label)
+                {
+                    return Ok::<(), String>(());
+                }
+                notification.await;
+            }
+        })
+        .await
+        .map_err(|_| "The writing window is still opening.")??;
+    }
+    let (sender, receiver) = oneshot::channel();
     state
         .pending
         .lock()
         .map_err(|error| error.to_string())?
         .insert(request.id.clone(), sender);
-    app.emit_to("main", "inknb-control", &request)
+    app.emit_to(label, "inknb-control", &request)
         .map_err(|error| error.to_string())?;
     let response = tokio::time::timeout(std::time::Duration::from_secs(25), receiver).await;
     state
@@ -759,13 +1137,46 @@ async fn serve_connection(
     let identity = request.id.clone();
     let method = request.method.clone();
     let result: Result<Value, String> = async {
-        if method == "protocol_info" {
+        if method == "decision_read" {
+            #[derive(Deserialize)]
+            #[serde(rename_all = "camelCase", deny_unknown_fields)]
+            struct DecisionQuery { decision_id: uuid::Uuid, document_id: Option<uuid::Uuid> }
+            let query: DecisionQuery = serde_json::from_value(request.params).map_err(|error| error.to_string())?;
+            app.state::<DesktopState>().events.lock().map_err(|error| error.to_string())?.read_decision(query.decision_id, query.document_id)
+        } else if method == "tools_list" {
+            if request.params != json!({}) { return Err("This tool takes no parameters.".into()); }
+            Ok(json!({"tools":inknb_core::protocol::tools()}))
+        } else if method == "protocol_info" {
             if request.params != json!({}) {
                 return Err("This tool takes no parameters.".into());
             }
             Ok(
-                json!({"version":1,"transport":"unix-json-lines","socketPath":socket_path()?,"eventDelivery":"at-least-once","streamMethod":"events_subscribe","componentGuide":include_str!("../../docs/components.md"),"tools":inknb_core::protocol::tools()}),
+                json!({"version":1,"transport":"unix-json-lines","socketPath":socket_path()?,"eventDelivery":"at-least-once","streamMethod":"events_subscribe","componentGuide":include_str!("../../docs/components.md"),"previewGuide":include_str!("../../docs/previews.md"),"tools":inknb_core::protocol::tools()}),
             )
+        } else if method == "configuration_read" {
+            if request.params != json!({}) {
+                return Err("This tool takes no parameters.".into());
+            }
+            let mut result = serde_json::to_value(configuration_read(app.clone())?)
+                .map_err(|error| error.to_string())?;
+            result["schema"] = serde_json::to_value(schemars::schema_for!(Configuration))
+                .map_err(|error| error.to_string())?;
+            Ok(result)
+        } else if method == "configuration_write" {
+            #[derive(Deserialize)]
+            #[serde(rename_all = "camelCase", deny_unknown_fields)]
+            struct ConfigurationWrite {
+                source: String,
+                expected_fingerprint: String,
+            }
+            let parameters: ConfigurationWrite = serde_json::from_value(request.params)
+                .map_err(|error| error.to_string())?;
+            let state = app.state::<DesktopState>();
+            let mut configuration = state.configuration.lock().map_err(|error| error.to_string())?;
+            let result = configuration.write(&parameters.source, &parameters.expected_fingerprint);
+            app.emit_to("host", "inknb-configuration", configuration.snapshot())
+                .map_err(|error| error.to_string())?;
+            result.and_then(|snapshot| serde_json::to_value(snapshot).map_err(|error| error.to_string()))
         } else if method == "component_register" {
             #[derive(Deserialize)]
             #[serde(deny_unknown_fields)]
@@ -791,6 +1202,10 @@ async fn serve_connection(
                 .map_err(|error| error.to_string())?
                 .delivery(&parsed.request_id.to_string())?;
             Ok(json!({"requestId":parsed.request_id,"receipt":receipt}))
+        } else if method == "activity_read" {
+            let query: inknb_core::activity::ActivityQuery = serde_json::from_value(request.params.clone()).map_err(|error|error.to_string())?;
+            let page = app.state::<DesktopState>().events.lock().map_err(|error|error.to_string())?.read_activity(&query)?;
+            serde_json::to_value(page).map_err(|error|error.to_string())
         } else if method == "events_read" {
             let query: EventQuery =
                 serde_json::from_value(request.params).map_err(|error| error.to_string())?;
@@ -815,12 +1230,23 @@ async fn serve_connection(
                 .map_err(|error| error.to_string())?
                 .acknowledge(&acknowledgement.consumer, acknowledgement.cursor)?;
             Ok(json!({"acknowledged":acknowledgement.cursor}))
+        } else if method == "host_status" {
+            let status = app.state::<DesktopState>().host_lifecycle.lock().map_err(|error| error.to_string())?.clone();
+            Ok(json!({ "status": status, "windows": app.webview_windows().values().map(|window| json!({ "label": window.label(), "visible": window.is_visible().unwrap_or(false) })).collect::<Vec<_>>() }))
+        } else if method == "window_close" {
+            #[derive(Deserialize)]
+            #[serde(rename_all = "camelCase", deny_unknown_fields)]
+            struct CloseWindow { window_id: uuid::Uuid }
+            let target: CloseWindow = serde_json::from_value(request.params.clone()).map_err(|error| error.to_string())?;
+            let window = space_windows::window_for_identity(&app, Some(target.window_id))?;
+            window.close().map_err(|error| error.to_string())?;
+            Ok(json!({ "closing": true, "windowId": target.window_id }))
         } else if method == "window_show" {
-            if request.params != json!({}) {
-                Err("This tool takes no parameters.".into())
-            } else {
-                app.get_webview_window("main")
-                    .ok_or("The writing window is unavailable.".to_string())
+            #[derive(Deserialize)]
+            #[serde(rename_all = "camelCase", deny_unknown_fields)]
+            struct WindowTarget { window_id: Option<uuid::Uuid> }
+            let target: WindowTarget = serde_json::from_value(request.params.clone()).map_err(|error| error.to_string())?;
+            space_windows::window_for_identity(&app, target.window_id)
                     .and_then(|window| {
                         window.unminimize().map_err(|error| error.to_string())?;
                         window.show().map_err(|error| error.to_string())?;
@@ -836,12 +1262,34 @@ async fn serve_connection(
                             .map_err(|error| error.to_string())?;
                         Ok(json!({"shown":true}))
                     })
-            }
         } else if method == "screenshot" {
+            #[derive(Default, Deserialize)]
+            #[serde(rename_all = "lowercase")]
+            enum ScreenshotWindow {
+                #[default]
+                Main,
+                Preview,
+            }
+            #[derive(Deserialize)]
+            #[serde(rename_all = "camelCase", deny_unknown_fields)]
+            struct ScreenshotParameters {
+                #[serde(default)]
+                window: ScreenshotWindow,
+                window_id: Option<uuid::Uuid>,
+            }
+            let parameters: ScreenshotParameters = serde_json::from_value(request.params.clone()).map_err(|error| error.to_string())?;
+            let label = match parameters.window {
+                ScreenshotWindow::Main => space_windows::window_for_identity(&app, parameters.window_id)?.label().to_string(),
+                ScreenshotWindow::Preview => "preview".into(),
+            };
             let mut state_request = request.clone();
             state_request.method = "ui_state".into();
+            state_request.params = match label.strip_prefix("writing-") {
+                Some(identity) => json!({ "windowId": identity }),
+                None => json!({}),
+            };
             let mut before = dispatch(&app, state_request.clone()).await?;
-            let bytes = capture_window(&app).await?;
+            let bytes = capture_window(&app, &label, None).await?;
             let mut after = dispatch(&app, state_request).await?;
             before
                 .as_object_mut()
@@ -855,7 +1303,7 @@ async fn serve_connection(
                 after["capturedAt"] = captured_at.unwrap_or(Value::Null);
                 after["captureId"] = Value::String(uuid::Uuid::new_v4().to_string());
                 Ok(
-                    json!({"state":after,"data":base64::engine::general_purpose::STANDARD.encode(bytes)}),
+                    json!({"window": label, "state":after,"data":base64::engine::general_purpose::STANDARD.encode(bytes)}),
                 )
             }
         } else {
@@ -880,13 +1328,18 @@ async fn serve_connection(
     write_control(&mut writer, response).await
 }
 
-async fn capture_window(app: &tauri::AppHandle) -> Result<Vec<u8>, String> {
+async fn capture_window(
+    app: &tauri::AppHandle,
+    label: &str,
+    rectangle: Option<CaptureRectangle>,
+) -> Result<Vec<u8>, String> {
     use block2::RcBlock;
+    use objc2::MainThreadOnly;
     use objc2_app_kit::{NSBitmapImageFileType, NSBitmapImageRep, NSImage};
     use objc2_foundation::{NSDictionary, NSError};
-    use objc2_web_kit::WKWebView;
+    use objc2_web_kit::{WKSnapshotConfiguration, WKWebView};
     let window = app
-        .get_webview_window("main")
+        .get_webview_window(label)
         .ok_or("The editor window is closed.")?;
     let (sender, receiver) = oneshot::channel();
     let sender = Arc::new(Mutex::new(Some(sender)));
@@ -913,9 +1366,43 @@ async fn capture_window(app: &tauri::AppHandle) -> Result<Vec<u8>, String> {
                     }
                 }
             });
+            let webview = unsafe { &*(platform.inner() as *mut WKWebView) };
+            let configuration = unsafe { WKSnapshotConfiguration::new(webview.mtm()) };
             unsafe {
-                (&*(platform.inner() as *mut WKWebView))
-                    .takeSnapshotWithConfiguration_completionHandler(None, &completion);
+                configuration.setAfterScreenUpdates(true);
+            }
+            if let Some(rectangle) = rectangle {
+                let bounds = webview.bounds();
+                if [
+                    rectangle.left,
+                    rectangle.top,
+                    rectangle.width,
+                    rectangle.height,
+                ]
+                .iter()
+                .any(|value| !value.is_finite())
+                    || rectangle.left < 0.0
+                    || rectangle.top < 0.0
+                    || rectangle.width < 1.0
+                    || rectangle.height < 1.0
+                    || rectangle.left + rectangle.width > bounds.size.width + 0.01
+                    || rectangle.top + rectangle.height > bounds.size.height + 0.01
+                {
+                    completion.call((std::ptr::null_mut(), std::ptr::null_mut()));
+                    return;
+                }
+                unsafe {
+                    configuration.setRect(objc2_foundation::NSRect::new(
+                        objc2_foundation::NSPoint::new(rectangle.left, rectangle.top),
+                        objc2_foundation::NSSize::new(rectangle.width, rectangle.height),
+                    ));
+                }
+            }
+            unsafe {
+                webview.takeSnapshotWithConfiguration_completionHandler(
+                    Some(&configuration),
+                    &completion,
+                );
             }
         })
         .map_err(|error| error.to_string())?;
@@ -926,6 +1413,21 @@ async fn capture_window(app: &tauri::AppHandle) -> Result<Vec<u8>, String> {
 }
 
 fn main() {
+    let arguments = match configure_profile(std::env::args().skip(1).collect()) {
+        Ok(arguments) => arguments,
+        Err(error) => {
+            eprintln!("{error}");
+            std::process::exit(1);
+        }
+    };
+    let mut context = tauri::generate_context!();
+    if let Some(profile) = application_profile() {
+        context.config_mut().identifier =
+            format!("{}.profiles.{profile}", context.config().identifier);
+        for window in &mut context.config_mut().app.windows {
+            window.incognito = true;
+        }
+    }
     let directory =
         application_directory().expect("The ink and butter support directory is unavailable.");
     let lock = OpenOptions::new()
@@ -948,15 +1450,18 @@ fn main() {
         .expect("The local control socket could not be opened.");
     fs::set_permissions(&socket, fs::Permissions::from_mode(0o600)).unwrap();
     listener.set_nonblocking(true).unwrap();
-    let requested_path = std::env::args()
-        .skip(1)
+    let requested_path = arguments
+        .into_iter()
         .find(|argument| !argument.starts_with('-'));
     let events = EventStore::open(&directory).expect("The automation journal could not be opened.");
+    let configuration = ConfigurationStore::open(&directory)
+        .expect("The ink and butter configuration could not be opened.");
     let app = tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_notification::init())
         .plugin(tauri::plugin::Builder::<tauri::Wry>::new("component-navigation")
             .on_navigation(|_, url| {
-                matches!(url.scheme(), "tauri" | "inknb-component" | "about")
+                matches!(url.scheme(), "tauri" | "inknb-component" | "inknb-preview" | "about")
                     || (cfg!(debug_assertions) && url.scheme() == "http" && url.host_str() == Some("127.0.0.1") && url.port() == Some(1420))
             }).build())
         .register_asynchronous_uri_scheme_protocol("inknb-component", |_, request, responder| {
@@ -1026,32 +1531,120 @@ fn main() {
                 responder.respond(response);
             });
         })
+        .register_asynchronous_uri_scheme_protocol("inknb-preview", |_, request, responder| {
+            tauri::async_runtime::spawn_blocking(move || {
+                let runtime = include_bytes!("../../preview-runtime/runtime.js");
+                let runtime_path = format!("/runtime/{}.js", inknb_core::storage::fingerprint(runtime));
+                let result = (|| -> Result<(Vec<u8>, &str), String> {
+                    if request.method() != "GET" {
+                        return Err("Use GET for preview assets.".into());
+                    }
+                    let path = percent_encoding::percent_decode_str(request.uri().path())
+                        .decode_utf8().map_err(|error| error.to_string())?;
+                    if path == runtime_path {
+                        return Ok((runtime.to_vec(), "text/javascript"));
+                    }
+                    let (identity, name) = path.trim_start_matches('/').split_once('/')
+                        .ok_or("Unknown preview asset.")?;
+                    let directory = application_directory()?;
+                    let record = inknb_core::previews::load(&directory, identity)?;
+                    let mut bytes = inknb_core::previews::asset(&directory, identity, name)?;
+                    let mime = match Path::new(name).extension().and_then(|extension| extension.to_str()).unwrap_or_default() {
+                        "html" => "text/html; charset=utf-8",
+                        "css" => "text/css",
+                        "js" | "mjs" => "text/javascript",
+                        "svg" => "image/svg+xml",
+                        "png" => "image/png",
+                        "jpg" | "jpeg" => "image/jpeg",
+                        "webp" => "image/webp",
+                        "gif" => "image/gif",
+                        "woff" => "font/woff",
+                        "woff2" => "font/woff2",
+                        "ttf" => "font/ttf",
+                        "otf" => "font/otf",
+                        "pdf" => "application/pdf",
+                        "json" => "application/json",
+                        _ => "text/plain; charset=utf-8",
+                    };
+                    if name == record.manifest.entry && matches!(record.manifest.kind, inknb_core::previews::PreviewKind::Html) {
+                        let mut rendered = format!(r#"<!doctype html><script src="inknb-preview://localhost{runtime_path}"></script>"#).into_bytes();
+                        rendered.append(&mut bytes);
+                        bytes = rendered;
+                    }
+                    Ok((bytes, mime))
+                })();
+                let (status, bytes, mime) = match result {
+                    Ok((bytes, mime)) => (200, bytes, mime),
+                    Err(_) => (404, b"Preview unavailable".to_vec(), "text/plain"),
+                };
+                let response = tauri::http::Response::builder().status(status)
+                    .header("Content-Type", mime)
+                    .header("Access-Control-Allow-Origin", "*")
+                    .header("X-Content-Type-Options", "nosniff")
+                    .header("Content-Security-Policy", "default-src 'none'; script-src inknb-preview: 'unsafe-inline'; style-src inknb-preview: 'unsafe-inline'; img-src inknb-preview: data: blob:; font-src inknb-preview: data:; connect-src 'none'; frame-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'; sandbox allow-scripts")
+                    .body(bytes).unwrap();
+                responder.respond(response);
+            });
+        })
         .manage(DesktopState {
             directory,
             persistence: Mutex::new(()),
+            configuration: Mutex::new(configuration),
             events: Mutex::new(events),
             event_notification: tokio::sync::Notify::new(),
             pending: Mutex::new(HashMap::new()),
             open_path: Mutex::new(requested_path),
+            focused_window: Mutex::new(None),
+            host_lifecycle: Mutex::new(space_windows::HostLifecycle { phase: space_windows::HostPhase::NativeStarting, message: None }),
+            ready_windows: Mutex::new(HashSet::new()),
+            window_ready: tokio::sync::Notify::new(),
             _lock: lock,
         })
-        .manage(Mutex::new(WindowChrome {
-            mode: WindowMode::Windowed,
-            toolbar_height: TOOLBAR_HEIGHT,
-            leading_inset: 86.0,
-            windowed_controls: Vec::new(),
-        }))
+        .manage(Mutex::new(HashMap::<String, WindowChrome>::new()))
         .invoke_handler(tauri::generate_handler![
+            space_windows::host_lifecycle,
+            space_windows::host_request,
+            space_windows::host_changed,
+            space_windows::space_window_open,
+            space_windows::space_window_focused,
+            space_windows::space_window_ready,
+            space_windows::space_window_control,
+            space_windows::request_quit,
+            space_windows::host_quit,
+            activity::activity_read,
+            activity::activity_ack,
+            activity::activity_dismiss_all,
+            activity::activity_thread_read,
+            activity::activity_seed,
+            activity::activity_issue,
+            activity::activity_background,
+            activity::activity_show,
+            preview_window::preview_window_open,
+            preview_window::preview_window_state,
+            preview_window::preview_window_action,
+            preview_window::preview_window_result,
+            preview_window::preview_window_close,
             window_chrome::window_chrome,
             bootstrap,
             component_info,
+            register_preview,
+            register_markdown_preview,
+            preview_capture,
+            preview_capture_read,
+            document_capture,
+            images::image_import,
+            images::image_read,
+            preview_info,
+            preview_file,
             read_document,
             write_recovery,
             publish_events,
             persist_document,
             move_document,
             discard_recovery,
-            store_preferences,
+            configuration_read,
+            configuration_placement,
+            configuration_font_size,
             remember_document,
             store_library,
             allocate_document,
@@ -1059,21 +1652,26 @@ fn main() {
             source_fingerprint,
             relative_asset_path,
             preview_assets,
+            images::image_copy,
+            images::image_export,
             open_reference,
+            editing_action,
+            clipboard_write,
             deliver_codex,
+            history_read,
+            revision_read,
             delivery_receipts,
             reset_delivery,
             complete_control
         ])
         .setup(move |app| {
+            activity::start(app.handle())?;
             use tauri::menu::{MenuBuilder, MenuItem, PredefinedMenuItem, SubmenuBuilder};
             let new = MenuItem::with_id(app, "new", "New", true, Some("CmdOrCtrl+N"))?;
             let open = MenuItem::with_id(app, "open", "Open…", true, Some("CmdOrCtrl+O"))?;
             let save = MenuItem::with_id(app, "save", "Save", true, Some("CmdOrCtrl+S"))?;
             let save_as =
                 MenuItem::with_id(app, "save-as", "Save As…", true, Some("CmdOrCtrl+Shift+S"))?;
-            let settings =
-                MenuItem::with_id(app, "settings", "Settings…", true, Some("CmdOrCtrl+,"))?;
             let comment =
                 MenuItem::with_id(app, "comment", "Add aside", true, Some("CmdOrCtrl+Shift+A"))?;
             let focus =
@@ -1084,7 +1682,6 @@ fn main() {
                     Some("About ink and butter"),
                     None,
                 )?)
-                .item(&settings)
                 .separator()
                 .item(&PredefinedMenuItem::hide(app, None)?)
                 .item(&PredefinedMenuItem::hide_others(app, None)?)
@@ -1099,19 +1696,31 @@ fn main() {
                 .build()?;
             let file = SubmenuBuilder::new(app, "File")
                 .items(&[&new, &open, &save, &save_as])
+                .item(&PredefinedMenuItem::close_window(app, Some("Close Window"))?)
+                .item(&MenuItem::with_id(app, "preview", "Open Published Output", true, Some("CmdOrCtrl+Shift+P"))?)
                 .build()?;
             let edit = SubmenuBuilder::new(app, "Edit")
-                .item(&PredefinedMenuItem::undo(app, None)?)
-                .item(&PredefinedMenuItem::redo(app, None)?)
+                .item(&MenuItem::with_id(app, "undo", "Undo", true, Some("CmdOrCtrl+Z"))?)
+                .item(&MenuItem::with_id(app, "redo", "Redo", true, Some("CmdOrCtrl+Shift+Z"))?)
                 .separator()
                 .item(&PredefinedMenuItem::cut(app, None)?)
                 .item(&PredefinedMenuItem::copy(app, None)?)
                 .item(&PredefinedMenuItem::paste(app, None)?)
                 .item(&PredefinedMenuItem::select_all(app, None)?)
                 .separator()
+                .item(&MenuItem::with_id(app, "find", "Find…", true, Some("CmdOrCtrl+F"))?)
                 .item(&comment)
+                .item(&MenuItem::with_id(app, "selection-comment", "Send Selection as Aside", true, Some("CmdOrCtrl+Shift+Enter"))?)
+                .item(&MenuItem::with_id(app, "comment-document", "Add file aside", true, Some("CmdOrCtrl+Alt+A"))?)
+                .item(&MenuItem::with_id(app, "comment-region", "Comment on Region…", true, None::<&str>)?)
+                .item(&MenuItem::with_id(app, "resolve-asides", "Resolve All Asides", true, None::<&str>)?)
                 .build()?;
             let view = SubmenuBuilder::new(app, "View")
+                .item(&MenuItem::with_id(app, "text-larger", "Larger Text", true, Some("CmdOrCtrl+Equal"))?)
+                .item(&MenuItem::with_id(app, "text-smaller", "Smaller Text", true, Some("CmdOrCtrl+Minus"))?)
+                .item(&MenuItem::with_id(app, "text-reset", "Default Text Size", true, Some("CmdOrCtrl+Digit0"))?)
+                .separator()
+                .item(&MenuItem::with_id(app, "activity", "Activity", true, Some("CmdOrCtrl+Shift+K"))?)
                 .item(&focus)
                 .separator()
                 .item(&PredefinedMenuItem::fullscreen(app, None)?)
@@ -1122,7 +1731,27 @@ fn main() {
                     .build()?,
             )?;
             app.on_menu_event(|app, event| {
-                let _ = app.emit_to("main", "inknb-menu", event.id().as_ref());
+                if ["comment", "comment-document", "resolve-asides", "undo", "redo", "find"].contains(&event.id().as_ref()) {
+                    if let Some(window) = app.webview_windows().values().find(|window| window.label() == "preview" && window.is_focused().unwrap_or(false)) {
+                        let _ = window.emit_to(window.label(), "inknb-preview-menu", event.id().as_ref());
+                        return;
+                    }
+                }
+                if let Ok(window) = space_windows::writing_window(app) {
+                    let _ = window.emit_to(window.label(), "inknb-menu", event.id().as_ref());
+                } else if event.id().as_ref() == "close" {
+                    let _ = app.emit_to("host", "inknb-quit", ());
+                } else if event.id().as_ref() == "new" {
+                    let _ = app.emit_to("host", "inknb-open-default", ());
+                }
+            });
+            let configuration_handle = app.handle().clone();
+            tauri::async_runtime::spawn(async move {
+                let mut interval = tokio::time::interval(std::time::Duration::from_millis(500));
+                loop {
+                    interval.tick().await;
+                    let _ = configuration_read(configuration_handle.clone());
+                }
             });
             let handle = app.handle().clone();
             tauri::async_runtime::spawn(async move {
@@ -1145,11 +1774,26 @@ fn main() {
         })
         .on_window_event(|window, event| {
             if let tauri::WindowEvent::CloseRequested { api, .. } = event {
-                api.prevent_close();
-                let _ = window.emit("inknb-menu", "close");
+                if window.label() == "host" { api.prevent_close(); }
+                if window.label().starts_with("writing-") {
+                    api.prevent_close();
+                    let _ = window.emit_to(window.label(), "inknb-window-close", ());
+                }
+            }
+            if let tauri::WindowEvent::Destroyed = event {
+                window.state::<DesktopState>().ready_windows.lock().unwrap().remove(window.label());
+                window
+                    .state::<Mutex<HashMap<String, WindowChrome>>>()
+                    .lock()
+                    .unwrap()
+                    .remove(window.label());
+                if window.label() == "preview" {
+                    let _ = window.emit_to("host", "inknb-preview-action", json!({ "documentId": null, "action": { "kind": "closed" } }));
+                }
+
             }
         })
-        .build(tauri::generate_context!())
+        .build(context)
         .expect("ink and butter could not start.");
     let mut observers: Option<window_chrome::NativeObservers> = None;
     app.run(move |handle, event| match event {
@@ -1159,13 +1803,13 @@ fn main() {
             use objc2_app_kit::{
                 NSWindow, NSWindowDidChangeBackingPropertiesNotification,
                 NSWindowDidEnterFullScreenNotification, NSWindowDidExitFullScreenNotification,
-                NSWindowDidResizeNotification, NSWindowDidUpdateNotification, NSWindowStyleMask,
+                NSWindowDidResizeNotification, NSWindowStyleMask,
                 NSWindowWillEnterFullScreenNotification, NSWindowWillExitFullScreenNotification,
             };
             use objc2_foundation::{NSNotification, NSNotificationCenter, NSOperationQueue};
 
             let window = handle
-                .get_webview_window("main")
+                .get_webview_window("host")
                 .expect("The writing window is unavailable.");
             let native = unsafe {
                 Retained::retain(
@@ -1182,7 +1826,7 @@ fn main() {
                 WindowMode::Windowed
             };
             window_chrome::synchronize(&native, &window, mode)
-                .expect("Window controls could not be aligned.");
+                .expect("Window controls could not be measured.");
             let center = NSNotificationCenter::defaultCenter();
             let notifications = unsafe {
                 [
@@ -1203,24 +1847,41 @@ fn main() {
                         Some(WindowMode::Windowed),
                     ),
                     (NSWindowDidResizeNotification, None),
-                    (NSWindowDidUpdateNotification, None),
                     (NSWindowDidChangeBackingPropertiesNotification, None),
                 ]
             };
             let mut tokens = Vec::new();
             for (notification, transition) in notifications {
-                let window = window.clone();
-                let observed = native.clone();
-                let callback = RcBlock::new(move |_: std::ptr::NonNull<NSNotification>| {
-                    let mode = transition.unwrap_or_else(|| {
-                        window.state::<Mutex<WindowChrome>>().lock().unwrap().mode
+                let handle = handle.clone();
+                let callback =
+                    RcBlock::new(move |notification: std::ptr::NonNull<NSNotification>| {
+                        let Some(object) = (unsafe { notification.as_ref() }).object() else {
+                            return;
+                        };
+                        for window in handle.webview_windows().values() {
+                            let Ok(pointer) = window.ns_window() else {
+                                continue;
+                            };
+                            if pointer != Retained::as_ptr(&object) as *mut std::ffi::c_void {
+                                continue;
+                            }
+                            let observed = unsafe { &*(pointer as *mut NSWindow) };
+                            let mode = transition.unwrap_or_else(|| {
+                                window
+                                    .state::<Mutex<HashMap<String, WindowChrome>>>()
+                                    .lock()
+                                    .unwrap()
+                                    .get(window.label())
+                                    .map(|chrome| chrome.mode)
+                                    .unwrap_or(WindowMode::Windowed)
+                            });
+                            let _ = window_chrome::synchronize(observed, window, mode);
+                        }
                     });
-                    let _ = window_chrome::synchronize(&observed, &window, mode);
-                });
                 tokens.push(unsafe {
                     center.addObserverForName_object_queue_usingBlock(
                         Some(notification),
-                        Some(&native),
+                        None,
                         Some(&NSOperationQueue::mainQueue()),
                         &callback,
                     )
@@ -1228,16 +1889,28 @@ fn main() {
             }
             observers = Some(window_chrome::NativeObservers { center, tokens });
         }
+        tauri::RunEvent::Reopen {
+            has_visible_windows: false,
+            ..
+        } => {
+            let _ = handle.emit_to("host", "inknb-open-default", ());
+        }
         tauri::RunEvent::Exit => {
             observers.take();
         }
         tauri::RunEvent::Opened { urls } => {
-            if let Some(path) = urls.first().and_then(|url| url.to_file_path().ok()) {
-                let path = path.to_string_lossy().into_owned();
+            if let Some(path) = urls.first().and_then(|url| {
+                if url.scheme() == "inknb" && url.host_str() == Some("aside") {
+                    return Some(url.to_string());
+                }
+                url.to_file_path()
+                    .ok()
+                    .map(|path| path.to_string_lossy().into_owned())
+            }) {
                 if let Ok(mut pending) = handle.state::<DesktopState>().open_path.lock() {
                     *pending = Some(path.clone());
                 }
-                let _ = handle.emit_to("main", "inknb-open", path);
+                let _ = handle.emit_to("host", "inknb-open", path);
             }
         }
         _ => {}

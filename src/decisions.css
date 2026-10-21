@@ -1,0 +1,148 @@
+.connected-agent {
+  display: grid;
+  gap: var(--space-1);
+  padding: var(--space-3) 0;
+  border-bottom: 1px solid var(--line);
+}
+.connected-agent code {
+  overflow-wrap: anywhere;
+}
+.connected-agent details {
+  display: grid;
+  font-size: var(--text-detail-size);
+}
+.agent-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+.decision-card {
+  padding: var(--space-4);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-card);
+  background: var(--material-note);
+  box-shadow: var(--elevation-card);
+}
+.decision-heading {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-2);
+  width: 100%;
+  text-align: left;
+  background: none;
+  border: 0;
+  color: inherit;
+  padding: 0;
+  font: inherit;
+  cursor: pointer;
+}
+.decision-heading svg {
+  flex-shrink: 0;
+  transition: transform 160ms;
+}
+.decision-heading svg:not([data-expanded="true"]) {
+  transform: rotate(-90deg);
+}
+.decision-author,
+.decision-answer time {
+  color: var(--muted);
+  font-size: var(--text-detail-size);
+}
+.decision-options {
+  display: grid;
+  gap: var(--space-2);
+  margin: var(--space-3) 0;
+}
+.decision-options > button {
+  display: grid;
+  gap: var(--space-1);
+  padding: var(--space-2) var(--space-3);
+  text-align: left;
+  border-radius: var(--radius-control);
+  border: 1px solid var(--line);
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+.decision-options > button:hover {
+  background: var(--hover);
+}
+.decision-options > button > span:first-child {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--space-2);
+}
+.decision-options small {
+  color: var(--muted);
+  font-size: var(--text-detail-size);
+}
+.decision-options > button > span + span {
+  font-size: var(--text-body-size);
+  line-height: 1.5;
+  color: var(--muted);
+}
+.decision-card textarea {
+  width: 100%;
+  box-sizing: border-box;
+  resize: vertical;
+  font: inherit;
+  color: inherit;
+  background: transparent;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-control);
+  padding: var(--space-3);
+}
+.decision-card details {
+  font-size: var(--text-body-size);
+  margin: var(--space-3) 0;
+}
+.decision-exact-answer {
+  white-space: pre-wrap;
+}
+.decision-list-item {
+  width: 100%;
+  display: grid;
+  gap: var(--space-1);
+  text-align: left;
+  padding: var(--space-3);
+  border: 0;
+  background: transparent;
+  color: inherit;
+  border-radius: var(--radius-control);
+  font: inherit;
+  cursor: pointer;
+}
+.decision-list-item:hover {
+  background: var(--hover);
+}
+.decision-list-item span {
+  color: var(--muted);
+  font-size: var(--text-detail-size);
+}
+.recipient-select {
+  border: 0;
+  background: transparent;
+  color: var(--muted);
+  font: inherit;
+  font-size: var(--text-detail-size);
+  padding: var(--space-1) 0;
+  max-width: 100%;
+}
+@media (prefers-reduced-motion: reduce) {
+  .decision-heading svg {
+    transition: none;
+  }
+}
+
+.decision-list-entry {
+  margin: 0 0 var(--space-4);
+}
+.decision-document-link {
+  margin: 0 0 var(--space-2);
+}
+
+.decision-note {
+  font: var(--aside-text-size)/1.55 var(--interface-font);
+  color: var(--ink);
+}

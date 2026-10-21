@@ -1,9 +1,29 @@
 import { StateEffect, StateField } from "@codemirror/state";
 import { invertedEffects } from "@codemirror/commands";
 import { mapAnchor } from "./domain";
-import type { Anchor } from "./domain";
+import type { Anchor, Proposal } from "./domain";
 
 export const restoreAnchors = StateEffect.define<Record<string, Anchor>>();
+export const refreshConversationActivity = StateEffect.define<null>();
+export const showSuggestions = StateEffect.define<Proposal[]>();
+export const suggestionField = StateField.define<Proposal[]>({
+  create: () => [],
+  update(value, transaction) {
+    let suggestions = transaction.docChanged ? [] : value;
+    for (const effect of transaction.effects)
+      if (effect.is(showSuggestions)) suggestions = effect.value;
+    return suggestions;
+  },
+});
+export const emphasizeConversation = StateEffect.define<string | null>();
+export const emphasizedConversation = StateField.define<string | null>({
+  create: () => null,
+  update(value, transaction) {
+    for (const effect of transaction.effects)
+      if (effect.is(emphasizeConversation)) return effect.value;
+    return value;
+  },
+});
 export const selectConversation = StateEffect.define<{
   identity: string | null;
   inline: boolean;

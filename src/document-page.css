@@ -1,0 +1,121 @@
+.document-page {
+  position: relative;
+  width: 100%;
+  min-height: 65vh;
+  padding-bottom: 64px;
+  overflow: clip;
+  outline: none;
+}
+.document-page .html-preview {
+  display: block;
+  width: 100%;
+  border: 0;
+}
+.page-loading .html-preview {
+  opacity: 0;
+}
+.page-loading .preview-placeholder {
+  position: absolute;
+  inset: 24px;
+}
+.page-text {
+  position: absolute;
+  z-index: 2;
+  color: var(--ink);
+}
+.page-region-content {
+  min-height: 1em;
+  outline: none;
+  overflow-wrap: anywhere;
+  font: inherit;
+  white-space: pre-wrap;
+}
+.page-region-content > * {
+  margin: 0;
+  padding: 0;
+  font: inherit;
+}
+.page-region-content img {
+  max-width: 100%;
+}
+.page-region-content a {
+  color: var(--accent);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  cursor: pointer;
+}
+.page-region-content:focus-visible {
+  background: var(--hover);
+  border-radius: 3px;
+}
+.page-bound-region {
+  position: absolute;
+  pointer-events: none;
+}
+.page-drop-target {
+  background: var(--selection);
+  border-radius: 10px;
+}
+.page-move-handle,
+.page-aside-action,
+.page-add-note {
+  position: absolute;
+  z-index: 3;
+}
+.page-move-handle,
+.page-aside-action {
+  width: 20px;
+  height: 24px;
+  padding: 2px;
+  opacity: 0;
+}
+.page-move-handle {
+  cursor: grab;
+  touch-action: none;
+}
+.document-page:hover .page-move-handle,
+.document-page:hover .page-aside-action,
+.document-page:focus-within .page-move-handle,
+.document-page:focus-within .page-aside-action {
+  opacity: 1;
+}
+.page-add-note {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 11px;
+}
+.page-dragging .html-preview {
+  pointer-events: none;
+}
+.page-error,
+.page-draft-controls {
+  position: absolute;
+  z-index: 4;
+  background: var(--material-note);
+  box-shadow: var(--elevation-card);
+  border-radius: 8px;
+  padding: 10px;
+  font: 12px/1.5 var(--interface-font);
+}
+.page-error {
+  inset: 8px 8px auto;
+  color: var(--danger);
+}
+.page-draft-controls {
+  top: 100%;
+  width: max-content;
+  max-width: 260px;
+}
+.page-draft-controls p {
+  margin: 0 0 6px;
+}
+.page-orphan-draft {
+  position: relative;
+  z-index: 4;
+  padding: 16px;
+  background: var(--material-note);
+}
+.page-orphan-draft pre {
+  white-space: pre-wrap;
+}

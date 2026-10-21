@@ -1,0 +1,360 @@
+.native-content {
+  outline: none;
+  white-space: pre-wrap;
+  overflow-wrap: break-word;
+  min-height: 65vh;
+  padding: 48px 0 120px;
+}
+.native-content:focus {
+  outline: none;
+}
+.native-content .ProseMirror-gapcursor::after {
+  border-top-color: var(--accent);
+}
+.native-soft-wrap {
+  white-space: normal;
+}
+.native-content [data-aside-thread] {
+  cursor: pointer;
+}
+.native-content table {
+  table-layout: auto;
+  font-size: calc(13em / 17);
+  width: max-content;
+  min-width: 100%;
+  max-width: none;
+  overflow-wrap: normal;
+  word-break: normal;
+}
+.native-content .tableWrapper {
+  overflow-x: auto;
+  margin: 0;
+  max-width: 100%;
+  overscroll-behavior-x: contain;
+}
+.native-content .native-table:not(:is(td, th, li, blockquote) .native-table) {
+  position: relative;
+  left: 50%;
+  width: max-content;
+  min-width: 100%;
+  max-width: 100cqw;
+  transform: translateX(-50%);
+}
+.native-table {
+  position: relative;
+  margin: 2.5em 0 1.5em;
+}
+.native-table-actions {
+  position: absolute;
+  inset-block-end: 100%;
+  inset-inline-start: 0;
+  display: flex;
+  gap: 4px;
+  padding-block-end: 4px;
+  user-select: none;
+  -webkit-user-select: none;
+  font: 12px/1.5 var(--interface-font);
+  color: var(--muted);
+}
+.native-table-actions button {
+  min-height: 26px;
+  padding: 3px 7px;
+  border-radius: 5px;
+  white-space: nowrap;
+}
+.native-table-actions button:is(:hover, :focus-visible),
+.native-table-actions button[aria-pressed="true"] {
+  background: var(--accent-wash);
+  color: var(--accent);
+}
+.native-table-actions button:last-child {
+  visibility: hidden;
+}
+.native-table:is(:hover, :focus-within, .ProseMirror-selectednode)
+  .native-table-actions
+  button:last-child {
+  visibility: visible;
+}
+.native-content .native-table.ProseMirror-selectednode {
+  outline: 2px solid color-mix(in srgb, var(--accent) 70%, transparent);
+  outline-offset: 3px;
+  border-radius: 2px;
+}
+.native-content td,
+.native-content th {
+  position: relative;
+  vertical-align: top;
+  outline: none;
+}
+.native-content .selectedCell {
+  background: var(--selection);
+}
+.native-content .ProseMirror-selectednode {
+  outline: none;
+}
+.native-content img {
+  max-width: 100%;
+  height: auto;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-user-drag: none;
+}
+.native-content img::selection {
+  background: transparent;
+}
+.native-content img.ProseMirror-selectednode {
+  outline: 2px solid color-mix(in srgb, var(--accent) 70%, transparent);
+  outline-offset: 4px;
+  border-radius: 2px;
+}
+.native-content [data-native-source] {
+  color: var(--muted);
+  font-size: 0.85em;
+}
+.native-content [data-native-source]:empty {
+  display: none;
+}
+.native-equation {
+  border: 0;
+  background: transparent;
+  color: inherit;
+  padding: 0;
+  margin: 0;
+  font-size: 1em;
+  box-shadow: none;
+}
+.native-equation::part(virtual-keyboard-toggle),
+.native-equation::part(menu-toggle) {
+  display: none;
+}
+.native-equation:focus-within {
+  outline: none;
+  box-shadow: inset 0 -1px var(--line);
+}
+.native-equation-block {
+  display: block;
+  text-align: center;
+  margin: 1.3em 0;
+}
+.editor-host .native-content {
+  font-family: var(--writing-font);
+  font-size: var(--writing-size);
+  line-height: 1.8;
+  max-width: var(--writing-width);
+  width: calc(100% - 44px);
+  margin: 0 auto;
+  caret-color: var(--accent);
+}
+.native-content p {
+  margin: 0 0 1em;
+}
+.native-content h1,
+.native-content h2,
+.native-content h3 {
+  line-height: 1.3;
+}
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+  border: 0;
+}
+.native-content td p,
+.native-content th p {
+  margin: 0;
+}
+.native-content table {
+  border-collapse: collapse;
+  margin: 0;
+}
+.native-content td p,
+.native-content th p {
+  width: max-content;
+  max-width: 32ch;
+}
+.native-content tr {
+  border-bottom: 1px solid var(--line);
+}
+.native-content th {
+  text-align: left;
+}
+.native-content td,
+.native-content th {
+  padding: 8px;
+}
+.native-selection-action {
+  display: flex;
+  width: max-content;
+  padding: 2px;
+  gap: 2px;
+  border-radius: 9px;
+  position: absolute;
+  background: var(--material-note);
+  border: 1px solid var(--line);
+  box-shadow: 0 2px 8px var(--shadow);
+  z-index: 3;
+}
+.native-selection-action[data-text-selection="false"] .native-selection-send {
+  display: none;
+}
+.native-selection-action[hidden] {
+  display: none;
+}
+.native-cell-focused {
+  box-shadow: inset 0 -1px var(--accent-line);
+}
+.native-content[data-input="pointer"] .native-equation:focus-within {
+  box-shadow: none;
+}
+.native-content h1,
+.native-content h2,
+.native-content h3 {
+  font-weight: 500;
+  letter-spacing: -0.02em;
+}
+.native-content h1 {
+  font-size: 2em;
+  margin: 0.67em 0;
+}
+.native-content h2 {
+  font-size: calc(25em / 17);
+  margin: 0.83em 0;
+}
+.native-content h3 {
+  margin: 1em 0;
+}
+.native-content h1:first-child {
+  margin-top: 0;
+}
+.native-content pre {
+  font: calc(12em / 17) / 1.7 var(--mono-font);
+  white-space: pre-wrap;
+  overflow-x: auto;
+  padding: 14px;
+  background: var(--hover);
+  border-radius: 4px;
+}
+.native-content code {
+  font-family: var(--mono-font);
+  font-size: 0.84em;
+}
+.native-content pre code {
+  font-size: inherit;
+}
+.native-content a {
+  color: var(--accent);
+  text-decoration-thickness: 1px;
+  text-underline-offset: 2px;
+}
+.native-content blockquote {
+  border-left: 2px solid var(--line);
+  margin: 1em 0;
+  padding-left: 1em;
+  color: var(--muted);
+}
+.native-content ul,
+.native-content ol {
+  padding-inline-start: 1.5em;
+}
+.native-content li > p {
+  margin-bottom: 0.3em;
+}
+.native-content hr {
+  border: 0;
+  border-top: 1px solid var(--line);
+  margin: 1.5em 0;
+}
+.native-content ::selection {
+  background: var(--selection);
+}
+.native-content.ProseMirror-hideselection ::selection {
+  background: transparent;
+}
+.native-content.ProseMirror-hideselection {
+  caret-color: transparent;
+}
+.toolbar .connection-status {
+  min-width: 30px;
+  min-height: 30px;
+  justify-content: center;
+}
+.native-find {
+  position: sticky;
+  top: 10px;
+  margin: 0 0 -36px auto;
+  height: 36px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: max-content;
+  max-width: 100%;
+  padding: 6px 8px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-control);
+  background: var(--material-note);
+  box-shadow: 0 2px 8px var(--shadow);
+  z-index: 4;
+  font: 12px var(--interface-font);
+}
+.native-find[hidden] {
+  display: none;
+}
+.native-find input {
+  width: 150px;
+  min-width: 40px;
+  padding: 0;
+}
+.native-find button {
+  padding: 2px 4px;
+  color: var(--muted);
+}
+.native-find span {
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+.native-search-match {
+  background: var(--source-wash);
+}
+.editor-host .native-equation:focus-visible {
+  outline: none;
+}
+.document-region-picker {
+  position: fixed;
+  z-index: 100;
+  cursor: crosshair;
+  touch-action: none;
+  user-select: none;
+  outline: none;
+}
+.document-region-picker:focus-visible {
+  outline: none;
+}
+.document-region-selection {
+  position: absolute;
+  pointer-events: none;
+  border: 1px solid var(--accent);
+  background: var(--passage-highlight);
+}
+.native-region-highlight {
+  position: absolute;
+  pointer-events: none;
+  border: 1px solid var(--accent-line);
+  background: var(--passage-highlight);
+  z-index: 1;
+}
+:root[data-document-capture] [role="tooltip"],
+:root[data-document-capture] .native-selection-action,
+:root[data-document-capture] .native-region-highlight {
+  display: none;
+}
+:root[data-document-capture] .annotated-passage {
+  background: transparent;
+}
+:root[data-document-capture] .aside-anchor {
+  text-decoration: none;
+}

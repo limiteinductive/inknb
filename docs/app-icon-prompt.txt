@@ -1,0 +1,11 @@
+Use case: logo-brand
+Asset type: logo for a minimalist macOS writing app named ink and butter, short name inknb.
+Primary request: a literal block of butter made entirely in ink blue.
+Subject: one low rectangular stick of butter, with one thick freshly cut pat slightly separated at the front. Softly rounded butter edges and a restrained shallow butter-knife sweep on the upper surface make the material read as butter. No knife or other objects.
+Style/medium: refined sculptural app-logo illustration, simple bold geometry, gently tactile matte butter surface, restrained soft shading, modern and elegant. Not a photograph.
+Composition/framing: one isolated compact mark, three-quarter view showing top and two faces, centered in a square canvas, generous transparent margin, recognizable at 32 pixels.
+Color palette: deep ink blue body around #293C61, subtle lighter blue highlights around #425776, darker blue cut face. All butter is blue.
+Scene/backdrop: genuinely transparent background. No tile, no background color, no wrapper, no dish, no cast shadow beyond the object.
+Constraints: only the butter block and separated pat; no letters, no text, no monogram, no pen, no ink droplet, no watermark, no drips, no extra decorative elements. Preserve the simple butter silhouette.
+
+Tool: built-in image_gen.

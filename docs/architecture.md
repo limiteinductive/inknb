@@ -1,54 +1,132 @@
 # Architecture
 
-Status: version 0.4.2 passed local release verification. See [release verification](release-verification.md).
+Agent editing uses a `long-term` document permission model. Annotation format 6 stores `agentAccess` with a default of `read`. The writer grants `edit` in the document's agent connection control. The grant survives restart and reconnection of the same agent session. Disconnecting or connecting another session resets it to `read`. Configuration and agent UI tools cannot grant access.
+
+Direct edits require a connected agent and document edit access. Each change carries the document identity, current revision, exact range, and expected text. Request and aside identities record optional context. Multiple changes can use one request. Each applied change enters the app-owned ProseMirror Undo history. Direct changes without an aside retain their operation record with null context identities.
+
+Agents create comments with `annotation_create`. They attach suggestions with `edit_propose` and the returned thread identity. A human request is optional. The proposed passage can differ from the discussion passage. Suggestions require human acceptance. Legacy request permission fields remain historical metadata. `requests_list` reports the document's current access in its permission field.
+
+The aside toolbar button toggles the whole column. Each document stores its column visibility in its library entry. Hiding the column retains thread expansion states and drafts. New aside commands and passage navigation reveal the column. Selecting text or pressing Shift+Command+A creates an aside.
+
+Aside scope follows selection in the `long-term` design. A selected passage creates a source anchor. No selection creates a whole-document aside with no source or preview anchor. The composer captures this scope when opened. Moving the selection does not change it. Whole-document asides appear above passage asides and remain unanchored through text changes. Existing cursor anchors retain their locations.
+
+The `long-term` file-aside command uses Command+Option+A and appears in the Edit menu. It opens an unanchored aside regardless of selection. Command+Shift+A follows the selection. Both commands retain an existing composer draft and its captured scope. Detached previews send the file-aside command to their document owner.
+
+Aside browsing uses a `long-term` design. Each window stores independent thread expansion states for each document. Unresolved threads start expanded. Unread replies reopen their own thread. Reading a reply retains its open state. Explicit collapse applies until new activity arrives. Completed threads stay in History. Open cards remain visible when an agent completes their discussion. Unread completed replies open by default. Writer actions control each card independently. Selecting or opening an aside preserves the reading position, other open threads, and composer drafts. Show passage and aside references provide explicit source navigation. Collapsed margin markers open their own thread directly. Pointer exit, focus changes, History dismissal, and source changes retain open cards. Nearby threads have separate cards and markers. A scrollable margin shows threads in source order. Unattached threads follow anchored threads. Selection controls the manuscript highlight and optional inline presentation separately from expansion. New aside drafts share the margin with existing threads. Human messages omit visible author labels. Agent messages show their registered names. Collapse controls retain accessible labels.
+
+Aside composer shortcuts use a `long-term` design. Enter sends the current draft. Command+Enter and Control+Enter insert a line break at the selection. Shift+Enter inserts a line break. Composition keystrokes do not send requests. The shared composer applies these rules to new asides and replies.
+
+Agent aside creation uses a `long-term` passage mapping design. Each document session retains immutable CodeMirror text and composed position mappings for its latest 128 read revisions. Text transactions advance these mappings. Aside creation validates its original passage and maps it into the current document before mutation. Changed or removed passages fail validation. Reloads clear the read snapshots. Annotation writes remain idempotent by message identity. Prose edits retain revision and permission checks.
+
+Detached previews use a `long-term` design. The app-owned document library owns one reusable preview window and its document target. The `detached_preview` configuration selects a fixed document or the active document. The default keeps the chosen document. Configuration changes update the target immediately. The renderer receives snapshots from the app-owned document session and sends typed actions to that owner. It does not create a document session. Docking returns the renderer to the writing window. The detached window displays the shared aside margin and sends validated human actions to the document owner. Each window controls its margin visibility. Closing a writing window preserves the detached preview and its document host.
+
+Status: version 0.5.0 passed local release verification. See [release verification](release-verification.md).
 
 ## Naming
 
 The app name is `ink and butter`. The repository, CLI executable, MCP server, and Rust packages use `inknb`. A margin conversation is an aside.
 
+The app icon depicts an ink-blue butter block and a cut pat on an ivory tile. `app-icon.png` is the source. `tauri icon app-icon.png --output src-tauri/icons --png 512` generates the bundled image.
+
 The persistent macOS identifier remains `io.github.limiteinductive.aside`. The support directory remains `aside`. Annotation sidecars retain the `.aside.json` suffix. These identifiers define the existing data identity.
 
 ## Foundation
 
-The design is `long-term`. The app uses Tauri 2 with React and TypeScript. CodeMirror 6 owns the live text buffer, selection, composition, and undo history. React Aria supplies accessible control behavior. Shared tokens define typography, spacing, colors, icons, and motion.
+The design is `long-term`. The app uses Tauri 2 with React and TypeScript. ProseMirror owns structured document transactions and Undo. Writing windows own selection and composition. Immutable source projections retain the original document format. React Aria supplies accessible control behavior. Shared tokens define typography, spacing, colors, icons, and motion.
 
 Each frontend document session owns its transactions. Agent requests enter the document's dispatcher. Rust owns filesystem coordination, recovery, native dialogs, local IPC, and external command transport. The app contains no model runtime or credential store.
 
-CodeMirror applies local typing immediately. Serialized persistence snapshots follow each transaction. Agent reads inspect the live buffer. Agent mutations enter the JavaScript transaction loop with revision and expected-text preconditions. A stale mutation returns a conflict.
+Writing windows apply local typing immediately. ProseMirror collaboration steps reconcile each view with the app-owned document model. The host persists accepted transactions before acknowledgement. Agent reads inspect committed source. Agent mutations enter the JavaScript transaction loop with revision and expected-text preconditions. A stale mutation returns a conflict.
 
 ## Files
 
 Documents contain UTF-8 text. New documents receive local text files through the app. Imported files retain their paths and contents. The writer interface requires no Markdown syntax.
 
-The adjacent `<filename>.aside.json` sidecar uses annotation format 3. It reads formats 1 and 2 directly and stores a versioned document identity, annotations, requests, proposals, and provenance. Each document has its own recovery snapshot. Startup migrates the earlier shared snapshot.
+The adjacent `<filename>.aside.json` sidecar uses annotation format 6. It reads formats 1 through 5. Formats 1 through 4 receive read access. Format 5 retains its document grant. It stores document identity, access, annotations, requests, proposals, and provenance. Each document has its own recovery snapshot. Startup migrates the earlier shared snapshot.
 
-Writes use temporary files and atomic replacement. Recovery remains available until the document and sidecar both persist. External changes compare against the last saved fingerprint. Conflicting changes require an explicit reconciliation action in the app.
+Writes use temporary files and atomic replacement. Recovery remains available until the document and sidecar both persist. External changes compare against the last saved fingerprint. The recovery snapshot retains the common file text. External source changes merge through native document transactions. Independent changes save automatically. Overlapping passage changes preserve the current writing and create one review suggestion for the external version. File fingerprints still guard each write.
 
-External file changes show Reload and Save a copy controls. The buffer changes after an explicit Reload action. Recovery writes run during continuous typing. A serialized queue bounds recovery to one active write.
+Recovery writes run during continuous typing. A serialized queue bounds recovery to one active write. Reconciliation keeps the document's Undo history, anchors, and pending suggestions. Explicit Save and automatic Save use the same file reconciliation path.
 
 ## Library and navigation
 
-The workspace design is `long-term`. It owns document sessions, titles, collections, the open list, and navigation history. A local library file stores those records and document view state.
+The Spaces design is `long-term`. A hidden app-owned host retains document sessions, source projections, anchors, conversations, revision storage, and Undo. Closing a writing window leaves other windows usable.
 
-Each document retains its editor, Undo history, selection, conversations, and unsent drafts during navigation. The library searches exact document text and titles. Collections contain document references.
+Spaces contain document references and an optional home document. Membership is independent of folders. One document can belong to several Spaces. Each Space owns its pinned shortcuts. Folder priorities and document order remain library metadata.
+
+Each writing window owns navigation, selection, scroll position, layout, expanded discussions, and unsent drafts. The library stores these records separately from document models. Version 3 migrates the earlier library view state into the default Writing space.
+
+Sidebars, search, pins, navigation, and Activity use the window's Space membership. Global app issues remain visible across Spaces. Notification targets open a Space that contains their document. Aside links can open another Space without changing membership.
+
+Human New and Open commands assign documents to the current Space. Agent creation uses the saved default Space unless the request supplies a Space identity. Background creation preserves window navigation.
+
+Writing windows exchange revisioned ProseMirror steps with the host. The host rebases each view through the shared step history. Conflicting recovery retains the window's pending source. Closing and quitting flush source steps and drafts before destroying windows.
+
+The library searches exact document text and titles within its Space. Folders contain document references. The canonical source, conversations, revision history, and Undo remain shared across windows.
 
 The sidebar header owns its toggle and Back and Forward controls. The writing header owns those controls while the sidebar is hidden. Narrow windows show the library in a dismissible modal drawer. Navigation closes that drawer and restores writing focus.
 
-The document title is static text. The sidebar provides New and Open actions. The native File menu and keyboard shortcuts provide Save and Save As. The Preview action appears while its pane is closed.
+The document title is static text. One plus button beside the document list creates a document. Agents manage collections as document references without moving files. The native File menu and keyboard shortcuts provide New, Open, Save, and Save As. The toolbar selects Write, Preview, or Both. The aside heading shows the conversation count, New aside, and Hide controls.
+
+Double-clicking a document name edits it inline. F2 starts editing the focused name. Enter or leaving the field saves. Escape cancels. Document rows have no action menu.
+
+Preview resizing uses a `long-term` design. React Resizable Panels owns pointer gestures, keyboard resizing, constraints, and accessibility state. The library stores the preferred preview width after user interaction. Available workspace space constrains the displayed width. Fullscreen retains the preferred width. Navigation labels and controls disable text selection. Document text and conversation messages remain selectable.
+
+The separator has a physical grab area around its line. Pointer capture starts on press. Resize persistence uses the callback layout. The group restores preferred widths after geometry changes. Native file drag handling is disabled. React Aria owns document drag operations.
 
 Window chrome uses a `long-term` native design. AppKit notifications track fullscreen entry, fullscreen exit, resizing, window updates, and display scale changes. Native window updates enforce the traffic-light bounds. Unchanged frames require no native mutation. The application owns and removes its notification observers.
+
+Each window owns its chrome state. The writer and detached preview use the same toolbar height and native control alignment. Chrome events target their owning window. The detached title uses the measured control inset.
+
+The toolbar reveals within a 64-pixel hover zone below the document area's top edge. The zone observes pointer movement without intercepting document input. Sandboxed frames report pointer positions through their validated message channels. Dragging a selection does not activate the hover zone.
+
+Interface geometry uses shared control, badge, and label metrics. Count badges have a fixed height and centered tabular numerals. Single-digit notification badges are circular. Longer counts keep that height and expand horizontally. Activity and History share a popover component, headings, and filters. The popover limits its height to 660 pixels and fits the available window space. Status indicators align with their first text line. Search focus uses one background wash across the field. Its input has no separate underline.
 
 Windowed navigation shares the traffic lights' vertical center and reserves space after their measured bounds. Fullscreen navigation uses the left toolbar inset. The windowed inset returns during fullscreen exit. The same geometry applies with the sidebar open or closed. Agent snapshots measure current native control bounds on the main thread.
 
 Back and Forward restore visited documents and explicit passage jumps. Typing and scrolling do not add visits. A new visit after Back removes the forward branch. Navigation does not enter text Undo history.
 
+Workspace scroll captures clamp negative browser offsets to zero before storing document or navigation state.
+
 Agent operations route by document, request, component, or message identity. Interface actions require the visible document. Background document replies retain their original session owner.
 
-The agreed verbatim and presentation requirements appear in [product direction](product-direction.md). The separate agent presentation model remains planned.
+The agreed verbatim and presentation requirements appear in [product direction](product-direction.md). The general preview host implements the separate agent presentation model.
 
 ## Anchors
 
+Mark done resolves the discussion and closes its expanded view. Focus moves to its collapsed row. Completed discussions remain visible as muted, single-line rows with checkmarks. Their accessible names identify them as done. Reopen expands the thread and selects its passage.
+
+Gutter dots identify unread incoming aside activity. Local library records store read signatures without changing annotation revisions. Agent replies, proposals, components, source changes, and anchor suggestions change those signatures. Human messages and passage movement do not. A visible conversation in the focused app acknowledges its displayed activity. Hidden documents retain unread state. Existing conversations start read when read tracking is first installed.
+
 Anchors use UTF-16 offsets compatible with CodeMirror. Each edit maps the offsets through its change set. A quoted passage and surrounding context support relocation after external changes. Ambiguous matches remain detached. Changes to reviewed text mark the anchor as changed.
+
+Detached anchors retain historical offsets and quotes. Storage checks their range order without requiring those offsets to fit the current source.
+
+Document review uses a `long-term` queue derived from applicable proposals. The badge counts pending suggestions independently of discussion visibility. Source order determines navigation. Passage markers and the toolbar open the suggestion's aside and reveal its document location.
+
+An expanded aside shows its formatted suggestion inside the manuscript at the target passage. Collapsing the aside restores the source view. The preview preserves paragraph, list, and table structure. Show original switches the local preview version. The source text remains unchanged until acceptance.
+
+Accept and Dismiss appear beside the inline preview. Each action awaits the document transaction before advancing. Accepted changes enter the document's Undo history. Earlier suggestions stay in their asides and cannot be accepted.
+
+## Context menus
+
+Context menus use a `long-term` native design. The app owns menu contents through Tauri. Text fields retain native editing commands. The manuscript offers Add aside. Preview text offers Copy and Add aside. Preview surfaces offer Comment on region. App chrome has no context menu. Trusted preview and component runtimes route context events through their validated host bridges. Embedded content receives no native menu capability. Each window releases the previous menu before creating another.
+
+Region mode disables native text selection and owns pointer gestures across preview text. HTML uses a runtime selection style and capture handlers. PDF overrides its text layer selection styles and captures pointer and mouse presses. Leaving region mode restores text selection.
+
+## Configuration
+
+The configuration design is `long-term`. Rust owns a typed, versioned `inknb.toml` in the application support directory. The frontend receives effective values.
+
+Startup migrates existing JSON preferences. Optional TOML keys use defaults. Unknown keys, unsupported versions, invalid values, and files over 64 KiB produce diagnostics.
+
+A native task checks the file every 500 milliseconds. Accepted values apply across document sessions without changing text, selection, or Undo history. Configuration revisions order frontend notifications.
+
+The app caches the last accepted configuration for recovery after restart. Invalid or unavailable files preserve those values. Recovery metadata is separate from the editable configuration.
+
+Agents discover the file, effective values, diagnostics, and generated schema through `configuration_read`. `configuration_write` validates TOML before atomic replacement and checks the previous fingerprint.
+
+The writer interface has no settings panel, settings shortcut, or settings menu. See [configuration](configuration.md).
 
 ## Agent connections
 
@@ -60,7 +138,7 @@ The bundled `inknb connect` command reads the calling Codex shell's `CODEX_THREA
 
 Pending asides adopt the registered agent and send automatically. Delivered and answered requests do not resend on reconnect. Delivery receipts reconcile completed sends. The transport retries failures before process start. Uncertain sends require agent reconciliation. Request provenance remains attached to each delivery. An in-flight delivery can finish after Disconnect. Delivery completion cannot mutate another document.
 
-The writer interface has no provider, session, executable, or MCP configuration controls. It shows connection status and a Disconnect action. Connection grants no prose edit permission.
+The writer interface has no provider, session, executable, or MCP configuration controls. It shows connection status, document edit access, and Disconnect. Connection grants no prose edit permission.
 
 Codex receives end-to-end verification with an existing session. Claude remains unverified on this machine. The user selected Codex for integration testing.
 
@@ -68,9 +146,7 @@ The external agent owns routine document operations, including PDF export. It sa
 
 The agent protocol provides live document state, selection, annotations, replies, sources, proposed edits, authorized changes, navigation, and rendered screenshots. The protocol does not select models or start an independent agent conversation.
 
-Edits stay within the passage attached to their human request. Direct changes require explicit edit permission and an unchanged anchor. Proposals require human acceptance. Undo restores text, anchors, and the applied edit status.
-
-A completed edit consumes its request's direct edit permission. Undo preserves that completed operation in the history.
+Aside anchors provide context for edits. Document access authorizes direct changes. Exact revision and text checks reject stale operations. Undo restores text, anchors, and the applied edit status.
 
 ## Automation
 
@@ -94,27 +170,47 @@ See [the component contract](components.md) for the runtime API and package form
 
 ## Interface
 
-The Ink and butter palette uses a warm white page, dark blue text, blue controls, and pale yellow source references. Light and dark appearances share semantic tokens.
+The Ink and butter palette uses a warm white page, dark blue text, blue controls, and pale yellow source references. The library uses butter selection fills and soft focus fills. Light and dark appearances share semantic tokens.
 
-Margin conversations appear beside the selected passage. Inline conversations occupy a view decoration attached to the same anchor. Presentation changes preserve the annotation data.
+The paper material design is `long-term`. One static, seamless SVG combines fine grain and directional fibers. Navigation and the toolbar use the full texture. Manuscript and Markdown preview surfaces use a softer reading texture. Asides, menus, dialogs, decision cards, and response panels use the shared note texture. Wide-margin, floating, and inline asides share that texture. Aside composers use the same surface. Shared radius and elevation tokens define cards and panels. Text, icons, images, PDF pages, and external previews retain their own rendering. Increased contrast and reduced transparency remove the decorative texture.
+
+The sidebar uses the navigation paper surface and a faint divider. Search has no resting border. Search focus surrounds the complete field. The active library toggle uses ink without a selection fill.
+
+The sidebar shows one document list. Search and collection filters select its contents. Collections appear after the first collection is created.
+
+Document order is the saved library array order. React Aria provides pointer and keyboard drag interactions with insertion indicators. The existing document icon is the keyboard drag control. Reordering changes library metadata and preserves the active document. Filtered views share the same order. Moving a visible document preserves the relative order of other documents.
+
+The active document row uses a butter selection fill. Keyboard focus uses the shared hover fill. Rows retain their text and icon geometry across states.
+
+Margin conversations share one scrollable column outside the document surfaces. Inline conversations occupy a view decoration attached to the same anchor. Presentation changes preserve the annotation data.
 
 Unattached conversations open in the margin in either placement. The writer can attach them to a new selection.
 
 The text column retains its geometry when a margin thread opens. Typing has no animation. Short transitions identify opened threads and applied changes. Reduced motion removes positional animation.
 
-The editor uses platform-native selection and caret rendering. A completed selection exposes one aside action at its active end. CodeMirror owns action placement, clipping, and scrolling. Opening an aside preserves the editor selection and focuses the composer. The interaction design is `long-term`.
+The editor uses platform-native selection and caret rendering. A completed selection exposes one aside action at its active end. The document view owns action placement, clipping, and scrolling. Opening an aside preserves the editor selection and focuses the composer. The interaction design is `long-term`.
 
 The selection action uses the same speech bubble icon as the header. Placement uses the full selection bounds when space is available. Selections that fill the viewport use the active end. A draft captures its passage when opened. Text changes map that anchor. Moving the editor selection does not move the draft.
 
-The reading preview design is `long-term`. The manuscript, reading preview, and asides occupy separate panes. Each pane scrolls independently. Opening preview retains aside drafts and discussion state.
+Preview reading progress uses a `long-term` shared indicator. A two-pixel line below the toolbar tracks the visible renderer's scroll fraction. HTML and Markdown report their document geometry. PDF uses its viewer's scroll geometry. Resizing updates the fraction. A document that fits in the viewport reports completion. Preview containers show no perimeter focus outline. Links and controls retain their focus indicators.
 
-Preview occupies a root pane at the far right. Its header contains expand or restore and close icons with tooltips and accessible names. Its content spans the window height. The writing pane owns the manuscript, asides, title bar, and status bar. Its controls stay inside its width when preview opens.
+The document view design is `long-term`. Each document stores Write, Preview, or Both independently from native fullscreen and detached window ownership. Source and preview retain their mounted state across view changes. The source retains its selection, Undo history, and scroll position. View changes capture the window scroll position. Text edits map source anchors through their change sets.
 
-Wide writing panes show manuscript and asides in columns. Narrow writing panes stack asides below the manuscript. Preview retains its own column. Focus mode hides preview and asides. It restores their visibility on exit.
+One optional aside margin sits outside the document surfaces in each window. All conversation contexts use that margin. Threads retain independent expansion states. Completed threads remain visible as compact rows.
 
-Fullscreen preview uses the native window fullscreen mode and displays only the rendered document. Exit fullscreen and Escape restore the side pane. The app restores the window's previous fullscreen state. Closing preview returns focus to the manuscript.
+The margin becomes a dismissible drawer when the window cannot fit readable document surfaces beside it. Narrow Both views stack the source and preview. The resize separator supports both orientations. The library stores the preferred horizontal preview width.
 
-Preview uses the same Markdown buffer, local asset resolution, and sanitized renderer. Agent UI controls expose preview navigation, fullscreen, and scrolling. The UI snapshot includes preview mode and pane geometry.
+The document toolbar and status bar belong to the window layout. Preview controls appear in the document toolbar. Preview-only mode hides the source without entering native fullscreen. Fullscreen changes only the native window state.
+
+The preview host design is `long-term`. External agents publish immutable local HTML or PDF packages with exact source snapshots and optional source maps. The app uses an isolated HTML frame or a bundled PDF.js viewer. Markdown remains the fallback before publication.
+
+Text fingerprints track preview freshness independently of annotation revisions. Publication compares the previous artifact identity. The last successful render stays visible during updates and failures.
+
+Preview asides use a `long-term` design across Markdown, HTML, and PDF. Text selection captures a quote and rendered location. The toolbar region action captures a local PNG and rendered location. Drafts and saved threads retain the image identity. Agent tools return the saved image. Markdown uses immutable HTML snapshots and block source mappings in the shared renderer.
+
+Preview discussions retain their rendered artifact and location. Source mappings can attach them to verbatim. Layout-only discussions have no source anchor. All preview discussions use the margin and confer no prose edit permission.
+
+Agent tools expose publication, source mappings, build status, renderer diagnostics, fullscreen, and scrolling. Durable events support external build hooks. See [published previews](previews.md).
 
 ## References
 
@@ -123,3 +219,83 @@ Preview uses the same Markdown buffer, local asset resolution, and sanitized ren
 - [React Aria](https://react-aria.adobe.com/getting-started)
 - [Codex queue](https://learn.chatgpt.com/docs/developer-commands)
 - [Claude channels](https://code.claude.com/docs/en/channels-reference)
+
+## Pasted images
+
+The writer and aside composers accept clipboard images. One local content-addressed store owns PNG, JPEG, GIF, and WebP bytes. Each image must fit within 12 MB. Image imports finish before a reference enters a document or draft.
+
+Selected manuscript images use an outline. Their context menu provides Copy Image, Save Image As, Open Image, Delete Image, Add aside, and Comment on region. Command-C copies image pixels as PNG. Saving retains the original bytes and format. Image deletion uses document Undo. Markdown image destinations containing spaces use angle brackets.
+
+Writer pastes insert regular Markdown references to the stored local files. The insertion uses the document's Undo history. Its target follows intervening edits. A changed selection or closed writing surface rejects the pending insertion. Saving or moving the manuscript keeps these absolute local references valid. Copying a manuscript to another computer also requires its referenced image files.
+
+Aside drafts and messages store image identities, names, media types, and paths. A message can contain images without text. Drafts retain images across navigation, restart, and detached preview windows. Removing a draft attachment leaves its immutable bytes available to existing references and Undo. Annotation format 7 adds message images and reads prior formats with empty image lists.
+
+Agents read submitted images through image_read. The tool requires an image referenced by a message in the requested aside. It does not expose unsent draft images. Writer images remain ordinary local file references.
+
+
+## Markdown tables
+
+Markdown tables retain whole words and numeric values. Tables can extend beyond the prose width within the preview. Wider tables scroll horizontally within their own region. Longer cell prose wraps between words. Keyboard focus enables horizontal scrolling. Cell wrappers preserve Markdown alignment and source targets for preview asides.
+
+## Document pages and linked resources
+
+Document pages bind immutable layout packages to canonical native node identities. Native app controls map field edits and structural moves into document transactions. The host owns durability and shared Undo. Window state retains conflicting field drafts. Sandboxed layout code receives read-only snapshots.
+
+Linked resources belong to document metadata. Internal targets use document identities. Backlinks derive from the shared document host. Resource changes preserve source text and Space membership.
+
+The heading outline uses native heading identities. A compact rail tracks the current section from heading positions in the document viewport. An expanded heading list overlays the gutter without resizing the manuscript. Each window stores its visibility choice for each document. Configuration supplies the default.
+
+The outline remains beside the manuscript while the document scrolls. A configured panel uses the compact rail when its workspace has at most 760 pixels available. The rail opens on hover or focus. Its list fits the document viewport, including when a notes reader shares the window. Configuration retains the preferred presentation, side, and width.
+
+App context menus share selection restoration and native clipboard commands. Suggestion displays share word-level removed and inserted text. File-aside scope and composer position remain separate state.
+
+
+The document toolbar docks at the top of the manuscript. The document reserves its opening header space inside the scroll canvas. Scrolling changes the header's width, corners, and inset without resizing the scroll viewport. The toolbar floats beyond the opening region and docks again near the top. Reduced motion disables the transition. Each mounted document retains its own toolbar state.
+
+Open passage asides keep a quiet underline while their conversations are collapsed. Expanded or focused conversations add the passage background. Resolving a discussion removes its persistent underline. Focus mode and document captures hide the annotation underline.
+
+Draft passage asides paint their captured source anchor while the composer is open. Moving focus to the composer does not change that range. Closing the composer removes the draft decoration.
+
+New aside composers show their captured passage or whole-document scope. Passage excerpts expand to the full quote and provide explicit source navigation. Inline conversations retain this context after sending. Creating an aside focuses its input and reveals the draft once within the document viewport. Reading existing asides preserves the scroll position. Table passages retain an inline card after their containing table.
+
+Text-size shortcuts and native menu commands use the configuration store. Size changes read the latest saved value under its lock. The store changes only the `font_size` field and publishes the result to writing windows.
+
+## Sending selected text as an aside
+
+Command-Shift-Return and the selection toolbar send selected manuscript text as a new aside. The host checks the revision and exact source passage. One recovery snapshot stores the new aside and the text removal. Agent delivery starts after recovery succeeds. The aside stays anchored at the removal point. Document Undo restores the removed text. The submitted aside remains in the conversation. Existing composer drafts remain saved.
+
+
+## Decisions and connected agents
+
+This design is long-term. Document metadata owns decision records and named agent connections. The default agent receives new human requests. Each queued request retains its recipient snapshot. Connection identities are self-declared and confer no edit permission.
+
+Annotation format 12 migrates the single connection into the connections list. Messages, proposals, and decisions retain their creator identity. Connection updates preserve historical attribution. Drafts retain the selected recipient.
+
+Each decision has a retry-safe identity, question, options, recommendation, optional Markdown context, and optional passage anchor. Live anchors follow document transactions. The original anchor remains available for retry validation. Human answers retain exact text, the chosen option, and the recorded time.
+
+The writing window submits answers through a dedicated host action. MCP tools and agent UI controls cannot submit human answers. Decision states are open, answered, acknowledged, withdrawn, and superseded. Answered records cannot be withdrawn or replaced.
+
+Decision cards appear in the document margin and the Space decisions list. Both presentations share the document session and saved answer drafts. The list retains closed records in history.
+
+Decision changes and their events commit in one recovery transaction. Read-by-ID uses a persistent SQLite index updated in that transaction. Successful source saves retain this index. Startup seeds missing index entries from document metadata. Agent waits read these durable records until completion or their original deadline. Waits survive desktop restarts and support MCP cancellation.
+
+The running desktop app publishes the tool catalog. MCP bridges retain the last available catalog during restarts and emit tools/list_changed notifications when it changes. Tool calls run concurrently. Each MCP connection remembers its registered caller. Explicit caller identity supports shared transports.
+
+Open decisions produce persistent Activity entries and native notifications. The decision_notifications configuration field controls these notifications. External relays consume decision.created through the existing event hook API. Named consumer checkpoints retain unhandled events across restarts. External destinations and credentials remain outside document metadata.
+
+The interface design system is `long-term`. Design tokens own the spacing scale and interface type roles. PanelPopover owns each toolbar panel's dialog and heading. PanelBody owns content gutters and scrolling. PanelEmpty owns empty messages. Features supply content and actions. The design contract check runs during type checks and production builds. `docs/design-system.md` defines component ownership and visual release criteria.
+
+Bulk aside resolution is `long-term`. One document operation resolves all open discussions that have no pending or outdated edit proposal. It preserves prose, drafts, suggestions, and decisions. Resolved threads close in every writing window. The Edit menu and each aside's actions menu expose the operation.
+
+Human aside messages show compact delivery receipts. Saved requests have no recipient. Queued requests await transport or agent pickup. Sent requests have a delivery acknowledgement. Replied requests have an agent response. Failures retain a visible warning and expandable details.
+
+Resolved asides stay outside the document's inline and margin layouts. Saved expansion, unread state, and selection do not override resolution. History and Activity retain the conversation and its reopen action.
+
+Operation failures appear through the toolbar's Activity control. Its attention state uses the same control bounds and badge. A synchronized document with no pending writing clears its host timeout. Recovery matches the stored failure message before clearing it.
+
+Passage edits retain their mapped discussion anchors without a repair banner. Changed or detached passages retain their original quote in a collapsed disclosure. The aside menu provides manual relocation to selected text. Proposal conflicts determine whether an edit suggestion is outdated.
+# Aside reading
+
+The document reserves a right gutter when the window fits readable prose and notes. Contextual cards share the document scroll. Narrow windows show contextual cards inline.
+
+Aside scope and reading behavior are independent. Document notes open in a reader within the gutter. Any passage aside can stay in that reader while the document scrolls independently. The reader retains several threads, its scroll position, and shared conversation drafts per document window. Source navigation requires Show passage. Incoming replies preserve the current reader selection.

@@ -14,6 +14,8 @@ pub struct ControlRequest {
     pub version: u32,
     pub id: String,
     pub method: String,
+    #[serde(default, rename = "agentId", skip_serializing_if = "Option::is_none")]
+    pub agent_id: Option<String>,
     #[serde(default = "empty_parameters")]
     pub params: Value,
 }
@@ -42,50 +44,161 @@ pub fn socket_path() -> Result<PathBuf, String> {
 }
 
 pub fn call(method: &str, params: Value) -> Result<Value, String> {
-    let mut stream = UnixStream::connect(socket_path()?)
-        .map_err(|_| "Open ink and butter before connecting an agent.".to_string())?;
-    stream
-        .set_read_timeout(Some(Duration::from_secs(30)))
-        .map_err(|error| error.to_string())?;
-    stream
-        .set_write_timeout(Some(Duration::from_secs(5)))
-        .map_err(|error| error.to_string())?;
-    let request = ControlRequest {
-        version: 1,
-        id: Uuid::new_v4().to_string(),
-        method: method.into(),
-        params,
-    };
-    writeln!(
-        stream,
-        "{}",
-        serde_json::to_string(&request).map_err(|error| error.to_string())?
-    )
-    .map_err(|error| error.to_string())?;
-    let mut line = String::new();
-    BufReader::new(stream)
-        .read_line(&mut line)
-        .map_err(|error| error.to_string())?;
-    let response: ControlResponse =
-        serde_json::from_str(&line).map_err(|error| error.to_string())?;
-    if response.id != request.id {
-        return Err("The response does not match this request.".into());
+    call_as(method, params, None, None)
+}
+
+pub fn call_as(
+    method: &str,
+    mut params: Value,
+    agent_id: Option<String>,
+    cancelled: Option<&std::sync::atomic::AtomicBool>,
+) -> Result<Value, String> {
+    let explicit = params
+        .as_object_mut()
+        .and_then(|values| values.remove("callerAgentId"))
+        .and_then(|value| value.as_str().map(str::to_owned));
+    let agent_id = explicit.or(agent_id);
+    if method != "decision_wait" {
+        return call_once(method, params, agent_id).map_err(|(_, error)| error);
     }
+    let parameters = params.as_object().ok_or("Use decision wait parameters.")?;
+    if parameters
+        .keys()
+        .any(|key| !["decisionId", "documentId", "timeoutMs"].contains(&key.as_str()))
+    {
+        return Err("Unknown decision wait parameter.".into());
+    }
+    let decision_id = parameters
+        .get("decisionId")
+        .and_then(Value::as_str)
+        .ok_or("Supply decisionId.")?;
+    Uuid::parse_str(decision_id).map_err(|error| error.to_string())?;
+    let timeout = match parameters.get("timeoutMs") {
+        Some(value) => value
+            .as_u64()
+            .filter(|value| *value <= 1_800_000)
+            .ok_or("Use timeoutMs from 0 to 1800000.")?,
+        None => 60_000,
+    };
+    let mut query = json!({"decisionId":decision_id});
+    if let Some(document_id) = parameters.get("documentId") {
+        query["documentId"] = document_id.clone();
+    }
+    let deadline = std::time::Instant::now() + Duration::from_millis(timeout);
+    let mut latest = Value::Null;
+    loop {
+        if cancelled.is_some_and(|cancelled| cancelled.load(std::sync::atomic::Ordering::Acquire)) {
+            return Err("The decision wait was cancelled.".into());
+        }
+        match call_once("decision_read", query.clone(), agent_id.clone()) {
+            Ok(record) => {
+                let completed = record["decision"]["status"] != "open";
+                latest = record;
+                if completed {
+                    return Ok(json!({"timedOut":false,"record":latest}));
+                }
+            }
+            Err((false, error)) => return Err(error),
+            Err((true, _)) => {}
+        }
+        let remaining = deadline.saturating_duration_since(std::time::Instant::now());
+        if remaining.is_zero() {
+            return Ok(json!({"timedOut":true,"record":latest}));
+        }
+        std::thread::sleep(remaining.min(Duration::from_millis(250)));
+    }
+}
+
+fn call_once(
+    method: &str,
+    params: Value,
+    agent_id: Option<String>,
+) -> Result<Value, (bool, String)> {
+    let execute = || -> Result<ControlResponse, String> {
+        let mut stream = UnixStream::connect(socket_path()?)
+            .map_err(|_| "Open ink and butter before connecting an agent.".to_string())?;
+        stream
+            .set_read_timeout(Some(Duration::from_secs(30)))
+            .map_err(|error| error.to_string())?;
+        stream
+            .set_write_timeout(Some(Duration::from_secs(5)))
+            .map_err(|error| error.to_string())?;
+        let request = ControlRequest {
+            version: 1,
+            id: Uuid::new_v4().to_string(),
+            method: method.into(),
+            agent_id,
+            params,
+        };
+        writeln!(
+            stream,
+            "{}",
+            serde_json::to_string(&request).map_err(|error| error.to_string())?
+        )
+        .map_err(|error| error.to_string())?;
+        let mut line = String::new();
+        BufReader::new(stream)
+            .read_line(&mut line)
+            .map_err(|error| error.to_string())?;
+        let response: ControlResponse =
+            serde_json::from_str(&line).map_err(|error| error.to_string())?;
+        if response.id != request.id {
+            return Err("The response does not match this request.".into());
+        }
+        Ok(response)
+    };
+    let response = execute().map_err(|error| (true, error))?;
     response.result.ok_or_else(|| {
-        response
-            .error
-            .unwrap_or("The app returned no result.".into())
+        (
+            false,
+            response
+                .error
+                .unwrap_or("The app returned no result.".into()),
+        )
     })
 }
 
 pub fn tools() -> Vec<Value> {
     let empty = json!({"type":"object","properties":{},"additionalProperties":false});
-    vec![
-        json!({"name":"library_list","description":"List named local documents, open documents, collections, and navigation state.","inputSchema":empty}),
-        json!({"name":"document_create","description":"Create a named local document without opening a file dialog.","inputSchema":{"type":"object","properties":{"title":{"type":"string","minLength":1},"collectionId":{"type":["string","null"],"format":"uuid"}},"required":["title"],"additionalProperties":false}}),
+    let mut tools = vec![
+        json!({"name":"agents_read","description":"Read named connections and the default recipient. Identities are self-declared, not authentication.","inputSchema":{"type":"object","properties":{"documentId":{"type":"string","format":"uuid"}},"required":["documentId"],"additionalProperties":false}}),
+        json!({"name":"agent_default","description":"Set the default recipient for new human requests. Existing requests retain their recipient.","inputSchema":{"type":"object","properties":{"documentId":{"type":"string","format":"uuid"},"agentId":{"type":"string"}},"required":["documentId","agentId"],"additionalProperties":false}}),
+        json!({"name":"agent_disconnect","description":"Disconnect one agent. Other connections and queued recipients stay unchanged.","inputSchema":{"type":"object","properties":{"documentId":{"type":"string","format":"uuid"},"agentId":{"type":"string"}},"required":["documentId","agentId"],"additionalProperties":false}}),
+        json!({"name":"decisions_list","description":"List decisions in a document, or across a Space with spaceId. Records include exact human answers and lifecycle history.","inputSchema":{"type":"object","properties":{"documentId":{"type":"string","format":"uuid"},"spaceId":{"type":"string","format":"uuid"}},"required":[],"additionalProperties":false}}),
+        json!({"name":"decision_read","description":"Read the committed decision by ID without navigating or waiting for document startup. Human answers retain exact text, option, time, and inknb origin. Any agent may read the record.","inputSchema":{"type":"object","properties":{"decisionId":{"type":"string","format":"uuid"},"documentId":{"type":"string","format":"uuid"}},"required":["decisionId"],"additionalProperties":false}}),
+        json!({"name":"decision_create","description":"Open a meaningful human decision. Reuse decisionId for retries. Connect your named agent first. The writer answers in the document margin or Space list. This does not edit prose.","inputSchema":{"type":"object","properties":{"documentId":{"type":"string","format":"uuid"},"decisionId":{"type":"string","format":"uuid"},"question":{"type":"string","minLength":1,"maxLength":100},"options":{"type":"array","minItems":1,"maxItems":3,"items":{"type":"object","properties":{"label":{"type":"string","minLength":1,"maxLength":80},"detail":{"type":"string","maxLength":240}},"required":["label","detail"],"additionalProperties":false}},"recommended":{"type":"integer","minimum":0},"context":{"type":"string"},"revision":{"type":"integer","minimum":0},"from":{"type":"integer","minimum":0},"to":{"type":"integer","minimum":0},"expectedText":{"type":"string"}},"required":["documentId","decisionId","question","options","recommended"],"additionalProperties":false}}),
+        json!({"name":"decision_wait","description":"Wait for a human answer, withdrawal, or supersession. Continues through app restarts until the original deadline. Does not block other tools. Read timedOut and record. MCP cancellation stops the wait.","inputSchema":{"type":"object","properties":{"decisionId":{"type":"string","format":"uuid"},"documentId":{"type":"string","format":"uuid"},"timeoutMs":{"type":"integer","minimum":0,"maximum":1800000}},"required":["decisionId"],"additionalProperties":false}}),
+        json!({"name":"decision_acknowledge","description":"Record that an agent received an answered decision.","inputSchema":{"type":"object","properties":{"decisionId":{"type":"string","format":"uuid"},"documentId":{"type":"string","format":"uuid"}},"required":["decisionId"],"additionalProperties":false}}),
+        json!({"name":"decision_withdraw","description":"Withdraw an open decision with a reason. Never overwrites an answer.","inputSchema":{"type":"object","properties":{"decisionId":{"type":"string","format":"uuid"},"documentId":{"type":"string","format":"uuid"},"reason":{"type":"string","minLength":1}},"required":["decisionId","reason"],"additionalProperties":false}}),
+        json!({"name":"decision_supersede","description":"Replace an open decision with another open decision in the same document. Preserves history.","inputSchema":{"type":"object","properties":{"decisionId":{"type":"string","format":"uuid"},"documentId":{"type":"string","format":"uuid"},"reason":{"type":"string","minLength":1},"supersededBy":{"type":"string","format":"uuid"}},"required":["decisionId","reason","supersededBy"],"additionalProperties":false}}),
+        json!({"name":"host_status","description":"Read the document host lifecycle and open native window labels. Available while the document library starts.","inputSchema":empty}),
+        json!({"name":"window_close","description":"Ask one writing window to flush pending input and close. Conflicting recovery can keep the window open. The document host remains running.","inputSchema":{"type":"object","properties":{"windowId":{"type":"string","format":"uuid"}},"required":["windowId"],"additionalProperties":false}}),
+        json!({"name":"spaces_read","description":"List saved Spaces, document membership, per-space pins, home documents, and window state. Documents keep one canonical source and Undo history.","inputSchema":{"type":"object","properties":{},"additionalProperties":false}}),
+        json!({"name":"space_create","description":"Create a Space from existing documents. Membership creates references. It does not copy source files or change folders.","inputSchema":{"type":"object","properties":{"title":{"type":"string","minLength":1},"documentIds":{"type":"array","items":{"type":"string","format":"uuid"}},"homeId":{"type":["string","null"],"format":"uuid"}},"required":["title","documentIds","homeId"],"additionalProperties":false}}),
+        json!({"name":"space_update","description":"Replace a Space title, membership, and home document. Preserves document text, asides, History, and saved window drafts.","inputSchema":{"type":"object","properties":{"spaceId":{"type":"string","format":"uuid"},"title":{"type":"string","minLength":1},"documentIds":{"type":"array","items":{"type":"string","format":"uuid"}},"homeId":{"type":["string","null"],"format":"uuid"}},"required":["spaceId","title","documentIds","homeId"],"additionalProperties":false}}),
+        json!({"name":"space_open","description":"Open or focus the saved window for a Space. Set newWindow to true for another independent window.","inputSchema":{"type":"object","properties":{"spaceId":{"type":"string","format":"uuid"},"newWindow":{"type":"boolean"}},"required":["spaceId"],"additionalProperties":false}}),
+        json!({"name":"resources_read","description":"Read linked documents, local files, web links, and document backlinks. Agents manage these references. Internal document identities survive renames.","inputSchema":{"type":"object","properties":{"documentId":{"type":"string","format":"uuid"}},"required":["documentId"],"additionalProperties":false}}),
+        json!({"name":"resource_attach","description":"Attach one linked resource without changing prose or Space membership. Reuse id for retries. A null label uses the current document title, file name, or web host.","inputSchema":{"type":"object","properties":{"documentId":{"type":"string","format":"uuid"},"id":{"type":"string","format":"uuid"},"label":{"type":["string","null"]},"target":{"oneOf":[{"type":"object","properties":{"kind":{"const":"document"},"documentId":{"type":"string","format":"uuid"}},"required":["kind","documentId"],"additionalProperties":false},{"type":"object","properties":{"kind":{"const":"file"},"path":{"type":"string","pattern":"^/"}},"required":["kind","path"],"additionalProperties":false},{"type":"object","properties":{"kind":{"const":"url"},"url":{"type":"string","pattern":"^https?://"}},"required":["kind","url"],"additionalProperties":false}]}},"required":["documentId","id","label","target"],"additionalProperties":false}}),
+        json!({"name":"resource_remove","description":"Remove a linked reference. Keeps the target document, local file, and web page unchanged.","inputSchema":{"type":"object","properties":{"documentId":{"type":"string","format":"uuid"},"id":{"type":"string","format":"uuid"}},"required":["documentId","id"],"additionalProperties":false}}),
+        json!({"name":"page_publish","description":"Publish an immutable document-backed HTML page from a local preview package. Its page.bindings name native object identities. Every text block needs a binding. This preserves source text, asides, History, and window focus. Native app controls own edits and card moves.","inputSchema":{"type":"object","properties":{"documentId":{"type":"string","format":"uuid"},"revision":{"type":"integer","minimum":0},"path":{"type":"string","pattern":"^/"}},"required":["documentId","revision","path"],"additionalProperties":false}}),
+        json!({"name":"page_read","description":"Read the saved document page, its immutable package, and missing native node bindings. Use document_read.native.content for current node identities.","inputSchema":{"type":"object","properties":{"documentId":{"type":"string","format":"uuid"}},"required":["documentId"],"additionalProperties":false}}),
+        json!({"name":"page_open","description":"Open the document-backed page in a window for its Space. Preserves the source and saved drafts.","inputSchema":{"type":"object","properties":{"documentId":{"type":"string","format":"uuid"}},"required":["documentId"],"additionalProperties":false}}),
+        json!({"name":"object_move","description":"Move a native document object into a compatible parent before a sibling or at the end. Requires current revision, expected rendered object text, a connected agent, and document edit permission. Preserves object identities and shared Undo.","inputSchema":{"type":"object","properties":{"documentId":{"type":"string","format":"uuid"},"revision":{"type":"integer","minimum":0},"identity":{"type":"string","format":"uuid"},"parentIdentity":{"type":"string","format":"uuid"},"beforeIdentity":{"type":["string","null"],"format":"uuid"},"expectedText":{"type":"string"}},"required":["documentId","revision","identity","parentIdentity","beforeIdentity","expectedText"],"additionalProperties":false}}),
+        json!({"name":"configuration_read","description":"Read the local inknb.toml path, TOML source, fingerprint, effective values, validation diagnostic, and JSON schema. Configuration reloads automatically. Invalid edits preserve the last working values. Optional keys use schema defaults.","inputSchema":empty}),
+        json!({"name":"configuration_write","description":"Validate and atomically replace inknb.toml. Read configuration_read first and preserve unrelated settings and comments. Requires its fingerprint. Applies globally without restarting or changing manuscript text.","inputSchema":{"type":"object","properties":{"source":{"type":"string","maxLength":65536},"expectedFingerprint":{"type":"string","pattern":"^[a-f0-9]{64}$"}},"required":["source","expectedFingerprint"],"additionalProperties":false}}),
+        json!({"name":"library_list","description":"List writings, groups, parentId relationships, modifiedAt timestamps, saved order, priority scores, pinned documents, collapsed branches, and navigation state. Only folders can be parents. library_depth limits folder layers: 0 is flat, 1 is the default, and -1 is unlimited. Higher priority sorts first among siblings. Ties use library_sort. Pinned shortcuts retain the original parent. Organization does not move disk files. library_depth and library_sort live in inknb.toml. Lowering depth regroups library metadata without moving files.","inputSchema":empty}),
+        json!({"name":"library_reorder","description":"Move a writing or group beside another item under its parent. Updates saved manual order. library_sort must be manual to display that order within the same priority. Preserves manuscript text and file paths.","inputSchema":{"type":"object","properties":{"documentId":{"type":"string","format":"uuid"},"targetId":{"type":"string","format":"uuid"},"position":{"type":"string","enum":["before","after"]}},"required":["documentId","targetId","position"],"additionalProperties":false}}),
+        json!({"name":"library_organize","description":"Move a writing or folder under a folder parentId, or null for the root. Documents are leaves. Rejects moves whose subtree exceeds library_depth. Optional beforeId sets its saved manual position among siblings. Rejects cycles. Preserves file paths, manuscript text, selections, and Undo history.","inputSchema":{"type":"object","properties":{"itemId":{"type":"string","format":"uuid"},"parentId":{"type":["string","null"],"format":"uuid"},"beforeId":{"type":"string","format":"uuid"}},"required":["itemId","parentId"],"additionalProperties":false}}),
+        json!({"name":"document_create","description":"Create a named local document without opening a file dialog.","inputSchema":{"type":"object","properties":{"title":{"type":"string","minLength":1},"collectionId":{"type":["string","null"],"format":"uuid"},"parentId":{"type":["string","null"],"format":"uuid"}},"required":["title"],"additionalProperties":false}}),
         json!({"name":"document_activate","description":"Switch the visible document. Keeps each document's text, Undo, selection, and aside drafts.","inputSchema":{"type":"object","properties":{"documentId":{"type":"string","format":"uuid"}},"required":["documentId"],"additionalProperties":false}}),
-        json!({"name":"library_update","description":"Rename a document or assign its collection without changing its verbatim text or file path.","inputSchema":{"type":"object","properties":{"documentId":{"type":"string","format":"uuid"},"title":{"type":"string","minLength":1},"collectionId":{"type":["string","null"],"format":"uuid"}},"required":["documentId"],"additionalProperties":false}}),
-        json!({"name":"collection_create","description":"Create a named collection in the local library.","inputSchema":{"type":"object","properties":{"title":{"type":"string","minLength":1}},"required":["title"],"additionalProperties":false}}),
+        json!({"name":"library_update","description":"Set a writing priority, pin or unpin it, rename it, or set parentId to a folder or null for the root. Documents cannot have children. library_depth limits membership. collectionId remains an alias for existing clients. Supply only one parent field. Priority defaults to 0. Higher scores come first among siblings and pinned shortcuts. Equal scores use library_sort. Preserves text and file paths.","inputSchema":{"type":"object","properties":{"documentId":{"type":"string","format":"uuid"},"title":{"type":"string","minLength":1},"priority":{"type":"number"},"pinned":{"type":"boolean"},"collectionId":{"type":["string","null"],"format":"uuid"},"parentId":{"type":["string","null"],"format":"uuid"}},"required":["documentId"],"additionalProperties":false}}),
+        json!({"name":"collection_create","description":"Create a named folder under another folder or the library root. Rejects folder layers beyond library_depth. Depth 0 permits no new folders.","inputSchema":{"type":"object","properties":{"title":{"type":"string","minLength":1},"parentId":{"type":["string","null"],"format":"uuid"}},"required":["title"],"additionalProperties":false}}),
+        json!({"name":"collection_update","description":"Rename a group, change its parentId, or set its priority. Priority defaults to 0. Higher scores sort first among siblings. Equal scores use library_sort. A parent must be a folder or null for the root. Rejects cycles and subtrees beyond library_depth. Preserves manuscript files.","inputSchema":{"type":"object","properties":{"collectionId":{"type":"string","format":"uuid"},"title":{"type":"string","minLength":1},"priority":{"type":"number"},"parentId":{"type":["string","null"],"format":"uuid"}},"required":["collectionId"],"additionalProperties":false}}),
+        json!({"name":"image_read","description":"Read an image attached to an aside message, including pasted images and selected document regions. Returns the original image. Read document_read or requests_list for message.images and its imageId. Document images use local source references.","inputSchema":{"type":"object","properties":{"documentId":{"type":"string","format":"uuid"},"threadId":{"type":"string","format":"uuid"},"imageId":{"type":"string","pattern":"^[a-f0-9]{64}$"}},"required":["threadId","imageId"],"additionalProperties":false}}),
+        json!({"name":"preview_capture_read","description":"Read the saved screenshot attached to a preview aside. Returns the original cropped PNG as an image, with its rendered anchor. Read document_read or requests_list to locate the thread.","inputSchema":{"type":"object","properties":{"documentId":{"type":"string","format":"uuid"},"threadId":{"type":"string","format":"uuid"}},"required":["threadId"],"additionalProperties":false}}),
+        json!({"name":"preview_read","description":"Read protocol_info.previewGuide. Inspect published and last rendered preview identities, source snapshot, source map, build status, and runtime errors. Omit artifactId for the latest publication.","inputSchema":{"type":"object","properties":{"documentId":{"type":"string","format":"uuid"},"artifactId":{"type":"string","pattern":"^[a-f0-9]{64}$"}},"additionalProperties":false}}),
+        json!({"name":"preview_publish","description":"Publish a complete local PDF or HTML package with inknb-preview.json. Read preview_read first. expectedArtifactId must equal its latest artifact identity, or null for the first publication. Captures immutable files and validates source mappings. Preserves verbatim text and keeps the last rendered preview while loading.","inputSchema":{"type":"object","properties":{"documentId":{"type":"string","format":"uuid"},"path":{"type":"string","pattern":"^/"},"expectedArtifactId":{"type":["string","null"],"pattern":"^[a-f0-9]{64}$"}},"required":["documentId","path","expectedArtifactId"],"additionalProperties":false}}),
+        json!({"name":"preview_build","description":"Report an external preview build as building or failed for its source text hash. Keeps the last rendered output and never starts a compiler inside the app. Successful preview_publish clears the status.","inputSchema":{"type":"object","properties":{"documentId":{"type":"string","format":"uuid"},"sourceHash":{"type":"string","pattern":"^[a-f0-9]{64}$"},"status":{"type":"string","enum":["building","failed"]},"message":{"type":["string","null"],"maxLength":2000}},"required":["documentId","sourceHash","status","message"],"additionalProperties":false}}),
         json!({"name":"component_register","description":"Read protocol_info.componentGuide for the package and runtime contract. Register an immutable local HTML/CSS/JavaScript package. Pass its compiled directory with inknb-component.json. Registration does not execute the package or mount it.","inputSchema":{"type":"object","properties":{"path":{"type":"string","pattern":"^/"}},"required":["path"],"additionalProperties":false}}),
         json!({"name":"component_mount","description":"Attach a registered interactive component to an open aside. Its state persists beside the document. The component inherits margin or inline presentation. This grants no manuscript access or edit permission. Reuse componentId when retrying.","inputSchema":{"type":"object","properties":{"documentId":{"type":"string","format":"uuid"},"revision":{"type":"integer","minimum":0},"threadId":{"type":"string","format":"uuid"},"componentId":{"type":"string","format":"uuid"},"bundleId":{"type":"string","pattern":"^[a-f0-9]{64}$"},"data":{},"state":{}},"required":["documentId","revision","threadId","componentId","bundleId","data","state"],"additionalProperties":false}}),
         json!({"name":"component_read","description":"Read an instance, its data, durable state, component revision, and runtime status.","inputSchema":{"type":"object","properties":{"componentId":{"type":"string","format":"uuid"}},"required":["componentId"],"additionalProperties":false}}),
@@ -95,29 +208,69 @@ pub fn tools() -> Vec<Value> {
         json!({"name":"ui_action","description":"Act on a control returned by ui_inspect using its snapshotId and documentId. Supports activation, focus, scrolling, and component input. No arbitrary script execution or human permission controls.","inputSchema":{"type":"object","properties":{"documentId":{"type":"string","format":"uuid"},"snapshotId":{"type":"string","format":"uuid"},"target":{"type":"string"},"action":{"type":"string","enum":["activate","focus","scroll","setValue"]},"value":{"type":"string"},"top":{"type":"number","minimum":0}},"required":["documentId","snapshotId","target","action"],"additionalProperties":false}}),
         json!({"name":"request_delivery","description":"Read a durable delivery receipt before recovering a failed send. queued must not resend. started or uncertain requires provider reconciliation. unstarted has no queued transport.","inputSchema":{"type":"object","properties":{"requestId":{"type":"string","format":"uuid"}},"required":["requestId"],"additionalProperties":false}}),
         json!({"name":"protocol_info","description":"Inspect local protocol version, socket location, event delivery rules, and supported tools.","inputSchema":{"type":"object","properties":{},"required":[],"additionalProperties":false}}),
+        json!({"name":"activity_read","description":"Read persistent app activity across documents. Reports replies, pending reviews, delivery states, and failures. Reading does not mark items seen.","inputSchema":{"type":"object","properties":{"beforeCursor":{"type":"integer","minimum":0},"beforeKey":{"type":"string"}},"additionalProperties":false}}),
         json!({"name":"events_read","description":"Read durable local events after a cursor. Named consumers resume from their saved checkpoint. Events use stable identities and at-least-once delivery.","inputSchema":{"type":"object","properties":{"after":{"type":"integer","minimum":0},"documentId":{"type":"string","format":"uuid"},"consumer":{"type":"string"},"limit":{"type":"integer","minimum":1,"maximum":500}},"required":[],"additionalProperties":false}}),
         json!({"name":"events_ack","description":"Acknowledge a successfully handled event for a named backend. Use stable event IDs to make external side effects idempotent.","inputSchema":{"type":"object","properties":{"consumer":{"type":"string"},"cursor":{"type":"integer","minimum":0}},"required":["consumer","cursor"],"additionalProperties":false}}),
         json!({"name":"request_retry","description":"Retry a failed delivery only after the agent or backend confirms that the earlier transport did not queue it.","inputSchema":{"type":"object","properties":{"requestId":{"type":"string","format":"uuid"},"confirmedNotQueued":{"const":true,"type":"boolean"}},"required":["requestId","confirmedNotQueued"],"additionalProperties":false}}),
-        json!({"name":"source_review","description":"Complete a source_changed request with an explanation of its effect. The hash must match both the request and current file. This never changes prose.","inputSchema":{"type":"object","properties":{"requestId":{"type":"string","format":"uuid"},"hash":{"type":["string","null"]},"messageId":{"type":"string","format":"uuid"},"summary":{"type":"string"}},"required":["requestId","hash","messageId","summary"],"additionalProperties":false}}),
+        json!({"name":"source_review","description":"Complete a source_changed request with an explanation of its effect. The hash must match both the request and current file. This never changes prose. Keep the answer to 100 words. Put longer Markdown explanations in details. Details open in the full response reader and never enter the manuscript.","inputSchema":{"type":"object","properties":{"requestId":{"type":"string","format":"uuid"},"hash":{"type":["string","null"]},"messageId":{"type":"string","format":"uuid"},"summary":{"type":"string"},"details":{"type":"string","description":"Optional full Markdown explanation, including links, tables, and local image references."}},"required":["requestId","hash","messageId","summary"],"additionalProperties":false}}),
         json!({"name":"anchor_suggest","description":"Locate a detached conversation. A unique exact original quote reconnects automatically. Other candidates appear for human confirmation.","inputSchema":{"type":"object","properties":{"requestId":{"type":"string","format":"uuid"},"revision":{"type":"integer","minimum":0},"candidates":{"type":"array","minItems":1,"maxItems":5,"items":{"type":"object","properties":{"from":{"type":"integer","minimum":0},"to":{"type":"integer","minimum":0},"expectedText":{"type":"string"},"label":{"type":"string"}},"required":["from","to","expectedText","label"],"additionalProperties":false}}},"required":["requestId","revision","candidates"],"additionalProperties":false}}),
         json!({"name":"figure_propose","description":"Prepare an escaped Markdown figure insertion at the end of the request passage. The human reviews it before insertion.","inputSchema":{"type":"object","properties":{"requestId":{"type":"string","format":"uuid"},"revision":{"type":"integer","minimum":0},"path":{"type":"string","pattern":"^/"},"label":{"type":"string"}},"required":["requestId","revision","path","label"],"additionalProperties":false}}),
         json!({"name":"table_propose","description":"Prepare a Markdown table from actual columns and rows at the request anchor. The human reviews it before insertion.","inputSchema":{"type":"object","properties":{"requestId":{"type":"string","format":"uuid"},"revision":{"type":"integer","minimum":0},"columns":{"type":"array","minItems":1,"items":{"type":"string"}},"rows":{"type":"array","minItems":1,"items":{"type":"array","items":{"type":"string"}}}},"required":["requestId","revision","columns","rows"],"additionalProperties":false}}),
         json!({"name":"document_move","description":"Move the saved document and its annotations with crash recovery. Local references within the document folder are copied to preserve Markdown paths. Existing destinations are protected.","inputSchema":{"type":"object","properties":{"documentId":{"type":"string","format":"uuid"},"revision":{"type":"integer","minimum":0},"path":{"type":"string","pattern":"^/"}},"required":["documentId","revision","path"],"additionalProperties":false}}),
-        json!({"name":"annotation_create","description":"Post a read-only finding from an external backend at an exact passage. Reuse messageId for retries. Findings confer no edit permission.","inputSchema":{"type":"object","properties":{"documentId":{"type":"string","format":"uuid"},"revision":{"type":"integer","minimum":0},"from":{"type":"integer","minimum":0},"to":{"type":"integer","minimum":0},"expectedText":{"type":"string"},"messageId":{"type":"string","format":"uuid"},"consumer":{"type":"string"},"label":{"type":"string"},"content":{"type":"string"}},"required":["documentId","revision","from","to","expectedText","messageId","consumer","label","content"],"additionalProperties":false}}),
+        json!({"name":"annotation_create","description":"Create an agent aside for a comment or suggestion. Supply a read revision, exact UTF-16 offsets, and expectedText. Positions follow unrelated live edits. Changed or removed targets reject the post. Reuse messageId for retries. Use the returned threadId with edit_propose. Creating an aside needs no edit access. Use scope document without offsets for a whole-document discussion. Paste an inknb aside link in content to link discussions. Keep the answer to 100 words. Put longer Markdown explanations in details. Details open in the full response reader and never enter the manuscript.","inputSchema":{"type":"object","properties":{"documentId":{"type":"string","format":"uuid"},"revision":{"type":"integer","minimum":0},"from":{"type":"integer","minimum":0},"to":{"type":"integer","minimum":0},"expectedText":{"type":"string"},"scope":{"type":"string","enum":["document","passage"]},"messageId":{"type":"string","format":"uuid"},"consumer":{"type":"string"},"label":{"type":"string"},"content":{"type":"string"},"details":{"type":"string","description":"Optional full Markdown explanation, including links, tables, and local image references."}},"required":["documentId","revision","messageId","consumer","label","content"],"additionalProperties":false}}),
+        json!({"name":"aside_read","description":"Read an aside or suggestion by its stable documentId and threadId, including messages, proposals, related references, and backlinks. Does not navigate the app. Parse identifiers from inknb://aside/<documentId>/<threadId>. Links do not grant access to documents outside the library.","inputSchema":{"type":"object","properties":{"documentId":{"type":"string","format":"uuid"},"threadId":{"type":"string","format":"uuid"}},"required":["documentId","threadId"],"additionalProperties":false}}),
+        json!({"name":"aside_link","description":"Link two existing asides or suggestions. Backlinks are derived from the stored link. relation related connects discussions. relation supersedes records a replacement. No manuscript edits occur.","inputSchema":{"type":"object","properties":{"documentId":{"type":"string","format":"uuid"},"threadId":{"type":"string","format":"uuid"},"target":{"type":"object","properties":{"documentId":{"type":"string","format":"uuid"},"threadId":{"type":"string","format":"uuid"}},"required":["documentId","threadId"],"additionalProperties":false},"relation":{"type":"string","enum":["related","supersedes"]}},"required":["documentId","threadId","target"],"additionalProperties":false}}),
+        json!({"name":"conversation_resolve","description":"Mark a completed discussion or suggestion done using agent judgment. Read aside_read first and supply its latest message ID, or null for an empty suggestion. Record a concrete reason. Rejects newer messages, unanswered human requests, awaitingHuman choices, and pending linked suggestions. Use outcome superseded with supersededBy for a replaced discussion. Resolution grants no text edit access. The human can reopen.","inputSchema":{"type":"object","properties":{"documentId":{"type":"string","format":"uuid"},"threadId":{"type":"string","format":"uuid"},"lastMessageId":{"type":["string","null"],"format":"uuid"},"reason":{"type":"string","minLength":1},"outcome":{"type":"string","enum":["done","superseded"]},"supersededBy":{"type":"object","properties":{"documentId":{"type":"string","format":"uuid"},"threadId":{"type":"string","format":"uuid"}},"required":["documentId","threadId"],"additionalProperties":false}},"required":["documentId","threadId","lastMessageId","reason"],"additionalProperties":false}}),
         json!({"name":"annotation_resolve","description":"Resolve an automation finding owned by the same consumer. Human conversations and findings with human replies remain under human control.","inputSchema":{"type":"object","properties":{"documentId":{"type":"string","format":"uuid"},"threadId":{"type":"string","format":"uuid"},"consumer":{"type":"string"}},"required":["documentId","threadId","consumer"],"additionalProperties":false}}),
-        json!({"name":"document_read","description":"Read verbatim text, revision, selection, path, conversations, and proposals. Omit documentId for the active document. Ranges use UTF-16 offsets.","inputSchema":{"type":"object","properties":{"documentId":{"type":"string","format":"uuid"}},"additionalProperties":false}}),
+        json!({"name":"history_read","description":"Read durable text revisions, newest first. Each entry has an author, time, exact source difference, and optional discussion. Omit before for the latest page. Old discussions remain in document_read.","inputSchema":{"type":"object","properties":{"documentId":{"type":"string","format":"uuid"},"before":{"type":"integer","minimum":1}},"additionalProperties":false}}),
+        json!({"name":"revision_read","description":"Read exact before and after source for a stored revision or contiguous revision group. Read history_read for its cursors. This does not change the document.","inputSchema":{"type":"object","properties":{"documentId":{"type":"string","format":"uuid"},"fromCursor":{"type":"integer","minimum":1},"toCursor":{"type":"integer","minimum":1}},"required":["fromCursor","toCursor"],"additionalProperties":false}}),
+        json!({"name":"document_read","description":"Read verbatim text, revision, selection, path, asides, proposals, and effective metadata.agentAccess. metadata.agentAccessOverride is null when access follows agent_edits in inknb.toml. Omit documentId for the active document. Ranges use UTF-16 offsets. Document access controls direct edits.","inputSchema":{"type":"object","properties":{"documentId":{"type":"string","format":"uuid"}},"additionalProperties":false}}),
+        json!({"name":"document_format","description":"Set the saved document format independently of its filename. Preserves source text, source selection, and discussions. The change uses the document Undo history. Read document_read.native.format for the current format. Supply the current revision.","inputSchema":{"type":"object","properties":{"documentId":{"type":"string","format":"uuid"},"revision":{"type":"integer","minimum":0},"format":{"type":"string","enum":["text","markdown","html","latex"]}},"required":["documentId","revision","format"],"additionalProperties":false}}),
+        json!({"name":"object_edit","description":"Replace a native object from document_read.native.content. Supply its stable identity and the current document revision. Replacement uses type, identity, attributes, text, marks, and content. Requires the current document revision, an agent connection, and edit permission. Uses the document Undo history. Unsupported source objects retain their original source in attributes.original.","inputSchema":{"type":"object","properties":{"documentId":{"type":"string","format":"uuid"},"revision":{"type":"integer","minimum":0},"identity":{"type":"string","format":"uuid"},"replacement":{},"explanation":{"type":"string"},"threadId":{"type":"string","format":"uuid"}},"required":["documentId","revision","identity","replacement","explanation"],"additionalProperties":false}}),
         json!({"name":"document_open","description":"Open a local UTF-8 document. Other documents retain their live buffers and drafts.","inputSchema":{"type":"object","properties":{"path":{"type":"string"}},"required":["path"],"additionalProperties":false}}),
-        json!({"name":"requests_list","description":"Read human and maintenance work. Inspect trigger.kind. Maintenance work permits replies and proposals only. Source reviews use source_review. Stale suggestions use edit_propose with replaces. Detached anchors use anchor_suggest.","inputSchema":{"type":"object","properties":{"documentId":{"type":"string","format":"uuid"}},"additionalProperties":false}}),
-        json!({"name":"agent_connect","description":"Register your external agent session for the document you just read. Handle setup yourself when the human asks you to join. Codex should run the bundled inknb connect command from its own shell to use its current CODEX_THREAD_ID. Claude uses its configured channel connection name. Pending asides send automatically. Connection grants no prose edit permission. Retrying never resends delivered or answered requests.","inputSchema":{"type":"object","properties":{"documentId":{"type":"string","format":"uuid"},"provider":{"type":"string","enum":["codex","claude"]},"sessionId":{"type":"string","minLength":1},"commandPath":{"type":"string","pattern":"^/"}},"required":["documentId","provider","sessionId"],"additionalProperties":false}}),
-        json!({"name":"conversation_reply","description":"Reply to an existing human request at its anchor. Replies never change prose. Reuse the same messageId when retrying.","inputSchema":{"type":"object","properties":{"requestId":{"type":"string"},"messageId":{"type":"string","format":"uuid"},"content":{"type":"string"}},"required":["requestId","messageId","content"],"additionalProperties":false}}),
-        json!({"name":"edit_propose","description":"Propose an edit for human acceptance. Read the current revision first. expectedText must match the exact UTF-16 range. Never infer permission to change prose from a question.","inputSchema":{"type":"object","properties":{"requestId":{"type":"string"},"revision":{"type":"integer"},"from":{"type":"integer"},"to":{"type":"integer"},"expectedText":{"type":"string"},"replacement":{"type":"string"},"explanation":{"type":"string"},"replaces":{"type":"string","format":"uuid"}},"required":["requestId","revision","from","to","expectedText","replacement","explanation"],"additionalProperties":false}}),
-        json!({"name":"edit_apply","description":"Apply an edit only for a human request that explicitly grants edit permission. Uses exact revision and expected-text preconditions. The change enters the editor undo history.","inputSchema":{"type":"object","properties":{"requestId":{"type":"string"},"revision":{"type":"integer"},"from":{"type":"integer"},"to":{"type":"integer"},"expectedText":{"type":"string"},"replacement":{"type":"string"},"explanation":{"type":"string"}},"required":["requestId","revision","from","to","expectedText","replacement","explanation"],"additionalProperties":false}}),
+        json!({"name":"requests_list","description":"Read human and maintenance work. permission reflects the current document access. Inspect trigger.kind. Source reviews use source_review. Stale suggestions use edit_propose with replaces. Detached anchors use anchor_suggest.","inputSchema":{"type":"object","properties":{"documentId":{"type":"string","format":"uuid"}},"additionalProperties":false}}),
+        json!({"name":"agent_connect","description":"Register your external agent session for the document you just read. Handle setup yourself when the human asks you to join. Codex should run the bundled inknb connect command from its own shell to use its current CODEX_THREAD_ID. Claude uses its configured channel connection name. Pending asides send automatically. Connection grants no prose edit permission. Retrying never resends delivered or answered requests.","inputSchema":{"type":"object","properties":{"documentId":{"type":"string","format":"uuid"},"provider":{"type":"string","enum":["codex","claude"]},"sessionId":{"type":"string","minLength":1},"name":{"type":"string","minLength":1,"maxLength":120},"role":{"type":"string","maxLength":120},"sessionUrl":{"type":"string","format":"uri"},"commandPath":{"type":"string","pattern":"^/"}},"required":["documentId","provider","sessionId"],"additionalProperties":false}}),
+        json!({"name":"conversation_reply","description":"Reply to an existing human request at its anchor. Replies never change prose. Set awaitingHuman true when asking for a human choice. Reuse the same messageId when retrying. After completion use conversation_resolve with the latest message identity and a reason. Keep the answer to 100 words. Put longer Markdown explanations in details. Details open in the full response reader and never enter the manuscript.","inputSchema":{"type":"object","properties":{"requestId":{"type":"string"},"messageId":{"type":"string","format":"uuid"},"content":{"type":"string"},"awaitingHuman":{"type":"boolean"},"details":{"type":"string","description":"Optional full Markdown explanation, including links, tables, and local image references."}},"required":["requestId","messageId","content"],"additionalProperties":false}}),
+        json!({"name":"edit_propose","description":"Suggest an exact text change for human acceptance. Supply threadId from annotation_create or an existing requestId. The suggestion has its own aside at the target passage, linked to the originating discussion. Returns its threadId and reference. The discussion keeps its location. Use replaces to refresh an outdated suggestion. Requires current revision and expectedText. No edit access is needed.","inputSchema":{"type":"object","properties":{"requestId":{"type":"string","format":"uuid"},"revision":{"type":"integer"},"from":{"type":"integer"},"to":{"type":"integer"},"expectedText":{"type":"string"},"replacement":{"type":"string"},"explanation":{"type":"string"},"replaces":{"type":"string","format":"uuid"},"documentId":{"type":"string","format":"uuid"},"threadId":{"type":"string","format":"uuid"}},"required":["revision","from","to","expectedText","replacement","explanation"],"additionalProperties":false,"anyOf":[{"required":["requestId"]},{"required":["threadId"]}]}}),
+        json!({"name":"edit_apply","description":"Apply an exact text change when document_read metadata.agentAccess is edit and an agent is connected. Supply documentId. Optional requestId or threadId records context. Multiple edits may use the same request. Requires current revision and expectedText. Changes remain undoable.","inputSchema":{"type":"object","properties":{"requestId":{"type":"string","format":"uuid"},"revision":{"type":"integer"},"from":{"type":"integer"},"to":{"type":"integer"},"expectedText":{"type":"string"},"replacement":{"type":"string"},"explanation":{"type":"string"},"documentId":{"type":"string","format":"uuid"},"threadId":{"type":"string","format":"uuid"}},"required":["revision","from","to","expectedText","replacement","explanation"],"additionalProperties":false,"anyOf":[{"required":["requestId"]},{"required":["threadId"]},{"required":["documentId"]}]}}),
         json!({"name":"source_attach","description":"Attach a local reference or generated file to an agent reply. ink and butter fingerprints it and flags later changes. Use this to return a PDF produced by the document's existing build workflow.","inputSchema":{"type":"object","properties":{"messageId":{"type":"string"},"path":{"type":"string"},"label":{"type":"string"}},"required":["messageId","path","label"],"additionalProperties":false}}),
         json!({"name":"editor_select","description":"Select and reveal an exact UTF-16 passage in the current revision.","inputSchema":{"type":"object","properties":{"documentId":{"type":"string","format":"uuid"},"revision":{"type":"integer"},"from":{"type":"integer"},"to":{"type":"integer"}},"required":["revision","from","to"],"additionalProperties":false}}),
         json!({"name":"ui_state","description":"Inspect the rendered editor state, theme, viewport, selection, focused control, thread placement, and build identity.","inputSchema":empty}),
         json!({"name":"window_show","description":"Bring ink and butter's writing window to the foreground for human use or native visual inspection.","inputSchema":empty}),
         json!({"name":"window_resize","description":"Resize ink and butter's actual desktop window for layout inspection. Dimensions use logical pixels. The minimum size is 700 by 480.","inputSchema":{"type":"object","properties":{"width":{"type":"integer","minimum":700,"maximum":2400},"height":{"type":"integer","minimum":480,"maximum":1800}},"required":["width","height"],"additionalProperties":false}}),
-        json!({"name":"screenshot","description":"Capture actual rendered ink and butter pixels with document and UI state. Inspect the returned image for visual diagnosis.","inputSchema":empty}),
+        json!({"name":"screenshot","description":"Capture actual rendered ink and butter pixels with document and UI state. Select main or preview. The default is main. Inspect the returned image for visual diagnosis.","inputSchema":{"type":"object","properties":{"window":{"type":"string","enum":["main","preview"]}},"additionalProperties":false}}),
         json!({"name":"document_save","description":"Save the selected document text and annotations. Supply an absolute path to save a new document or a separate copy. A different existing destination is rejected. Use the saved file with the document's external build and export tools.","inputSchema":{"type":"object","properties":{"documentId":{"type":"string","format":"uuid"},"path":{"type":"string","pattern":"^/"}},"additionalProperties":false}}),
-    ]
+    ];
+    for tool in &mut tools {
+        tool["inputSchema"]["properties"]["callerAgentId"] = json!({"type":"string","description":"Self-declared caller identity from agent_connect. Overrides this MCP connection's current identity. This grants no permissions."});
+        let name = tool["name"].as_str().unwrap_or_default().to_string();
+        if [
+            "library_list",
+            "document_activate",
+            "editor_select",
+            "ui_state",
+            "ui_inspect",
+            "ui_action",
+            "window_resize",
+            "window_show",
+            "screenshot",
+        ]
+        .contains(&name.as_str())
+        {
+            tool["inputSchema"]["properties"]["windowId"] = json!({ "type": "string", "format": "uuid", "description": "Target window from spaces_read. Defaults to the focused writing window." });
+        }
+        if ["document_create", "document_open"].contains(&name.as_str()) {
+            tool["inputSchema"]["properties"]["spaceId"] = json!({"type":"string","format":"uuid","description":"Destination Space. Defaults to the saved default Space. Creation does not change another window's navigation."});
+        }
+        if name == "requests_list" {
+            tool["inputSchema"]["properties"]["allConnected"] = json!({"type":"boolean","description":"Read this caller agent’s pending requests across connected documents."});
+        }
+        if name == "ui_action" {
+            tool["inputSchema"]["properties"]["documentId"]["type"] = json!(["string", "null"]);
+        }
+        if name == "activity_read" {
+            tool["inputSchema"]["properties"]["documentIds"] = json!({ "type": "array", "items": { "type": "string", "format": "uuid" }, "description": "Limit activity, counts, and pagination to these documents." });
+        }
+    }
+    tools
 }

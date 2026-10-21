@@ -24,10 +24,10 @@ describe("annotation anchors", () => {
     const updated = applyChanges(text, metadata, [
       { from: 0, to: text.length, insert: "A direct paragraph." },
     ]);
-    expect(updated.metadata.threads[0].anchor.quote).toBe(
+    expect(updated.metadata.threads[0].anchor!.quote).toBe(
       "A direct paragraph.",
     );
-    expect(updated.metadata.threads[0].anchor.status).toBe("changed");
+    expect(updated.metadata.threads[0].anchor!.status).toBe("changed");
   });
   test("follows an untouched passage when the writer inserts text before it", () => {
     const text = "First paragraph.\n\nThe selected passage.\n";
@@ -44,7 +44,7 @@ describe("annotation anchors", () => {
     const updated = applyChanges(text, metadata, [
       { from: 0, to: 0, insert: "A new opening.\n\n" },
     ]);
-    const anchor = updated.metadata.threads[0].anchor;
+    const anchor = updated.metadata.threads[0].anchor!;
     expect(updated.text.slice(anchor.from, anchor.to)).toBe(
       "The selected passage.",
     );
@@ -66,11 +66,11 @@ describe("annotation anchors", () => {
     const changed = applyChanges(text, metadata, [
       { from: 4, to: 12, insert: "measured" },
     ]);
-    expect(changed.metadata.threads[0].anchor.status).toBe("changed");
+    expect(changed.metadata.threads[0].anchor!.status).toBe("changed");
     const removed = applyChanges(text, metadata, [
       { from: 4, to: 19, insert: "" },
     ]);
-    expect(removed.metadata.threads[0].anchor.status).toBe("detached");
+    expect(removed.metadata.threads[0].anchor!.status).toBe("detached");
   });
 
   test("relocates external edits only when the quote is unambiguous", () => {
@@ -95,7 +95,7 @@ describe("annotation anchors", () => {
 });
 
 describe("proposed edits", () => {
-  test("rejects edits outside the passage attached to the request", () => {
+  test("allows suggestions outside the discussion passage without changing text", () => {
     const text = "First passage. Second passage.";
     const metadata = createMetadata();
     const conversation = createConversation(
@@ -107,7 +107,7 @@ describe("proposed edits", () => {
     );
     metadata.threads.push(conversation.thread);
     metadata.requests.push(conversation.request);
-    expect(() =>
+    expect(
       createProposal(
         text,
         metadata,
@@ -118,7 +118,8 @@ describe("proposed edits", () => {
         "A different passage.",
         "Change this sentence.",
       ),
-    ).toThrow("outside the passage");
+    ).toMatchObject({ from: 15, to: text.length, status: "pending" });
+    expect(text).toBe("First passage. Second passage.");
   });
   test("rejects stale edits without changing the manuscript", () => {
     const text = "A clear paragraph.";

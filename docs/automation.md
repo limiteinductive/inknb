@@ -6,7 +6,7 @@ A durable event journal records document changes, work requests, proposals, sour
 
 The CLI provides a JSON event stream and an executable hook runner. Hook programs run outside the desktop app. The app stores no model settings or credentials.
 
-Human requests and maintenance requests share one work queue. Maintenance requests permit replies and proposals. They never grant permission to change prose. Source changes, affected proposals, and detached anchors create maintenance work. Events remain available to independent backends.
+Human requests and maintenance requests share one work queue. Work events never grant permission to change prose. Document access controls direct edits. Source changes, affected proposals, and detached anchors create maintenance work. Events remain available to independent backends.
 
 Untouched proposals follow document edits. A change to the proposed passage invalidates that proposal and requests a refresh. Incoming edits still require the current document revision and expected text.
 
@@ -107,6 +107,7 @@ Use `figure_propose` and `table_propose` for requested insertions. `document_mov
 | `document.saved`                                       | `path`                                       |
 | `document.moved`                                       | `previousPath`, `path`                       |
 | `request.created`, `request.updated`                   | `requestId`, `threadId`, `trigger`, `state`  |
+| `document.access_changed`                              | `agentAccess`                                |
 | `proposal.created`, `proposal.updated`                 | `proposalId`, `threadId`, optional `status`  |
 | `source.attached`, `source.changed`, `source.reviewed` | `sourceId`, `threadId`, path or fingerprints |
 | `anchor.detached`, `anchor.reattached`                 | `threadId`                                   |
@@ -114,10 +115,14 @@ Use `figure_propose` and `table_propose` for requested insertions. `document_mov
 
 Read the current document before acting on an event. Events describe a committed observation. A newer document revision can supersede it.
 
-Annotation format 3 reads formats 1 and 2. Earlier app releases do not preserve component instances.
+Annotation format 6 reads formats 1 through 5. Format 5 edit grants remain intact. Earlier releases cannot read format 6.
 
 ## Component events
 
 `component.mounted` and `component.updated` include `threadId`, `componentId`, `bundleId`, and `componentRevision`. `component.removed` includes the thread and component identities. `component.event` includes `componentId`, `name`, `payload`, and `componentRevision`.
 
 Read current component state before handling an interaction. Use its revision with `component_update`. The [component contract](components.md) defines the local runtime and UI tools.
+
+## Preview events
+
+`preview.published` and `preview.rendered` contain a `preview` reference. `preview.build` contains external build status in `build`. Read [published previews](previews.md) for the package and hook contracts.

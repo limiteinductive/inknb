@@ -7,6 +7,8 @@
   let inspectedRevision = null;
   const controls = new Map();
   let controlSequence = 0;
+  const scrollbarStyle = document.createElement("style");
+  document.documentElement.append(scrollbarStyle);
   const identities = new WeakMap();
   function send(type, payload = {}) {
     parent.postMessage({ inknb: 1, type, ...payload }, "*");
@@ -23,6 +25,42 @@
     });
   }
   const ready = new Promise((resolve) => updates.add(resolve));
+  document.addEventListener("pointermove", (event) =>
+    send("pointerPosition", {
+      top:
+        event.pointerType === "mouse" && event.buttons === 0
+          ? event.clientY
+          : null,
+    }),
+  );
+  document.addEventListener("pointerleave", () =>
+    send("pointerPosition", { top: null }),
+  );
+  document.addEventListener(
+    "contextmenu",
+    (event) => {
+      event.preventDefault();
+      const target = event.target;
+      if (!(target instanceof Element)) return;
+      const selection = getSelection();
+      send("contextmenu", {
+        left: event.clientX,
+        top: event.clientY,
+        editable: Boolean(
+          target.closest(
+            'input:not([disabled]):not([readonly]), textarea:not([disabled]):not([readonly]), [contenteditable="true"]',
+          ),
+        ),
+        copy: Boolean(
+          selection &&
+          !selection.isCollapsed &&
+          selection.rangeCount &&
+          selection.getRangeAt(0).intersectsNode(target),
+        ),
+      });
+    },
+    true,
+  );
   Object.defineProperty(window, "inknb", {
     value: Object.freeze({
       version: 1,
@@ -48,6 +86,9 @@
     const message = event.data;
     if (message.type === "context") {
       current = message.context;
+      scrollbarStyle.textContent = current.scrollbars.stylesheet;
+      for (const [name, value] of Object.entries(current.scrollbars.tokens))
+        document.documentElement.style.setProperty(name, value);
       for (const [name, value] of Object.entries(current.theme.tokens))
         document.documentElement.style.setProperty(name, value);
       document.documentElement.dataset.theme = current.theme.appearance;
@@ -171,7 +212,7 @@
   );
   document.addEventListener("DOMContentLoaded", () => {
     const style = document.createElement("style");
-    style.textContent = `*{box-sizing:border-box}html,body{margin:0;color:var(--ink);background:transparent;font:13px/1.55 var(--interface-font);-webkit-font-smoothing:antialiased}button,input,select,textarea{font:inherit;color:inherit}button{cursor:pointer}button:focus-visible,input:focus-visible,select:focus-visible{outline:2px solid var(--accent);outline-offset:3px}::selection{background:var(--selection)}@media(prefers-reduced-motion:reduce){*,*::before,*::after{animation:none!important;transition:none!important}}html[data-motion=reduced] *,html[data-motion=reduced] *::before,html[data-motion=reduced] *::after{animation:none!important;transition:none!important}`;
+    style.textContent = `*{box-sizing:border-box}html,body{margin:0;color:var(--ink);background:transparent;font:13px/1.55 var(--interface-font);-webkit-font-smoothing:antialiased}button,input,select,textarea{font:inherit;color:inherit}button{cursor:pointer}:focus{outline:none}button:focus-visible,summary:focus-visible,a[href]:focus-visible{background:var(--hover)}input:focus-visible,select:focus-visible,textarea:focus-visible{box-shadow:inset 0 -1px var(--accent-line)}::selection{background:var(--selection)}@media(prefers-reduced-motion:reduce){*,*::before,*::after{animation:none!important;transition:none!important}}html[data-motion=reduced] *,html[data-motion=reduced] *::before,html[data-motion=reduced] *::after{animation:none!important;transition:none!important}`;
     document.head.prepend(style);
     new ResizeObserver(() =>
       send("height", {
