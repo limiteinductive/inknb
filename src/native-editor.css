@@ -89,6 +89,20 @@
 .native-content .selectedCell {
   background: var(--selection);
 }
+.native-content .aside-object-anchor {
+  text-decoration: none;
+}
+.native-content .aside-object-anchor.annotated-passage {
+  background: transparent;
+}
+.native-content .aside-object-anchor.annotated-passage > .tableWrapper {
+  background: var(--passage-highlight);
+  border-radius: var(--radius-control);
+  box-shadow: inset 0 0 0 1px var(--source-wash);
+}
+.native-content .aside-object-anchor.passage-focused > .tableWrapper {
+  background: var(--passage-focus);
+}
 .native-content .ProseMirror-selectednode {
   outline: none;
 }
@@ -272,7 +286,8 @@
 .native-content ::selection {
   background: var(--selection);
 }
-.native-content.ProseMirror-hideselection ::selection {
+.native-content.ProseMirror-hideselection ::selection,
+.native-content[data-selection-kind="object"] ::selection {
   background: transparent;
 }
 .native-content.ProseMirror-hideselection {

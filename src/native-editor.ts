@@ -1,6 +1,7 @@
 import { Plugin, TextSelection, Selection, NodeSelection } from "prosemirror-state";
 import type { Transaction } from "prosemirror-state";
 import { EditorView, Decoration, DecorationSet } from "prosemirror-view";
+import type { DecorationAttrs } from "prosemirror-view";
 import { Fragment, Slice } from "prosemirror-model";
 import type { Node as DocumentNode } from "prosemirror-model";
 import { baseKeymap, toggleMark, setBlockType } from "prosemirror-commands";
@@ -20,7 +21,7 @@ import {
   deleteColumn,
   TableView,
 } from "prosemirror-tables";
-import { NativeDocumentModel } from "./native-model";
+import { NativeDocumentModel, selectionForRange } from "./native-model";
 import type { NativeUpdate } from "./native-model";
 import { MathfieldElement } from "mathlive";
 import { nativeSchema } from "./native-schema";
@@ -53,6 +54,38 @@ import "./native-editor.css";
 interface PasteTarget {
   anchor: Anchor;
   expectedText: string;
+}
+
+function passageDecorations(
+  document: DocumentNode,
+  from: number,
+  to: number,
+  attributes: DecorationAttrs,
+): Decoration[] {
+  const decorations: Decoration[] = [];
+  let cursor = from;
+  document.nodesBetween(from, to, (node, position) => {
+    if (node.type.spec.tableRole !== "table") return;
+    const start = Selection.findFrom(document.resolve(position + 1), 1, true);
+    const end = Selection.findFrom(
+      document.resolve(position + node.nodeSize - 1),
+      -1,
+      true,
+    );
+    if (!start || !end || from > start.from || to < end.to) return;
+    if (cursor < position)
+      decorations.push(Decoration.inline(cursor, position, attributes));
+    decorations.push(
+      Decoration.node(position, position + node.nodeSize, {
+        ...attributes,
+        class: `${attributes.class ?? ""} aside-object-anchor`,
+      }),
+    );
+    cursor = position + node.nodeSize;
+    return false;
+  });
+  if (cursor < to) decorations.push(Decoration.inline(cursor, to, attributes));
+  return decorations;
 }
 
 export type { NativeUpdate } from "./native-model";
@@ -153,7 +186,7 @@ export class NativeEditor extends NativeDocumentModel {
             const to = documentPosition(this.projection, draftAnchor.to, -1);
             if (to > from)
               ranges.push(
-                Decoration.inline(from, to, {
+                ...passageDecorations(state.doc, from, to, {
                   class: "annotated-passage passage-focused",
                 }),
               );
@@ -188,7 +221,7 @@ export class NativeEditor extends NativeDocumentModel {
               !current.focus &&
               asideExpanded(current, thread);
             ranges.push(
-              Decoration.inline(from, to, {
+              ...passageDecorations(state.doc, from, to, {
                 class: [
                   asideVisible(current, thread) ? "aside-anchor" : "",
                   expanded || focused ? "annotated-passage" : "",
@@ -203,7 +236,7 @@ export class NativeEditor extends NativeDocumentModel {
             if (!["open", "answered"].includes(decision.status) || !anchor || anchor.status === "detached") continue;
             const from = documentPosition(this.projection, anchor.from);
             const to = documentPosition(this.projection, anchor.to, -1);
-            if (to > from) ranges.push(Decoration.inline(from, to, { class: "aside-anchor", "data-decision-anchor": decision.id }));
+            if (to > from) ranges.push(...passageDecorations(state.doc, from, to, { class: "aside-anchor", "data-decision-anchor": decision.id }));
           }
           if (current.asidesOpen && !current.focus) {
             for (const passage of asidePassages(current)) {
@@ -390,14 +423,15 @@ export class NativeEditor extends NativeDocumentModel {
           decorations,
         ],
       }),
-      attributes: {
+      attributes: (state) => ({
         class: "native-content",
         "aria-label": "Document",
         spellcheck: "true",
         "data-inknb-control": "manuscript",
         "data-native-identity": String(document.attrs.identity),
         "data-inknb-scroll": "true",
-      },
+        "data-selection-kind": state.selection instanceof TextSelection ? "text" : "object",
+      }),
       dispatchTransaction: (transaction) => {
         try {
           this.commit(transaction);
@@ -1052,9 +1086,10 @@ export class NativeEditor extends NativeDocumentModel {
     const transaction = state.tr.setSelection(
       from === to
         ? selection
-        : TextSelection.between(
-            state.doc.resolve(documentPosition(this.projection, from)),
-            state.doc.resolve(documentPosition(this.projection, to, -1)),
+        : selectionForRange(
+            state.doc,
+            documentPosition(this.projection, from),
+            documentPosition(this.projection, to, -1),
           ),
     );
     if (scroll) transaction.scrollIntoView();

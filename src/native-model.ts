@@ -1,5 +1,5 @@
 import { Text, ChangeSet } from "@codemirror/state";
-import { EditorState, Plugin, TextSelection } from "prosemirror-state";
+import { EditorState, Plugin, TextSelection, NodeSelection, Selection } from "prosemirror-state";
 import type { Transaction } from "prosemirror-state";
 import type { Node as DocumentNode } from "prosemirror-model";
 import { history, undo, redo, closeHistory } from "prosemirror-history";
@@ -32,6 +32,28 @@ import { captureAnchor, mapAnchor } from "./domain";
 import type { DocumentSession } from "./session";
 
 const operationSchema = z.record(z.string(), z.literal("applied"));
+
+export function selectionForRange(
+  document: DocumentNode,
+  from: number,
+  to: number,
+): Selection {
+  const start = document.resolve(from);
+  for (let depth = start.depth; from < to && depth > 0; depth -= 1) {
+    const node = start.node(depth);
+    if (node.type.spec.tableRole !== "table") continue;
+    const position = start.before(depth);
+    const first = Selection.findFrom(document.resolve(position + 1), 1, true);
+    const last = Selection.findFrom(
+      document.resolve(position + node.nodeSize - 1),
+      -1,
+      true,
+    );
+    if (first?.from === from && last?.to === to)
+      return NodeSelection.create(document, position);
+  }
+  return TextSelection.between(start, document.resolve(to));
+}
 
 export interface NativeUpdate {
   before: Text;
@@ -112,10 +134,7 @@ export class NativeDocumentModel {
     this.modelPlugins = [...plugins, identities];
     this.state = EditorState.create({
       doc: document,
-      selection: TextSelection.between(
-        document.resolve(selectionFrom),
-        document.resolve(selectionTo),
-      ),
+      selection: selectionForRange(document, selectionFrom, selectionTo),
       plugins: this.modelPlugins,
     });
     for (const thread of [...snapshot.metadata.threads, ...snapshot.metadata.decisions])
@@ -162,7 +181,15 @@ export class NativeDocumentModel {
         },
       };
     }
-    const points = [anchor.from, anchor.to].map((offset, index) => {
+    const from = documentPosition(this.projection, anchor.from);
+    const to = Math.max(from, documentPosition(this.projection, anchor.to, -1));
+    const selection = selectionForRange(this.state.doc, from, to);
+    const points = selection instanceof NodeSelection
+      ? [
+          { identity: String(selection.node.attrs.identity), offset: 0 },
+          { identity: String(selection.node.attrs.identity), offset: selection.node.content.size },
+        ]
+      : [anchor.from, anchor.to].map((offset, index) => {
       const position = documentPosition(
         this.projection,
         offset,
@@ -182,8 +209,6 @@ export class NativeDocumentModel {
         offset: position,
       };
     });
-    const from = documentPosition(this.projection, anchor.from);
-    const to = Math.max(from, documentPosition(this.projection, anchor.to, -1));
     const quote = nativeText(this.state.doc, from, to);
     return {
       ...anchor,
@@ -272,9 +297,14 @@ export class NativeDocumentModel {
           const object = objects.get(point.identity);
           if (!object) return null;
           const bounds = nativeRange(object.node, object.position);
-          if (anchor.native?.region?.identity === point.identity)
-            return index ? bounds.to : bounds.from;
           const native = anchor.native!;
+          if (
+            native.region?.identity === point.identity ||
+            (native.from.identity === native.to.identity &&
+              native.from.offset === 0 &&
+              object.node.type.spec.tableRole === "table")
+          )
+            return index ? bounds.to : bounds.from;
           if (
             native.quote.length > 0 &&
             native.from.identity === native.to.identity &&
@@ -482,13 +512,10 @@ export class NativeDocumentModel {
     const selection = this.selection;
     const projected = projectDocument(transaction.doc);
     transaction.setSelection(
-      TextSelection.between(
-        transaction.doc.resolve(
-          documentPosition(projected, changes.mapPos(selection.from)),
-        ),
-        transaction.doc.resolve(
-          documentPosition(projected, changes.mapPos(selection.to), -1),
-        ),
+      selectionForRange(
+        transaction.doc,
+        documentPosition(projected, changes.mapPos(selection.from)),
+        documentPosition(projected, changes.mapPos(selection.to), -1),
       ),
     );
     return transaction;

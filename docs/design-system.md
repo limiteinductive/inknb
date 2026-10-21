@@ -37,6 +37,8 @@ Aside cards use one 16 pixel content gutter on every edge. A single header conta
 
 Suggested changes use the note material, neutral card edge, and 16 pixel content gutter. The header places collapse on the left. The footer groups decisions and suggestion navigation. Color marks changed content. Diff blocks use a light wash without vertical rails.
 
+Whole-table anchors highlight the table surface. They do not underline or highlight its text separately. Object selections suppress the browser's text selection paint. Text selections within cells retain text highlighting.
+
 ## Build enforcement
 
 `npm run design:check` parses JSX and CSS. It rejects nested panel dialogs, copied panel structure, local panel metric overrides, and raw layout or typography lengths in the shared panel and decision styles. `npm run check` and production builds run this check.
