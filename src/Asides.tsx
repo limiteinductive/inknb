@@ -1,5 +1,5 @@
 import { DecisionCard } from "./Decisions";
-import { defaultAgent, requestAgentId } from "./domain";
+import { agentAttribution, defaultAgent, requestAgentId } from "./domain";
 import { focusAside, revealAsideComposer } from "./aside-focus";
 import {
   useContext,
@@ -218,8 +218,7 @@ function Composer({
           )}
           {state.metadata.agents.map((agent) => (
             <option key={agent.id} value={agent.id}>
-              {agent.name ?? agent.label}
-              {agent.role ? ` · ${agent.role}` : ""}
+              {agentAttribution(agent)}
             </option>
           ))}
         </select>
@@ -555,13 +554,16 @@ export function Conversation({
     ? thread.messages
     : thread.messages.slice(recentStart);
   const firstMessage = messages[0];
+  const proposalAuthor = proposals.at(-1)?.creator;
   const firstAuthor = firstMessage
     ? firstMessage.author === "human"
       ? null
-      : (firstMessage.agent?.name ?? firstMessage.agent?.label ?? "Your agent")
-    : thread.kind === "suggestion"
-      ? "Suggestion"
-      : "Discussion";
+      : agentAttribution(firstMessage.agent)
+    : proposalAuthor
+      ? agentAttribution(proposalAuthor)
+      : thread.kind === "suggestion"
+        ? "Suggestion"
+        : "Discussion";
   const collapse = (
     <TooltipTrigger delay={500}>
       <Button
@@ -823,9 +825,7 @@ export function Conversation({
               <div className="message-heading">
                   <TooltipTrigger delay={500}>
                     <Button className="message-author">
-                      {message.agent?.name ??
-                        message.agent?.label ??
-                        "Your agent"}
+                      {agentAttribution(message.agent)}
                     </Button>
                     <Tooltip className="control-tooltip" offset={7}>
                       <time dateTime={message.createdAt}>

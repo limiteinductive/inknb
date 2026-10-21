@@ -7,6 +7,7 @@ import {
 } from "react-aria-components";
 import { Check, ChevronDown, MessageCircleQuestion } from "lucide-react";
 import type { Decision } from "./domain";
+import { agentAttribution } from "./domain";
 import { useAsideSession, useAsideState } from "./use-session";
 import { workspace } from "./window-workspace";
 import { ResponseBody } from "./AgentResponse";
@@ -56,8 +57,7 @@ export function DecisionCard({ decision }: { decision: Decision }) {
       {expanded && (
         <>
           <p className="decision-author">
-            {decision.creator.name ?? decision.creator.label}
-            {decision.creator.role ? ` · ${decision.creator.role}` : ""}
+            {agentAttribution(decision.creator)}
           </p>
           {decision.anchor?.status === "detached" && (
             <p className="quiet-note">The original passage was removed.</p>
@@ -145,7 +145,7 @@ export function DecisionCard({ decision }: { decision: Decision }) {
                 {decision.status === "answered"
                   ? "Waiting for agent acknowledgement"
                   : decision.status === "acknowledged"
-                    ? `Acknowledged by ${decision.acknowledgement?.agent.name ?? decision.acknowledgement?.agent.label ?? "agent"}`
+                    ? `Acknowledged by ${agentAttribution(decision.acknowledgement?.agent)}`
                     : decision.reason}
               </p>
             </div>

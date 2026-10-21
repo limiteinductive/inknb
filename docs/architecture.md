@@ -134,7 +134,9 @@ The app exposes a local Unix socket with permissions restricted to the current u
 
 The connection design is `long-term`. The external agent registers itself for a specific document through `agent_connect`. The document identity is a precondition. Connection changes persist before delivery starts.
 
-The bundled `inknb connect` command reads the calling Codex shell's `CODEX_THREAD_ID`. The MCP server does not infer session identity from its inherited environment. Codex delivery uses the installed `codex queue` command with that registered session ID. Claude delivery uses the documented MCP channel contract. Channel availability depends on the external Claude installation and account policy. Connection errors remain visible and retain unsent requests.
+Session identity uses the provider and session ID. Display names and roles are mutable metadata. Reconnecting refreshes their stored attribution across messages, suggestions, decisions, and request bindings. Disconnect retains those values in existing records. Unnamed sessions show a short session identifier.
+
+The bundled `inknb connect --name <name> --role <role>` command reads the calling Codex shell's `CODEX_THREAD_ID`. The MCP server does not infer session identity from its inherited environment. Codex delivery uses the installed `codex queue` command with that registered session ID. Claude delivery uses the documented MCP channel contract. Channel availability depends on the external Claude installation and account policy. Connection errors remain visible and retain unsent requests.
 
 Pending asides adopt the registered agent and send automatically. Delivered and answered requests do not resend on reconnect. Delivery receipts reconcile completed sends. The transport retries failures before process start. Uncertain sends require agent reconciliation. Request provenance remains attached to each delivery. An in-flight delivery can finish after Disconnect. Delivery completion cannot mutate another document.
 

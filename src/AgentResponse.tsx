@@ -15,7 +15,7 @@ import {
 } from "react-aria-components";
 import { X } from "lucide-react";
 import { invoke } from "@tauri-apps/api/core";
-import { responseWords } from "./domain";
+import { agentAttribution, responseWords } from "./domain";
 import type { Message } from "./domain";
 import { renderMarkdown } from "./markdown";
 import { parseAsideLink } from "./aside-reference";
@@ -136,7 +136,7 @@ export default function AgentResponse({ message }: { message: Message }) {
                   <>
                     <header className="response-heading">
                       <div>
-                        <span>{message.agent?.label ?? "Your agent"}</span>
+                        <span>{agentAttribution(message.agent)}</span>
                         <h2>Full response</h2>
                       </div>
                       <Button

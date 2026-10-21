@@ -33,6 +33,8 @@ Decisions, Activity, History, Agents, and Linked resources use this structure. F
 
 Use `IconButton` for icon actions. Text actions use `text-button`. Menus share row spacing, target size, typography, radius, and paper elevation. Asides and cards use the note material and card tokens. A feature does not define another paper surface.
 
+Agent attribution uses the session name and role. Unnamed sessions include a short session identifier. Replies, full responses, decisions, recipients, and connection panels share the same label.
+
 Aside cards use one 16 pixel content gutter on every edge. A single header contains collapse and thread actions. Passage context sits below that header. Copy reference remains visible and confirms a successful copy in place.
 
 Suggested changes use the note material, neutral card edge, and 16 pixel content gutter. The header places collapse on the left. The footer groups decisions and suggestion navigation. Color marks changed content. Diff blocks use a light wash without vertical rails.

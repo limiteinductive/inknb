@@ -1,4 +1,4 @@
-import { defaultAgent } from "./domain";
+import { agentAttribution, defaultAgent } from "./domain";
 import type { AgentRequest, Metadata } from "./domain";
 
 export type EventKind =
@@ -213,7 +213,7 @@ export function planAutomation(
                   author: thread.messages.at(-1)?.author,
                   content: thread.messages.at(-1)?.content.slice(0, 240),
                   awaitingHuman: thread.messages.at(-1)?.awaitingHuman ?? false,
-                  label: thread.messages.at(-1)?.agent?.label ?? "Agent",
+                  label: agentAttribution(thread.messages.at(-1)?.agent),
                 }
               : null,
         }),

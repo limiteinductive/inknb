@@ -924,6 +924,7 @@ kbd {
   margin: 0 0 16px;
 }
 .message-author {
+  overflow-wrap: anywhere;
   color: var(--muted);
   font-size: var(--aside-detail-size);
   font-weight: 500;

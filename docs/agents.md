@@ -7,10 +7,12 @@ The writer asks the existing agent to work in ink and butter. The agent owns too
 Open ink and butter. Run the bundled CLI from the current Codex shell:
 
 ```sh
-"/Applications/ink and butter.app/Contents/MacOS/inknb" connect
+"/Applications/ink and butter.app/Contents/MacOS/inknb" connect --name "Garden planner" --role "Planning"
 ```
 
 Use the actual installed app path. The command reads the current shell's `CODEX_THREAD_ID` and registers it for the open document. It rejects a document switch during registration. Do not copy an identity from an MCP server's environment.
+
+Choose a name and role that describe this session. Reuse its session identity when updating either field. Omitted fields keep their registered values. An empty role clears it.
 
 The CLI works before MCP configuration. All tools also work through `inknb call <tool> '<JSON parameters>'`.
 
@@ -39,7 +41,7 @@ Claude Code uses a local MCP channel. This transport remains unverified on the d
 }
 ```
 
-Read `document_read`. Call `agent_connect` with the returned `documentId`, provider `claude`, and the configured channel name as `sessionId`.
+Read `document_read`. Call `agent_connect` with the returned `documentId`, provider `claude`, its own session ID as `sessionId`, and a name and role for its current task.
 
 Claude's channel preview requires its documented channel opt-in and a compatible account policy. The development opt-in is `--dangerously-load-development-channels server:inknb`. ink and butter does not alter login or account policy.
 
@@ -120,7 +122,7 @@ A document page presents canonical native nodes through an immutable layout pack
 
 ## Named agents and decisions
 
-Use agent_connect with your own provider, sessionId, name, role, and optional sessionUrl. The returned agent.id identifies the connection. Reconnecting updates this identity without changing another agent's default recipient. agent_default selects the recipient for new requests. agent_disconnect removes one connection.
+Use agent_connect with your own provider, sessionId, name, role, and optional sessionUrl. The returned agent.id identifies the connection. Reconnecting updates the session name and role on its existing messages, suggestions, decisions, and request bindings. Names remain available after disconnect. Session IDs retain authorship and routing. Reconnecting does not change another agent's default recipient. agent_default selects the recipient for new requests. agent_disconnect removes one connection.
 
 MCP remembers the last successful connection on that transport. Use callerAgentId to identify another registered caller. CLI calls accept --agent=<agent.id>. The bundled connect command reads the current Codex shell identity. Agent identities grant no permissions.
 

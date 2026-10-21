@@ -2,6 +2,7 @@ import { Button, DialogTrigger, Switch } from "react-aria-components";
 import { invoke } from "@tauri-apps/api/core";
 import { useDocumentSession, useSession } from "./use-session";
 import PanelPopover, { PanelBody, PanelEmpty } from "./PanelPopover";
+import { agentAttribution } from "./domain";
 
 export default function AgentConnections() {
   const session = useDocumentSession();
@@ -26,8 +27,7 @@ export default function AgentConnections() {
           )}
           {state.metadata.agents.map((agent) => (
             <div className="connected-agent" key={agent.id}>
-              <strong>{agent.name ?? agent.label}</strong>
-              {agent.role && <span>{agent.role}</span>}
+              <strong>{agentAttribution(agent)}</strong>
               <details>
                 <summary>{agent.provider} session</summary>
                 <code>{agent.sessionId}</code>

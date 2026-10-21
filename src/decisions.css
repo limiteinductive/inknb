@@ -1,5 +1,6 @@
 .connected-agent {
   display: grid;
+  overflow-wrap: anywhere;
   gap: var(--space-1);
   padding: var(--space-3) 0;
   border-bottom: 1px solid var(--line);

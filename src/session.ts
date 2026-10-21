@@ -1636,12 +1636,32 @@ export class DocumentSession {
     const defaultAgentId = connection
       ? metadata.defaultAgentId ?? connection.id
       : agents[0]?.id ?? null;
+    const identify = <Identity extends AgentIdentity>(identity: Identity): Identity =>
+      connection && agentId(identity) === connection.id
+        ? { ...identity, name: connection.name, role: connection.role, sessionUrl: connection.sessionUrl }
+        : identity;
     this.changed({
       ...metadata,
       agents,
       defaultAgentId,
+      threads: metadata.threads.map((thread) => ({
+        ...thread,
+        messages: thread.messages.map((message) =>
+          message.agent ? { ...message, agent: identify(message.agent) } : message),
+      })),
+      proposals: metadata.proposals.map((proposal) =>
+        proposal.creator ? { ...proposal, creator: identify(proposal.creator) } : proposal),
+      decisions: metadata.decisions.map((decision) => ({
+        ...decision,
+        creator: identify(decision.creator),
+        acknowledgement: decision.acknowledgement
+          ? { ...decision.acknowledgement, agent: identify(decision.acknowledgement.agent) }
+          : null,
+      })),
       requests: metadata.requests.map((request) =>
-        request.state === "pending" && !request.binding && connection
+        request.binding
+          ? { ...request, binding: identify(request.binding) }
+          : request.state === "pending" && connection
           ? { ...request, binding: agents.find((agent) => agent.id === defaultAgentId) ?? null }
           : request,
       ),
@@ -3012,7 +3032,7 @@ export class DocumentSession {
           sessionId: z.string().trim().min(1),
           commandPath: z.string().startsWith("/").optional(),
           name: z.string().trim().min(1).max(120).optional(),
-          role: z.string().trim().min(1).max(120).optional(),
+          role: z.string().trim().max(120).optional(),
           sessionUrl: z.string().url().optional(),
         })
         .strict()
@@ -3021,7 +3041,7 @@ export class DocumentSession {
         z.string().uuid().parse(parsed.sessionId);
       const previous = this.state.metadata.agents.find((agent) => agent.provider === parsed.provider && agent.sessionId === parsed.sessionId);
       const binding: Binding = {
-        name: parsed.name ?? previous?.name ?? `${parsed.provider === "codex" ? "Codex" : "Claude Code"} · ${parsed.sessionId.slice(0, 8)}`, role: parsed.role ?? previous?.role, sessionUrl: parsed.sessionUrl ?? previous?.sessionUrl ?? (parsed.provider === "codex" ? `codex://threads/${parsed.sessionId}` : undefined),
+        name: parsed.name ?? previous?.name ?? `${parsed.provider === "codex" ? "Codex" : "Claude Code"} · ${parsed.sessionId.slice(-8)}`, role: parsed.role ?? previous?.role, sessionUrl: parsed.sessionUrl ?? previous?.sessionUrl ?? (parsed.provider === "codex" ? `codex://threads/${parsed.sessionId}` : undefined),
         provider: parsed.provider,
         sessionId: parsed.sessionId,
         label: parsed.provider === "codex" ? "Codex" : "Claude Code",

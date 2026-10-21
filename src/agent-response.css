@@ -114,6 +114,7 @@
   font-family: var(--interface-font);
 }
 .response-heading span {
+  overflow-wrap: anywhere;
   color: var(--muted);
   font-size: 12px;
 }

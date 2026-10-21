@@ -777,8 +777,18 @@ export function tableMarkdown(columns: string[], rows: string[][]): string {
     .join("\n")}\n`;
 }
 
-export function agentId(agent: Pick<Binding, "provider" | "sessionId">): string {
+export function agentId(agent: Pick<AgentIdentity, "provider" | "sessionId">): string {
   return `${agent.provider}:${agent.sessionId}`;
+}
+
+export function agentAttribution(agent?: AgentIdentity | null): string {
+  if (!agent) return "Your agent";
+  const name = agent.provider === "automation"
+    ? agent.name ?? agent.label
+    : agent.name && agent.name !== agent.label
+    ? agent.name
+    : `${agent.label} · ${agent.sessionId.slice(-8)}`;
+  return agent.role ? `${name} · ${agent.role}` : name;
 }
 
 export function defaultAgent(metadata: Metadata): AgentConnection | null {
