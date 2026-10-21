@@ -197,7 +197,6 @@ button,
 }
 .aside-reader-scroll .margin-note {
   border: 1px solid var(--line);
-  padding: var(--space-3) var(--space-4);
 }
 .aside-reader-empty {
   padding: var(--space-4);
@@ -743,16 +742,16 @@ kbd {
   color: var(--accent);
 }
 .margin-note {
-  --aside-padding: 16px;
+  --aside-padding: var(--space-4);
   background: var(--material-note);
   border-radius: var(--radius-card);
-  padding: 8px var(--aside-padding);
+  padding: var(--aside-padding);
   font: var(--aside-text-size)/1.55 var(--interface-font);
 }
 .native-content .inline-aside {
   margin-block: 12px 24px;
   background: var(--material-note);
-  padding-inline: 12px;
+  padding: var(--space-4);
   border-inline-start: 1px solid var(--accent-line);
   white-space: normal;
   font: var(--aside-text-size)/1.55 var(--interface-font);
@@ -790,6 +789,14 @@ kbd {
   gap: 8px;
   min-height: 32px;
 }
+.aside-card-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  min-height: var(--control-size);
+  margin-block-end: var(--space-2);
+}
 .aside-actions {
   display: flex;
   align-items: center;
@@ -799,8 +806,8 @@ kbd {
 .aside-collapse {
   display: flex;
   flex: 0 1 auto;
-  min-width: 32px;
-  min-height: 32px;
+  min-width: var(--control-size);
+  min-height: var(--control-size);
   align-items: center;
   justify-content: center;
   gap: 7px;
@@ -825,7 +832,7 @@ kbd {
   background: var(--hover);
 }
 .margin-note .message {
-  margin-bottom: 14px;
+  margin-bottom: var(--space-4);
 }
 .margin-note .message > p {
   margin-top: 2px;
@@ -845,9 +852,9 @@ kbd {
 }
 .aside-passage {
   display: flex;
-  align-items: flex-start;
-  gap: 12px;
-  padding-block: 6px 10px;
+  align-items: center;
+  gap: var(--space-2);
+  margin-block-end: var(--space-3);
   color: var(--muted);
   font: var(--aside-detail-size)/1.5 var(--interface-font);
 }
@@ -1377,9 +1384,6 @@ kbd {
   }
   .workspace {
     padding: 0 24px 0 12px;
-  }
-  .margin-note {
-    --aside-padding: 13px;
   }
   .empty-hint {
     left: 26px;

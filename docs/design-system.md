@@ -33,6 +33,8 @@ Decisions, Activity, History, Agents, and Linked resources use this structure. F
 
 Use `IconButton` for icon actions. Text actions use `text-button`. Menus share row spacing, target size, typography, radius, and paper elevation. Asides and cards use the note material and card tokens. A feature does not define another paper surface.
 
+Aside cards use one 16 pixel content gutter on every edge. A single header contains collapse and thread actions. Passage context sits below that header. Copy reference remains visible and confirms a successful copy in place.
+
 ## Build enforcement
 
 `npm run design:check` parses JSX and CSS. It rejects nested panel dialogs, copied panel structure, local panel metric overrides, and raw layout or typography lengths in the shared panel and decision styles. `npm run check` and production builds run this check.

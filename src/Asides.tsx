@@ -25,6 +25,8 @@ import {
   Clock3,
   CircleAlert,
   Send,
+  Copy,
+  CopyCheck,
   ChevronDown,
   Ellipsis,
   RotateCcw,
@@ -454,11 +456,17 @@ export function Conversation({
   const state = useAsideState();
   const card = useRef<HTMLElement>(null);
   const [showHistory, setShowHistory] = useState(false);
+  const [copiedReference, setCopiedReference] = useState<string | null>(null);
   const [references, setReferences] = useState<AsideConnection[]>([]);
   const thread = state.metadata.threads.find(
     (thread) => thread.id === identity,
   );
   const activity = thread ? threadActivity(state.metadata, thread) : null;
+  useEffect(() => {
+    if (!copiedReference) return;
+    const timer = setTimeout(() => setCopiedReference(null), 2000);
+    return () => clearTimeout(timer);
+  }, [copiedReference]);
   useEffect(() => {
     let current = true;
     void session
@@ -581,6 +589,29 @@ export function Conversation({
   );
   const actions = (
     <div className="aside-actions">
+      <IconButton
+        icon={copiedReference === identity ? CopyCheck : Copy}
+        label={
+          copiedReference === identity
+            ? "Aside reference copied"
+            : "Copy aside reference"
+        }
+        active={copiedReference === identity}
+        agentControl={`aside.copy:${identity}`}
+        onPress={() => {
+          const excerpt =
+            quote || thread.messages.at(-1)?.content || "Whole document";
+          void invoke("clipboard_write", {
+            text: `Aside: ${excerpt}\n${asideLink({ documentId: state.metadata.documentId, threadId: identity })}`,
+          })
+            .then(() => setCopiedReference(identity))
+            .catch((error) =>
+              session.fail(
+                new Error(`Could not copy the aside reference: ${String(error)}`),
+              ),
+            );
+        }}
+      />
       {!thread.resolved && (thread.anchor || thread.previewAnchor) && (
         <IconButton
           icon={
@@ -660,29 +691,6 @@ export function Conversation({
             >
               Resolve all asides in document
             </MenuItem>
-            <MenuItem
-              id="copy"
-              data-inknb-control={`aside.copy:${identity}`}
-              onAction={() => {
-                const excerpt =
-                  quote || thread.messages.at(-1)?.content || "Whole document";
-                void invoke("clipboard_write", {
-                  text: `Aside: ${excerpt}\n${asideLink({ documentId: state.metadata.documentId, threadId: identity })}`,
-                })
-                  .then(() =>
-                    session.update({ status: "Aside reference copied" }),
-                  )
-                  .catch((error) =>
-                    session.fail(
-                      new Error(
-                        `Could not copy the aside reference: ${String(error)}`,
-                      ),
-                    ),
-                  );
-              }}
-            >
-              Copy aside reference
-            </MenuItem>
             {((thread.anchor && thread.anchor.status !== "detached") ||
               thread.previewAnchor) && (
               <MenuItem
@@ -732,6 +740,10 @@ export function Conversation({
       }}
       aria-label={`Aside: ${quote || thread.messages[0]?.content || thread.messages[0]?.images[0]?.name || "Whole document"}`}
     >
+      <div className="aside-card-heading">
+        {collapse}
+        {actions}
+      </div>
       {(state.preferences.placement === "inline" ||
         state.asideNarrow ||
         state.asideReader.open ||
@@ -749,12 +761,6 @@ export function Conversation({
             ? "Hide earlier messages"
             : `${recentStart} earlier ${recentStart === 1 ? "message" : "messages"}`}
         </Button>
-      )}
-      {!thread.messages.length && (
-        <div className="message-heading">
-          {collapse}
-          {actions}
-        </div>
       )}
       {thread.resolution && (
         <p className="aside-resolution">
@@ -813,11 +819,8 @@ export function Conversation({
             data-message-id={message.id}
             key={message.id}
           >
-            {(index === 0 || message.author === "agent") && (
+            {index > 0 && message.author === "agent" && (
               <div className="message-heading">
-                {index === 0 ? (
-                  collapse
-                ) : (
                   <TooltipTrigger delay={500}>
                     <Button className="message-author">
                       {message.agent?.name ??
@@ -830,8 +833,6 @@ export function Conversation({
                       </time>
                     </Tooltip>
                   </TooltipTrigger>
-                )}
-                {index === 0 && actions}
               </div>
             )}
             {message.author === "agent" ? (
