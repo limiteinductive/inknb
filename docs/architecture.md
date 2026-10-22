@@ -8,6 +8,8 @@ Agents create comments with `annotation_create`. They attach suggestions with `e
 
 The aside toolbar button toggles the whole column. Each document stores its column visibility in its library entry. Hiding the column retains thread expansion states and drafts. New aside commands and passage navigation reveal the column. Selecting text or pressing Shift+Command+A creates an aside.
 
+Each table exposes the shared comment-plus icon. The action captures the whole table and opens its composer in one click. Selection and deletion remain in the table context menu.
+
 Aside scope follows selection in the `long-term` design. A selected passage creates a source anchor. No selection creates a whole-document aside with no source or preview anchor. The composer captures this scope when opened. Moving the selection does not change it. Whole-document asides appear above passage asides and remain unanchored through text changes. Existing cursor anchors retain their locations.
 
 The `long-term` file-aside command uses Command+Option+A and appears in the Edit menu. It opens an unanchored aside regardless of selection. Command+Shift+A follows the selection. Both commands retain an existing composer draft and its captured scope. Detached previews send the file-aside command to their document owner.

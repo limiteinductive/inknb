@@ -45,6 +45,7 @@ import { clipboardImages, importImages, copyImage } from "./images";
 import { createElement, Fragment as ReactFragment } from "react";
 import { createRoot } from "react-dom/client";
 import { MessageSquarePlus, Send } from "lucide-react";
+import IconButton from "./IconButton";
 import { invoke } from "@tauri-apps/api/core";
 import { save } from "@tauri-apps/plugin-dialog";
 import "mathlive/fonts.css";
@@ -448,25 +449,22 @@ export class NativeEditor extends NativeDocumentModel {
           controls.contentEditable = "false";
           controls.setAttribute("role", "toolbar");
           controls.setAttribute("aria-label", "Table actions");
-          const selectButton = controls.appendChild(window.document.createElement("button"));
-          selectButton.type = "button";
-          selectButton.textContent = "Select table";
-          selectButton.setAttribute("aria-pressed", "false");
-          const deleteButton = controls.appendChild(window.document.createElement("button"));
-          deleteButton.type = "button";
-          deleteButton.textContent = "Delete table";
-          const select = () => {
-            const position = getPosition();
-            if (position === undefined) return false;
-            view.focus();
-            view.dispatch(view.state.tr.setSelection(NodeSelection.create(view.state.doc, position)));
-            return true;
+          const asideRoot = createRoot(controls);
+          const aside = {
+            icon: MessageSquarePlus,
+            label: "Add aside to table",
+            agentControl: `table.aside:${node.attrs.identity}`,
+            onPress: () => {
+              const position = getPosition();
+              if (position === undefined) return;
+              view.focus();
+              view.dispatch(view.state.tr.setSelection(NodeSelection.create(view.state.doc, position)));
+              session.startComment();
+              this.positionSelectionAction();
+            },
           };
+          asideRoot.render(createElement(IconButton, aside));
           controls.addEventListener("mousedown", (event) => event.preventDefault());
-          selectButton.addEventListener("click", select);
-          deleteButton.addEventListener("click", () => {
-            if (select()) view.dispatch(view.state.tr.deleteSelection().scrollIntoView());
-          });
           const table = new TableView(node, 25);
           element.appendChild(table.dom);
           table.table.style.minWidth = "";
@@ -476,16 +474,18 @@ export class NativeEditor extends NativeDocumentModel {
             contentDOM: table.contentDOM,
             selectNode: () => {
               element.classList.add("ProseMirror-selectednode");
-              selectButton.setAttribute("aria-pressed", "true");
             },
             deselectNode: () => {
               element.classList.remove("ProseMirror-selectednode");
-              selectButton.setAttribute("aria-pressed", "false");
             },
             stopEvent: (event) => event.target instanceof Node && controls.contains(event.target),
             update: (next) => {
               const updated = table.update(next);
               if (updated) {
+                asideRoot.render(createElement(IconButton, {
+                  ...aside,
+                  agentControl: `table.aside:${next.attrs.identity}`,
+                }));
                 table.table.style.minWidth = "";
                 table.table.dataset.nativeIdentity = String(
                   next.attrs.identity,
@@ -497,6 +497,7 @@ export class NativeEditor extends NativeDocumentModel {
               controls.contains(record.target) ||
               (record.type === "attributes" && record.target === element) ||
               table.ignoreMutation(record),
+            destroy: () => queueMicrotask(() => asideRoot.unmount()),
           };
         },
         math: (node, view, getPosition) =>
@@ -1056,6 +1057,7 @@ export class NativeEditor extends NativeDocumentModel {
     const selection = this.editor.state.selection;
     this.selectionActions.hidden =
       selection.empty ||
+      this.session.getSnapshot().composer ||
       this.selecting ||
       !this.editor.hasFocus() ||
       !this.findDialog.hidden;

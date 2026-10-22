@@ -49,31 +49,9 @@
   inset-block-end: 100%;
   inset-inline-start: 0;
   display: flex;
-  gap: 4px;
   padding-block-end: 4px;
   user-select: none;
   -webkit-user-select: none;
-  font: 12px/1.5 var(--interface-font);
-  color: var(--muted);
-}
-.native-table-actions button {
-  min-height: 26px;
-  padding: 3px 7px;
-  border-radius: 5px;
-  white-space: nowrap;
-}
-.native-table-actions button:is(:hover, :focus-visible),
-.native-table-actions button[aria-pressed="true"] {
-  background: var(--accent-wash);
-  color: var(--accent);
-}
-.native-table-actions button:last-child {
-  visibility: hidden;
-}
-.native-table:is(:hover, :focus-within, .ProseMirror-selectednode)
-  .native-table-actions
-  button:last-child {
-  visibility: visible;
 }
 .native-content .native-table.ProseMirror-selectednode {
   outline: 2px solid color-mix(in srgb, var(--accent) 70%, transparent);

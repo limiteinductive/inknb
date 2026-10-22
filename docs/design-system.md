@@ -55,6 +55,8 @@ Suggested changes use the note material, neutral card edge, and 16 pixel content
 
 Whole-table anchors highlight the table surface. They do not underline or highlight its text separately. Object selections suppress the browser's text selection paint. Text selections within cells retain text highlighting.
 
+Each table exposes the shared comment-plus icon with a tooltip and accessible label. Selection and deletion remain in the table context menu.
+
 Wide tables expand the document column to use available space. Prose keeps its reading width and center. The aside gutter remains separate. Tables scroll horizontally when the available space cannot fit them. Tables inside cards, lists, and quotes stay within their parent.
 
 ## Build enforcement
