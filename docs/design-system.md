@@ -45,6 +45,8 @@ Aside cards use one 16 pixel content gutter on every edge. A single header conta
 
 Your messages use a tinted surface and align to the right. Agent replies use the full text width and display their session name. The shared conversation retains all messages in a scroll region. Aside cards stop at 640 pixels or the viewport height minus 128 pixels. Reader cards also fit the reader viewport, with a 240 pixel minimum reading allowance. Their heading and reply composer stay outside the message region. New replies preserve the position when the reader scrolls through earlier messages.
 
+The reply textarea grows with its text. One composer viewport scrolls the draft and its attachments. The form and textarea have no separate scrollbars. Aside scrollbars appear during scrolling or near the edge, then hide after inactivity. Forced colors retain system scrollbars. Reduced motion removes the fade.
+
 Edit summaries follow their originating turn. Each turn has one collapsed summary with counts by status. Expanding it shows the individual explanations and review actions. Later messages do not move earlier edits to the bottom.
 
 Suggested changes use the note material, neutral card edge, and 16 pixel content gutter. The header places collapse on the left. The footer groups decisions and suggestion navigation. Color marks changed content. Diff blocks use a light wash without vertical rails.

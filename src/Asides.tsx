@@ -1,4 +1,5 @@
 import { DecisionCard } from "./Decisions";
+import { useAutoHideScrollbar } from "./use-auto-hide-scrollbar";
 import { agentAttribution, defaultAgent, requestAgentId, proposalTurnId } from "./domain";
 import { focusAside, revealAsideComposer } from "./aside-focus";
 import {
@@ -144,6 +145,8 @@ function Composer({
     ? "Disconnected recipient"
     : agentAttribution(state.metadata.agents.find((agent) => agent.id === recipientId));
   const textarea = useRef<HTMLTextAreaElement>(null);
+  const composerContent = useRef<HTMLDivElement>(null);
+  useAutoHideScrollbar(composerContent);
   const recipientTrigger = useRef<HTMLButtonElement>(null);
   const [recipientOpen, setRecipientOpen] = useState(false);
   const recipientWasOpen = useRef(false);
@@ -169,17 +172,14 @@ function Composer({
       element.style.height = `${element.scrollHeight}px`;
     };
     let width = element.getBoundingClientRect().width;
-    let frame = 0;
     const observer = new ResizeObserver(([entry]) => {
       if (entry.contentRect.width === width) return;
       width = entry.contentRect.width;
-      cancelAnimationFrame(frame);
-      frame = requestAnimationFrame(measure);
+      measure();
     });
     observer.observe(element);
     measure();
     return () => {
-      cancelAnimationFrame(frame);
       observer.disconnect();
     };
   }, [content]);
@@ -199,6 +199,7 @@ function Composer({
   return (
     <form
       className="composer"
+      data-inknb-control={`composer:${draftKey}`}
       onSubmit={(event) => {
         event.preventDefault();
         void send();
@@ -260,133 +261,141 @@ function Composer({
           </Popover>
         </MenuTrigger>
       )}
-      <TextField
-        value={content}
-        onChange={(content) =>
-          session.update({
-            drafts: {
-              ...state.drafts,
-              [draftKey]: { ...state.drafts[draftKey], content, images },
-            },
-          })
-        }
-        aria-label={
-          threadId ? "Reply to conversation" : "Request to your agent"
-        }
+      <div
+        className="composer-content"
+        ref={composerContent}
+        data-inknb-control={`composer.scroll:${draftKey}`}
+        data-inknb-scroll="true"
       >
-        <TextArea
-          ref={textarea}
-          rows={1}
-          aria-keyshortcuts="Enter Escape"
-          aria-description="Enter to send. Shift+Enter for a new line. Escape to close."
-          onPaste={(event) => {
-            const files = clipboardImages(event.clipboardData);
-            if (!files.length) return;
-            event.preventDefault();
-            const documentId = state.metadata.documentId;
-            setPasting((count) => count + 1);
-            void importImages(files)
-              .then((imported) => {
-                const current = session.getSnapshot();
-                if (current.metadata.documentId !== documentId)
-                  throw Error(
-                    "The document changed before the image paste finished.",
-                  );
-                const draft = current.drafts[draftKey] ?? {
-                  content: "",
-                  images: [],
-                };
+        <TextField
+          value={content}
+          onChange={(content) =>
+            session.update({
+              drafts: {
+                ...state.drafts,
+                [draftKey]: { ...state.drafts[draftKey], content, images },
+              },
+            })
+          }
+          aria-label={
+            threadId ? "Reply to conversation" : "Request to your agent"
+          }
+        >
+          <TextArea
+            ref={textarea}
+            data-inknb-control={`composer.input:${draftKey}`}
+            rows={1}
+            aria-keyshortcuts="Enter Escape"
+            aria-description="Enter to send. Shift+Enter for a new line. Escape to close."
+            onPaste={(event) => {
+              const files = clipboardImages(event.clipboardData);
+              if (!files.length) return;
+              event.preventDefault();
+              const documentId = state.metadata.documentId;
+              setPasting((count) => count + 1);
+              void importImages(files)
+                .then((imported) => {
+                  const current = session.getSnapshot();
+                  if (current.metadata.documentId !== documentId)
+                    throw Error(
+                      "The document changed before the image paste finished.",
+                    );
+                  const draft = current.drafts[draftKey] ?? {
+                    content: "",
+                    images: [],
+                  };
+                  session.update({
+                    drafts: {
+                      ...current.drafts,
+                      [draftKey]: {
+                        ...draft,
+                        images: [...draft.images, ...imported],
+                      },
+                    },
+                  });
+                })
+                .catch((error) => session.fail(error))
+                .finally(() => setPasting((count) => count - 1));
+            }}
+            placeholder={threadId ? "Reply…" : "Write your aside…"}
+            onKeyDown={(event) => {
+              if (
+                event.nativeEvent.isComposing ||
+                event.nativeEvent.keyCode === 229
+              )
+                return;
+              if (event.key === "Escape") {
+                event.preventDefault();
+                event.stopPropagation();
+                if (onClose) onClose();
+                else if (threadId) session.collapseThread(threadId, true);
+                else {
+                  session.update({
+                    composer: false,
+                    composerAnchor: null,
+                    composerPreviewAnchor: null,
+                  });
+                  session.restoreFocus();
+                }
+                return;
+              }
+              if (event.key !== "Enter") return;
+              if (event.metaKey || event.ctrlKey) {
+                event.preventDefault();
+                const textarea = event.currentTarget;
+                const start = textarea.selectionStart;
+                const end = textarea.selectionEnd;
                 session.update({
                   drafts: {
-                    ...current.drafts,
+                    ...state.drafts,
                     [draftKey]: {
-                      ...draft,
-                      images: [...draft.images, ...imported],
+                      ...state.drafts[draftKey],
+                      content: `${content.slice(0, start)}\n${content.slice(end)}`,
+                      images,
                     },
                   },
                 });
-              })
-              .catch((error) => session.fail(error))
-              .finally(() => setPasting((count) => count - 1));
-          }}
-          placeholder={threadId ? "Reply…" : "Write your aside…"}
-          onKeyDown={(event) => {
-            if (
-              event.nativeEvent.isComposing ||
-              event.nativeEvent.keyCode === 229
-            )
-              return;
-            if (event.key === "Escape") {
-              event.preventDefault();
-              event.stopPropagation();
-              if (onClose) onClose();
-              else if (threadId) session.collapseThread(threadId, true);
-              else {
-                session.update({
-                  composer: false,
-                  composerAnchor: null,
-                  composerPreviewAnchor: null,
-                });
-                session.restoreFocus();
+                requestAnimationFrame(() =>
+                  textarea.setSelectionRange(start + 1, start + 1),
+                );
+                return;
               }
-              return;
-            }
-            if (event.key !== "Enter") return;
-            if (event.metaKey || event.ctrlKey) {
+              if (event.shiftKey || event.altKey) return;
               event.preventDefault();
-              const textarea = event.currentTarget;
-              const start = textarea.selectionStart;
-              const end = textarea.selectionEnd;
-              session.update({
-                drafts: {
-                  ...state.drafts,
-                  [draftKey]: {
-                    ...state.drafts[draftKey],
-                    content: `${content.slice(0, start)}\n${content.slice(end)}`,
-                    images,
-                  },
-                },
-              });
-              requestAnimationFrame(() =>
-                textarea.setSelectionRange(start + 1, start + 1),
-              );
-              return;
-            }
-            if (event.shiftKey || event.altKey) return;
-            event.preventDefault();
-            if (!event.repeat) void send();
-          }}
-        />
-      </TextField>
-      {images.length > 0 && (
-        <div className="attached-images">
-          {images.map((image, index) => (
-            <div className="attached-image" key={`${image.id}:${index}`}>
-              <AttachedImage image={image} />
-              <IconButton
-                icon={X}
-                label={`Remove ${image.name}`}
-                onPress={() => {
-                  const current = session.getSnapshot();
-                  const draft = current.drafts[draftKey];
-                  if (draft)
-                    session.update({
-                      drafts: {
-                        ...current.drafts,
-                        [draftKey]: {
-                          ...draft,
-                          images: draft.images.filter(
-                            (_, position) => position !== index,
-                          ),
+              if (!event.repeat) void send();
+            }}
+          />
+        </TextField>
+        {images.length > 0 && (
+          <div className="attached-images">
+            {images.map((image, index) => (
+              <div className="attached-image" key={`${image.id}:${index}`}>
+                <AttachedImage image={image} />
+                <IconButton
+                  icon={X}
+                  label={`Remove ${image.name}`}
+                  onPress={() => {
+                    const current = session.getSnapshot();
+                    const draft = current.drafts[draftKey];
+                    if (draft)
+                      session.update({
+                        drafts: {
+                          ...current.drafts,
+                          [draftKey]: {
+                            ...draft,
+                            images: draft.images.filter(
+                              (_, position) => position !== index,
+                            ),
+                          },
                         },
-                      },
-                    });
-                }}
-              />
-            </div>
-          ))}
-        </div>
-      )}
+                      });
+                  }}
+                />
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
       {pasting > 0 && (
         <p className="quiet-note" role="status">
           Adding image…
@@ -492,6 +501,7 @@ export function Conversation({
   const state = useAsideState();
   const card = useRef<HTMLElement>(null);
   const conversationScroll = useRef<HTMLDivElement>(null);
+  useAutoHideScrollbar(conversationScroll);
   const previousMessage = useRef<{ threadId: string; messageId: string } | null>(null);
   const followMessages = useRef(true);
   const [copiedReference, setCopiedReference] = useState<string | null>(null);

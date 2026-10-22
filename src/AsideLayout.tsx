@@ -3,6 +3,7 @@ import type { CSSProperties, ReactNode } from "react";
 import { Button } from "react-aria-components";
 import { ArrowLeft, MessageSquare } from "lucide-react";
 import Asides from "./Asides";
+import { useAutoHideScrollbar } from "./use-auto-hide-scrollbar";
 import IconButton from "./IconButton";
 import { asideVisible } from "./aside-state";
 import { SessionContext, useAsideSession, useAsideState } from "./use-session";
@@ -52,6 +53,7 @@ export default function AsideLayout({
   const open = state.asidesOpen && !state.focus;
   const contextualReader = !documentSession && inline && !state.asideReader.open;
   const reading = open && (state.asideReader.open || contextualReader);
+  useAutoHideScrollbar(readerViewport, reading);
   const reserved = open && (!inline || (reading && !narrow));
   const heading = useRef<HTMLDivElement>(null);
   useLayoutEffect(() => {

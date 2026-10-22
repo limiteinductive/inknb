@@ -869,10 +869,8 @@ kbd {
   border-radius: var(--radius-card);
 }
 .margin-note > .composer {
-  flex-shrink: 1;
-  max-height: min(var(--aside-composer-max-height), 35dvh);
-  overflow: auto;
-  overscroll-behavior: contain;
+  flex-shrink: 0;
+  max-height: min(var(--aside-composer-max-height), 35dvh, max(calc(var(--aside-min-readable-height) / 2), 50cqh));
   margin-block-start: var(--space-3);
 }
 .margin-note .message.human > p {
@@ -977,17 +975,28 @@ kbd {
   margin: 4px 0 0;
 }
 .composer {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
   position: relative;
   border-bottom: 1px solid var(--line);
   padding-block: 6px;
+}
+.composer > :not(.composer-content) {
+  flex-shrink: 0;
+}
+.composer-content {
+  min-height: 1lh;
+  max-height: var(--aside-draft-max-height);
+  overflow: auto;
+  overscroll-behavior: contain;
 }
 .composer textarea {
   display: block;
   resize: none;
   width: 100%;
-  min-height: 24px;
-  max-height: 220px;
-  overflow-y: auto;
+  min-height: 1lh;
+  overflow: hidden;
   font: inherit;
   border: 0;
   padding: 0;

@@ -108,6 +108,7 @@
   --aside-min-readable-height: 240px;
   --aside-viewport-inset: 128px;
   --aside-composer-max-height: 240px;
+  --aside-draft-max-height: 220px;
   --human-message-surface: color-mix(in srgb, var(--accent) 12%, var(--surface));
   --control-size: 30px;
   --badge-size: 14px;
