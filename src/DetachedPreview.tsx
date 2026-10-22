@@ -10,7 +10,7 @@ import {
 import { invoke } from "@tauri-apps/api/core";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { useSyncExternalStore } from "react";
-import AsideLayout, { DocumentNotesButton } from "./AsideLayout";
+import AsideLayout, { AsidesButton } from "./AsideLayout";
 import DocumentHistory from "./DocumentHistory";
 import DocumentToolbar from "./DocumentToolbar";
 import DocumentReview, { ReviewButton } from "./DocumentReview";
@@ -257,7 +257,7 @@ function DetachedDocument({
                 open={historyOpen}
                 onOpenChange={setHistoryOpen}
               />
-              <DocumentNotesButton compact />
+              <AsidesButton />
               <IconButton
                 icon={MessageSquarePlus}
                 label="Add aside"

@@ -78,4 +78,4 @@ Build checks verify component contracts. Screenshot inspection verifies composit
 - [Spectrum typography](https://spectrum.adobe.com/foundations/typography/typography-system)
 
 
-Passage annotations use the shared note material, control radius, spacing, and elevation. The comment field grows from one line. Focus changes the neutral border. The completed annotation shows its comment as the drag surface. Passage context sits above the reply, with the comment above its source excerpt. Citation text remains selectable. Reply citations remain editable.
+Passage annotations use the shared note material, control radius, spacing, and elevation. The comment field grows from one line. The field has no border or focus perimeter. The caret shows text focus. The completed annotation shows its comment as the drag surface. Written annotations remain visible when focus changes. Passage context sits above the reply, with the comment above its source excerpt. Citation text remains selectable. Reply citations remain editable.

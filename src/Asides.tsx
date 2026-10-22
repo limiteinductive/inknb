@@ -33,10 +33,6 @@ import {
   CornerDownRight,
   FileText,
   MessageSquare,
-  PencilLine,
-  History,
-  Pin,
-  PinOff,
   X,
 } from "lucide-react";
 import { invoke } from "@tauri-apps/api/core";
@@ -50,8 +46,6 @@ import { threadActivity } from "./domain";
 import {
   asideVisible,
   asideExpanded,
-  asideOutdated,
-  asideInline,
   resolvableAsides,
 } from "./aside-state";
 import {
@@ -60,9 +54,6 @@ import {
 } from "./aside-reference";
 import type { AsideConnection } from "./aside-reference";
 import { SessionContext, useAsideSession, useAsideState } from "./use-session";
-import { documentScroll } from "./document-scroll";
-import { asidePassages } from "./aside-locations";
-import type { AsideGeometry } from "./aside-locations";
 import {
   currentSuggestions,
   visibleSuggestions,
@@ -84,37 +75,27 @@ function AsidePassage({ threadId }: { threadId?: string }) {
   const preview = threadId
     ? thread?.previewAnchor
     : state.composerPreviewAnchor;
-  if (!anchor && !preview) return <p className="aside-scope">Whole document</p>;
+  if (!anchor && !preview) return null;
   const quote = anchor?.native?.region
     ? "Selected image region"
     : anchor && anchor.status !== "detached" && documentSession?.view
       ? documentSession.view.passageText(anchor)
       : preview?.quote || anchor?.quote || thread?.originalQuote || "";
   return (
-    <div className="aside-passage">
-      <details>
-        <summary aria-label={`Aside about: ${quote || "This position"}`}>
-          <CornerDownRight size={13} aria-hidden="true" />
-          <span>{quote || "This position"}</span>
-        </summary>
-        <p>{quote || "This aside is attached to an insertion point."}</p>
-      </details>
-      {(preview || anchor?.status !== "detached") && (
-        <Button
-          className="text-button"
-          data-inknb-control={`aside.passage:${threadId ?? "new"}`}
-          onPress={() => {
-            if (preview) session.revealPreview(preview);
-            else if (threadId) session.revealSource(threadId);
-            else if (anchor && anchor.status !== "detached") {
-              documentSession?.surface?.scrollToSource(anchor.from, anchor);
-            }
-          }}
-        >
-          Show passage
-        </Button>
-      )}
-    </div>
+    <button
+      type="button"
+      className="aside-passage annotation-context-source"
+      aria-label={`Show passage: ${quote || "This position"}`}
+      data-inknb-control={`aside.passage:${threadId ?? "new"}`}
+      onClick={() => {
+        if (!window.getSelection()?.isCollapsed) return;
+        if (preview) session.revealPreview(preview);
+        else if (threadId) session.revealSource(threadId);
+        else if (anchor && anchor.status !== "detached") documentSession?.surface?.scrollToSource(anchor.from, anchor);
+      }}
+    >
+      {quote || "This position"}
+    </button>
   );
 }
 
@@ -335,9 +316,6 @@ function Composer({
         <p className="quiet-note" role="status">
           Adding image…
         </p>
-      )}
-      {!defaultAgent(state.metadata) && (
-        <p className="quiet-note">Saved locally until your agent joins.</p>
       )}
     </form>
   );
@@ -608,38 +586,6 @@ export function Conversation({
             );
         }}
       />
-      {!thread.resolved && (thread.anchor || thread.previewAnchor) && (
-        <IconButton
-          icon={
-            state.asideReader.open &&
-            state.asideReader.threadIds.includes(identity)
-              ? PinOff
-              : Pin
-          }
-          label={
-            state.asideReader.open &&
-            state.asideReader.threadIds.includes(identity)
-              ? "Return aside to margin"
-              : "Keep aside visible"
-          }
-          agentControl={`aside.keep:${identity}`}
-          onPress={() => {
-            const reader = session.getSnapshot().asideReader;
-            const kept = reader.open && reader.threadIds.includes(identity);
-            const threadIds = kept
-              ? reader.threadIds.filter((threadId) => threadId !== identity)
-              : [...new Set([...reader.threadIds, identity])];
-            session.selectThread(identity);
-            session.update({
-              asideReader: {
-                ...reader,
-                open: !kept || reader.documentNotes || threadIds.length > 0,
-                threadIds,
-              },
-            });
-          }}
-        />
-      )}
       <IconButton
         icon={thread.resolved ? RotateCcw : Check}
         label={thread.resolved ? "Reopen aside" : "Resolve aside"}
@@ -660,23 +606,6 @@ export function Conversation({
           offset={5}
         >
           <Menu className="aside-menu" aria-label="Aside actions">
-            <MenuItem
-              id="placement"
-              data-inknb-control="asides.placement"
-              onAction={() => {
-                void session
-                  .setPlacement(
-                    state.preferences.placement === "inline"
-                      ? "margin"
-                      : "inline",
-                  )
-                  .catch((error) => session.fail(error));
-              }}
-            >
-              {state.preferences.placement === "inline"
-                ? "Show asides in margin"
-                : "Show asides inline"}
-            </MenuItem>
             <MenuItem
               id="resolve-all"
               data-inknb-control="asides.resolve-all"
@@ -753,12 +682,8 @@ export function Conversation({
           followMessages.current = viewport.scrollHeight - viewport.clientHeight - viewport.scrollTop <= 48;
         }}
       >
-      {(state.preferences.placement === "inline" ||
-        state.asideNarrow ||
-        state.asideReader.open ||
-        (!thread.anchor && !thread.previewAnchor)) && (
-        <AsidePassage threadId={identity} />
-      )}
+      <AsidePassage threadId={identity} />
+
       {thread.resolution && (
         <p className="aside-resolution">
           {thread.resolution.actor}: {thread.resolution.reason}
@@ -953,324 +878,22 @@ export function Conversation({
   );
 }
 
-export function InlineAside({ identity }: { identity: string }) {
+export default function Asides({ historyOpen }: { historyOpen: boolean }) {
   const session = useAsideSession();
   const state = useAsideState();
-  if (identity === "new")
-    return state.composer ? (
-      <div className="new-aside margin-note">
-        <Composer />
-      </div>
-    ) : null;
-  const decision = state.metadata.decisions.find(
-    (decision) => decision.id === identity,
-  );
-  if (decision) return <DecisionCard decision={decision} />;
-  const thread = state.metadata.threads.find(
-    (thread) => thread.id === identity,
-  );
-  if (!thread || !asideVisible(state, thread)) return null;
-  const expanded = asideExpanded(state, thread);
-  const summary =
-    messageSummary(thread.messages.at(-1)) || thread.originalQuote || "Aside";
+  const decisions = state.metadata.decisions.filter(decision => ["open", "answered"].includes(decision.status));
+  const threads = state.metadata.threads.filter(thread => asideVisible(state, thread));
   return (
-    <div data-aside-id={identity} data-expanded={expanded || undefined}>
-      {expanded ? (
-        <Conversation identity={identity} />
-      ) : (
-        <Button
-          className="inline-aside-summary"
-          aria-label={`Open aside: ${summary}`}
-          aria-expanded={false}
-          data-inknb-control={`thread:${identity}`}
-          onPress={() => session.selectThread(identity)}
-        >
-          <MessageSquare size={14} aria-hidden="true" />
-          <span>{summary}</span>
-          {session.hasUnreadActivity(identity) && (
-            <span className="aside-unread" />
-          )}
-        </Button>
-      )}
-    </div>
-  );
-}
-
-export default function Asides({
-  historyOpen,
-  reading = false,
-  allNotes = false,
-}: {
-  historyOpen: boolean;
-  reading?: boolean;
-  allNotes?: boolean;
-}) {
-  const session = useAsideSession();
-  const state = useAsideState();
-  const documentSession = useContext(SessionContext);
-  const index = useRef<HTMLDivElement>(null);
-  const canvas = useRef<HTMLDivElement>(null);
-  const previewGeometry = useRef<AsideGeometry | null>(null);
-  const nativeInline = Boolean(documentSession?.view);
-  const passages = asidePassages(state)
-    .filter(
-      (passage) =>
-        reading ||
-        !nativeInline ||
-        !asideInline(state, passage.anchor, passage.id),
-    )
-    .filter((passage) => {
-      const contextual = Boolean(
-        passage.preview ||
-        (passage.anchor && passage.anchor.status !== "detached"),
-      );
-      if (reading)
-        return (
-          allNotes ||
-          passage.id === "new" ||
-          state.asideReader.threadIds.includes(passage.id) ||
-          (state.asideReader.documentNotes && !contextual)
-        );
-      return (
-        contextual &&
-        !(
-          state.asideReader.open &&
-          state.asideReader.threadIds.includes(passage.id)
-        )
-      );
-    })
-    .filter(
-      (passage) =>
-        passage.id === "new" ||
-        state.metadata.threads.some(
-          (thread) => thread.id === passage.id && asideVisible(state, thread),
-        ),
-    )
-    .map((passage) => ({
-      ...passage,
-      expanded: !historyOpen && passage.expanded,
-    }));
-  const decisions = state.metadata.decisions.filter(
-    (decision) =>
-      ["open", "answered"].includes(decision.status) &&
-      (reading
-        ? allNotes || state.asideReader.documentNotes && !decision.anchor
-        : decision.anchor &&
-          (!nativeInline || !asideInline(state, decision.anchor, decision.id))),
-  );
-  passages.push(
-    ...decisions.map((decision) => ({
-      id: decision.id,
-      anchor: decision.anchor,
-      expanded: true,
-      preview: null,
-      suggestionId: null,
-    })),
-  );
-  const passageSignature = JSON.stringify(passages);
-  useLayoutEffect(() => {
-    if (reading) return;
-    const rail = index.current;
-    const content = canvas.current;
-    const host = rail?.closest<HTMLElement>(".document-body");
-    if (!rail || !content || !host) return;
-    const viewport = documentScroll(
-      host.querySelector<HTMLElement>(".document-scroll")!,
-    );
-    let frame = 0;
-    const measure = () => {
-      frame = 0;
-      const view = documentSession?.surface;
-      const useSource = view;
-      const origin = viewport.getBoundingClientRect().top - viewport.scrollTop;
-      const geometry = useSource
-        ? {
-            positions: passages.flatMap((passage) => {
-              const anchor = passage.anchor;
-              if (
-                !anchor ||
-                anchor.status === "detached" ||
-                Math.max(anchor.from, anchor.to) > state.text.length
-              )
-                return [];
-              const bounds = view.anchorBounds(anchor);
-
-              return [
-                {
-                  id: passage.id,
-                  top: bounds.top - origin,
-                  bottom: bounds.bottom - origin,
-                },
-              ];
-            }),
-          }
-        : previewGeometry.current;
-      const locations = new Map(
-        (geometry?.positions ?? []).map((position) => [position.id, position]),
-      );
-      const cards = [
-        ...content.querySelectorAll<HTMLElement>("[data-aside-id]"),
-      ];
-      const canvasTop = content.getBoundingClientRect().top - origin;
-      const openingTop = Math.max(
-        0,
-        (view?.dom.getBoundingClientRect().top ?? origin + 64) -
-          origin -
-          canvasTop,
-      );
-      const expandedPositions = new Map<
-        string,
-        { top: number; bottom: number }
-      >();
-      const expandedCards = cards
-        .filter((card) => card.dataset.expanded || card.dataset.decisionCard)
-        .map((card) => {
-          const location = locations.get(card.dataset.asideId!);
-          const height = card.getBoundingClientRect().height;
-          const top =
-            card.dataset.asideId === "new" &&
-            !state.composerAnchor &&
-            !state.composerPreviewAnchor &&
-            state.composerTop !== null
-              ? state.composerTop - canvasTop
-              : location
-                ? (location.top + location.bottom) / 2 - canvasTop - height / 2
-                : 0;
-          return { card, top: Math.max(openingTop, top), height };
-        })
-        .sort((first, second) => first.top - second.top);
-      let occupiedBottom = 0;
-      for (const { card, top, height } of expandedCards) {
-        const placed = Math.max(occupiedBottom, top);
-        expandedPositions.set(card.dataset.asideId!, {
-          top: placed,
-          bottom: placed + height,
-        });
-        occupiedBottom = placed + height + 16;
-      }
-      const markers = passages
-        .filter((passage) => !passage.expanded)
-        .map((passage) => {
-          const location = locations.get(passage.id);
-          let center = location
-            ? (location.top + location.bottom) / 2 - canvasTop
-            : 15;
-          for (const position of expandedPositions.values()) {
-            if (center >= position.top - 36 && center <= position.bottom + 36)
-              center = position.bottom + 24;
-          }
-          return { id: passage.id, center: Math.max(15, center) };
-        })
-        .sort((first, second) => first.center - second.center);
-      let previousMarkerBottom = 0;
-      for (const marker of markers) {
-        marker.center = Math.max(marker.center, previousMarkerBottom + 15);
-        for (const position of expandedPositions.values())
-          if (
-            marker.center >= position.top - 36 &&
-            marker.center <= position.bottom + 36
-          )
-            marker.center = position.bottom + 24;
-        previousMarkerBottom = marker.center + 21;
-      }
-      let bottom = 0;
-      for (const card of cards) {
-        const expanded = expandedPositions.get(card.dataset.asideId!);
-        const marker = markers.find(
-          (marker) => marker.id === card.dataset.asideId,
-        );
-        const top = expanded
-          ? expanded.top
-          : Math.max(0, (marker?.center ?? 15) - 15);
-        card.style.top = `${top}px`;
-        bottom = Math.max(
-          bottom,
-          top + card.getBoundingClientRect().height + 16,
-        );
-      }
-      content.dataset.aligned = "true";
-      const bottomPadding =
-        Number.parseFloat(getComputedStyle(rail).paddingBottom) +
-        Number.parseFloat(getComputedStyle(rail.parentElement!).paddingBottom);
-      content.style.height = `${Math.max(bottom, viewport.scrollTop + viewport.clientHeight - canvasTop - bottomPadding)}px`;
-    };
-    const schedule = () => {
-      if (!frame) frame = requestAnimationFrame(measure);
-    };
-    const receive = (event: Event) => {
-      previewGeometry.current = (event as CustomEvent<AsideGeometry>).detail;
-      schedule();
-    };
-    const observer = new ResizeObserver(schedule);
-    observer.observe(host);
-    observer.observe(rail);
-    for (const card of content.querySelectorAll<HTMLElement>("[data-aside-id]"))
-      observer.observe(card);
-    host.addEventListener("inknb-aside-geometry", receive);
-    host.addEventListener("inknb-source-layout", schedule);
-    measure();
-    return () => {
-      cancelAnimationFrame(frame);
-      observer.disconnect();
-      host.removeEventListener("inknb-aside-geometry", receive);
-      host.removeEventListener("inknb-source-layout", schedule);
-    };
-  }, [
-    documentSession,
-    passageSignature,
-    state.threadExpansions,
-    state.activeThread,
-    state.previewHost,
-    state.composer,
-    state.composerTop,
-    state.epoch,
-    reading,
-  ]);
-  const positions = new Map<string, number>();
-  for (const thread of state.metadata.threads) {
-    let position = !thread.anchor && !thread.previewAnchor ? -1 : Infinity;
-    if (thread.anchor && thread.anchor.status !== "detached")
-      position = thread.anchor.from;
-    positions.set(thread.id, position);
-  }
-  const threads = state.metadata.threads
-    .filter(
-      (thread) =>
-        asideVisible(state, thread) &&
-        (reading
-          ? allNotes || state.asideReader.threadIds.includes(thread.id) ||
-            (state.asideReader.documentNotes &&
-              !thread.previewAnchor &&
-              (!thread.anchor || thread.anchor.status === "detached"))
-          : (thread.previewAnchor ||
-              (thread.anchor && thread.anchor.status !== "detached")) &&
-            (!nativeInline || !asideInline(state, thread.anchor, thread.id)) &&
-            !(
-              state.asideReader.open &&
-              state.asideReader.threadIds.includes(thread.id)
-            )),
-    )
-    .sort(
-      (first, second) => positions.get(first.id)! - positions.get(second.id)!,
-    );
-  return (
-    <aside className="margin" aria-label="Asides" data-reading={reading}>
+    <aside className="margin" aria-label="Asides" data-reading="true">
       <div
-        ref={index}
         className="thread-index"
         role="region"
         aria-label="Aside conversations"
         data-inknb-control="asides"
         data-inknb-scroll="true"
       >
-        <div className="aside-canvas" ref={canvas}>
-          {state.composer &&
-            !historyOpen &&
-            (reading ||
-              (!state.asideReader.open &&
-                (state.composerPreviewAnchor || state.composerAnchor) &&
-                (!nativeInline ||
-                  !asideInline(state, state.composerAnchor, "new")))) && (
+        <div className="aside-canvas">
+          {state.composer && !historyOpen && (
               <div
                 className="new-aside margin-note"
                 data-aside-id="new"
@@ -1304,44 +927,20 @@ export default function Asides({
           {threads.length
             ? threads.map((thread) => {
                 const expanded = !historyOpen && asideExpanded(state, thread);
-                const unread = session.hasUnreadActivity(thread.id);
-                const summary =
-                  thread.originalQuote ||
-                  messageSummary(thread.messages.at(-1)) ||
-                  thread.messages.at(-1)?.images[0]?.name ||
-                  "Aside";
                 const content = expanded ? (
                   <Conversation identity={thread.id} />
-                ) : reading ? (
-                  <InlineAside identity={thread.id} />
                 ) : (
-                  <TooltipTrigger delay={300}>
-                    <Button
-                      className={`aside-marker ${thread.resolved ? "resolved" : ""} ${asideOutdated(state.metadata, thread) ? "outdated" : ""}`}
-                      aria-label={`${thread.resolution?.outcome === "superseded" ? "Superseded" : thread.resolved ? "Done" : asideOutdated(state.metadata, thread) ? "Outdated" : thread.kind === "suggestion" ? "Suggestion" : "Aside"}: ${unread ? "New activity. " : ""}${summary}`}
-                      data-inknb-control={`thread:${thread.id}`}
-                      aria-expanded={expanded}
-                      onPress={() =>
-                        expanded
-                          ? session.collapseThread(thread.id)
-                          : session.selectThread(thread.id)
-                      }
-                    >
-                      {asideOutdated(state.metadata, thread) ? (
-                        <History size={16} aria-hidden="true" />
-                      ) : thread.resolved ? (
-                        <Check size={16} aria-hidden="true" />
-                      ) : thread.kind === "suggestion" ? (
-                        <PencilLine size={16} aria-hidden="true" />
-                      ) : (
-                        <MessageSquare size={16} aria-hidden="true" />
-                      )}
-                      {unread && <span className="aside-unread" />}
-                    </Button>
-                    <Tooltip className="control-tooltip" offset={8}>
-                      <span className="aside-tooltip-excerpt">{summary}</span>
-                    </Tooltip>
-                  </TooltipTrigger>
+                  <Button
+                    className="inline-aside-summary"
+                    aria-label={`Open aside: ${messageSummary(thread.messages.at(-1)) || thread.originalQuote}`}
+                    aria-expanded={false}
+                    data-inknb-control={`thread:${thread.id}`}
+                    onPress={() => session.selectThread(thread.id)}
+                  >
+                    <MessageSquare size={14} aria-hidden="true" />
+                    <span>{messageSummary(thread.messages.at(-1)) || thread.originalQuote}</span>
+                    {session.hasUnreadActivity(thread.id) && <span className="aside-unread" />}
+                  </Button>
                 );
                 return (
                   <div
@@ -1369,21 +968,7 @@ export default function Asides({
                 );
               })
             : null}
-          {reading &&
-            !threads.length &&
-            !decisions.length &&
-            !state.composer && (
-              <div className="aside-reader-empty">
-                <p>No open document notes.</p>
-                <Button
-                  className="text-button"
-                  data-inknb-control="asides.document-create"
-                  onPress={() => session.startComment("document")}
-                >
-                  Add a document note
-                </Button>
-              </div>
-            )}
+
         </div>
       </div>
     </aside>

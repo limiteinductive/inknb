@@ -358,8 +358,7 @@ export class DocumentSession {
 
   update(patch: Partial<SessionState>): void {
     const view = this.view;
-    const readerChanged = patch.asideReader && (patch.asideReader.open !== this.state.asideReader.open || patch.asideReader.documentNotes !== this.state.asideReader.documentNotes || JSON.stringify(patch.asideReader.threadIds) !== JSON.stringify(this.state.asideReader.threadIds));
-    if (view && (patch.asideNarrow !== undefined && patch.asideNarrow !== this.state.asideNarrow || readerChanged)) {
+    if (view && patch.asideNarrow !== undefined && patch.asideNarrow !== this.state.asideNarrow) {
       const viewport = documentScroll(view.dom);
       const scrollTop = viewport.scrollTop;
       const bounds = view.dom.getBoundingClientRect();
@@ -412,7 +411,6 @@ export class DocumentSession {
         patch.threadExpansions ||
         patch.asidesOpen !== undefined ||
         patch.asideNarrow !== undefined ||
-        readerChanged ||
         patch.activeThread !== undefined ||
         patch.composer !== undefined ||
         patch.composerAnchor !== undefined ||
@@ -555,8 +553,6 @@ export class DocumentSession {
           await this.deliver(created.request.id);
           return { threadId: created.thread.id };
         }
-        case "placement":
-          return this.setPlacement(action.placement);
         case "history-read":
           return this.executeControl(
             "history_read",
@@ -1229,16 +1225,11 @@ export class DocumentSession {
   }
 
   selectThread(identity: string | null): void {
-    const thread = this.state.metadata.threads.find((thread) => thread.id === identity);
-    const documentNote = Boolean(thread && !thread.previewAnchor && (!thread.anchor || thread.anchor.status === "detached"));
-    const reader = this.state.asideReader;
     this.update({
       activeThread: identity,
       asidesOpen: identity ? true : this.state.asidesOpen,
       threadExpansions: { ...this.state.threadExpansions, ...(identity ? { [identity]: true } : {}) },
-      asideReader: identity && (reader.open || documentNote)
-        ? { ...reader, open: true, documentNotes: reader.documentNotes || documentNote, threadIds: [...new Set([...reader.threadIds, identity])] }
-        : reader,
+
     });
     this.view?.refresh();
   }
@@ -1348,9 +1339,7 @@ export class DocumentSession {
               captureAnchor(this.state.text, this.state.selection),
             ) ?? captureAnchor(this.state.text, this.state.selection))
           : null,
-      asideReader: scope === "document" || this.state.selection.to === this.state.selection.from
-        ? { ...this.state.asideReader, open: true, documentNotes: true }
-        : this.state.asideReader,
+
     });
     this.view?.dom
       .closest(".document-container")
@@ -1748,13 +1737,6 @@ export class DocumentSession {
       this.autosaveTimer = setTimeout(() => {
         void this.persist().catch((error) => this.fail(error));
       }, 850);
-  }
-
-  async setPlacement(placement: "margin" | "inline"): Promise<void> {
-    const configuration = configurationSchema.parse(
-      await invoke("configuration_placement", { placement }),
-    );
-    this.configure(configuration.effective);
   }
 
   resolve(threadId: string, restoreFocus = true): void {
@@ -3364,7 +3346,6 @@ export class DocumentSession {
         ".document-body",
         ".document-scroll",
         ".document-canvas",
-        ".annotation-margin",
         ".aside-dock",
         ".aside-reader-scroll",
         ".aside-marker-group",

@@ -133,23 +133,6 @@ button,
   min-width: 0;
   min-height: 0;
 }
-.annotation-margin {
-  grid-area: 1 / 2;
-  min-width: 0;
-  pointer-events: none;
-  clip-path: inset(max(0px, calc(var(--document-scroll-top, 0px) + var(--aside-heading-height, 40px) + 8px)) -24px 0);
-}
-.annotation-margin :is(.margin-note, .new-aside, .aside-marker, .decision-note) {
-  pointer-events: auto;
-  scroll-margin-top: calc(var(--aside-heading-height, 40px) + 80px);
-}
-.annotation-margin > .margin {
-  min-height: 100%;
-  padding-block: 48px var(--space-6);
-}
-.annotation-margin .thread-index {
-  padding-inline: 0;
-}
 .aside-dock {
   position: absolute;
   z-index: 5;
@@ -162,26 +145,6 @@ button,
   flex-direction: column;
   pointer-events: none;
 }
-.aside-dock-heading {
-  display: flex;
-  align-items: center;
-  justify-content: flex-end;
-  flex-shrink: 0;
-  flex-wrap: wrap;
-  gap: var(--space-2) var(--space-4);
-  min-height: var(--control-size);
-  padding-block: var(--space-1);
-  background: var(--material-reading);
-  pointer-events: auto;
-}
-.document-body[data-aside-reader="true"] .aside-dock-heading {
-  justify-content: space-between;
-  border-bottom: 1px solid var(--line);
-}
-.aside-note-count {
-  color: var(--muted);
-  font-variant-numeric: tabular-nums;
-}
 .aside-reader-scroll {
   container-type: size;
   flex: 1;
@@ -191,7 +154,7 @@ button,
   overflow-anchor: none;
   overscroll-behavior: contain;
   scrollbar-gutter: stable;
-  padding-block: var(--space-4) var(--space-6);
+  padding-block: 0 var(--space-6);
   padding-inline-end: var(--scrollbar-compact-gap);
   background: var(--material-reading);
   pointer-events: auto;
@@ -202,14 +165,6 @@ button,
 .aside-reader-scroll .margin-note {
   max-height: min(var(--aside-max-height), calc(100dvh - var(--aside-viewport-inset)), max(var(--aside-min-readable-height), 100cqh));
   border: 1px solid var(--line);
-}
-.aside-reader-empty {
-  padding: var(--space-4);
-  font: var(--text-body-size)/var(--text-body-height) var(--interface-font);
-  color: var(--muted);
-}
-.aside-reader-empty p {
-  margin: 0 0 var(--space-2);
 }
 .document-body[data-asides-narrow="true"] .aside-dock {
   right: var(--space-6);
@@ -717,10 +672,6 @@ kbd {
   gap: 16px;
   min-height: 100%;
 }
-.aside-canvas[data-aligned] > [data-aside-id] {
-  position: absolute;
-  width: 100%;
-}
 .passage-aside {
   min-width: 0;
 }
@@ -756,22 +707,6 @@ kbd {
   border-radius: var(--radius-card);
   padding: var(--aside-padding);
   font: var(--aside-text-size)/1.55 var(--interface-font);
-}
-.native-content .inline-aside {
-  margin-block: 12px 24px;
-  background: var(--material-note);
-  padding: var(--space-4);
-  border-inline-start: 1px solid var(--accent-line);
-  white-space: normal;
-  font: var(--aside-text-size)/1.55 var(--interface-font);
-  color: var(--ink);
-  user-select: text;
-}
-.native-content .inline-aside .margin-note {
-  padding: 0;
-  background: transparent;
-  box-shadow: none;
-  border-radius: 0;
 }
 .inline-aside-summary {
   position: relative;
@@ -851,8 +786,7 @@ kbd {
   scrollbar-gutter: stable;
 }
 .aside-conversation-scroll:focus-visible {
-  outline: 2px solid var(--accent);
-  outline-offset: -2px;
+  outline: none;
 }
 .messages {
   display: flex;
@@ -881,56 +815,13 @@ kbd {
 .aside-menu [data-focused] {
   background: var(--hover);
 }
-.aside-scope,
 .aside-context {
   font-size: var(--aside-detail-size);
   color: var(--muted);
   margin: 0 0 12px;
 }
 .aside-passage {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
   margin-block-end: var(--space-3);
-  color: var(--muted);
-  font: var(--aside-detail-size)/1.5 var(--interface-font);
-}
-.aside-passage details {
-  flex: 1;
-  min-width: 0;
-}
-.aside-passage summary {
-  display: flex;
-  align-items: baseline;
-  gap: 6px;
-  list-style: none;
-  cursor: pointer;
-}
-.aside-passage summary::-webkit-details-marker {
-  display: none;
-}
-.aside-passage summary svg {
-  flex-shrink: 0;
-  align-self: center;
-}
-.aside-passage summary span {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.aside-passage details p {
-  margin: 8px 0 0;
-  white-space: pre-wrap;
-  overflow-wrap: anywhere;
-}
-.aside-passage > .text-button {
-  flex-shrink: 0;
-  padding: 0;
-  font: inherit;
-}
-.aside-passage summary:hover,
-.aside-passage summary:focus-visible {
-  color: var(--ink);
 }
 .aside-context summary {
   cursor: pointer;
@@ -1752,8 +1643,7 @@ html[data-motion="reduced"] *::after {
 .library-document[data-focus-visible],
 .library-document:has(.document-link[data-focus-visible]),
 .library-document:has(.document-drag[data-focus-visible]) {
-  outline: 2px solid var(--accent);
-  outline-offset: -2px;
+  outline: none;
 }
 .document-link[data-focus-visible],
 .document-drag[data-focus-visible] {

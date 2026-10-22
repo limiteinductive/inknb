@@ -13,34 +13,16 @@ export default function PassageAnnotations({ active }: { active: boolean }) {
   const [selected, setSelected] = useState<string | null>(null);
   const selectedKey = useRef<string | null>(null);
   selectedKey.current = selected;
-  const [position, setPosition] = useState({ left: 0, top: 0 });
-  const [destinations, setDestinations] = useState(false);
-  const [sending, setSending] = useState(false);
-  const [announcement, setAnnouncement] = useState("");
-  const popup = useRef<HTMLDivElement>(null);
-  const comment = useRef<HTMLTextAreaElement>(null);
-  const grip = useRef<HTMLButtonElement>(null);
-  const range = useRef<Range | null>(null);
-  const draft = selected ? state.drafts[selected] : null;
-  const annotation = draft?.annotation;
-  useAutoHideScrollbar(comment, Boolean(annotation && !annotation.completed));
-  const dismiss = () => {
-    const key = selectedKey.current;
-    if (!key) return;
-    const drafts = { ...session.getSnapshot().drafts };
-    delete drafts[key];
-    session.update({ drafts });
-    selectedKey.current = null;
-    setSelected(null);
-  };
+  const ranges = useRef(new Map<string, Range>());
   useEffect(() => {
-    if (!active || !annotation || !range.current || !window.CSS?.highlights)
-      return;
-    CSS.highlights.set("inknb-annotation", new Highlight(range.current));
-    return () => {
-      CSS.highlights.delete("inknb-annotation");
-    };
-  }, [active, annotation]);
+    if (!active || !window.CSS?.highlights) return;
+    const passages = Object.keys(state.drafts).flatMap(key => {
+      const range = ranges.current.get(key);
+      return state.drafts[key].annotation && range?.startContainer.isConnected ? [range] : [];
+    });
+    CSS.highlights.set("inknb-annotation", new Highlight(...passages));
+    return () => { CSS.highlights.delete("inknb-annotation"); };
+  }, [active, state.drafts]);
   useEffect(() => {
     if (!active) return;
     const select = (event: Event) => {
@@ -51,8 +33,15 @@ export default function PassageAnnotations({ active }: { active: boolean }) {
       )
         return;
       const selection = window.getSelection();
+      const current = session.getSnapshot();
+      const pending = selectedKey.current ? current.drafts[selectedKey.current] : null;
       if (!selection?.rangeCount || selection.isCollapsed) {
-        dismiss();
+        if (selectedKey.current && !pending?.content.trim() && !pending?.annotation?.completed) {
+          const drafts = { ...current.drafts };
+          delete drafts[selectedKey.current];
+          session.update({ drafts });
+          setSelected(null);
+        }
         return;
       }
       if (target.closest(".reference-editor, input, textarea")) return;
@@ -62,7 +51,6 @@ export default function PassageAnnotations({ active }: { active: boolean }) {
         container.nodeType === Node.TEXT_NODE
           ? container.parentElement
           : (container as Element);
-      const current = session.getSnapshot();
       let source: PassageSource | null = null;
       const messageBody = element?.closest<HTMLElement>(
         "[data-message-content]",
@@ -125,11 +113,10 @@ export default function PassageAnnotations({ active }: { active: boolean }) {
           JSON.stringify(draft.annotation.source) === JSON.stringify(source),
       );
       const key = existing?.[0] ?? `annotation:${crypto.randomUUID()}`;
-      range.current = selectedRange.cloneRange();
+      ranges.current.set(key, selectedRange.cloneRange());
       setSelected(key);
-      setDestinations(false);
       const drafts = { ...current.drafts };
-      if (selectedKey.current && selectedKey.current !== key) delete drafts[selectedKey.current];
+      if (selectedKey.current && selectedKey.current !== key && !pending?.content.trim() && !pending?.annotation?.completed) delete drafts[selectedKey.current];
       if (!existing) drafts[key] = { content: "", images: [], annotation: { source, completed: false } };
       session.update({ drafts });
 
@@ -147,14 +134,35 @@ export default function PassageAnnotations({ active }: { active: boolean }) {
       document.removeEventListener("keyup", keyboard);
     };
   }, [active, session]);
+  if (!active) return null;
+  return <>{Object.entries(state.drafts).filter(([key, draft]) => draft.annotation && (key === selected || draft.content.trim() || draft.annotation.completed)).map(([key]) => <PassageAnnotation key={key} identity={key} sourceRange={ranges.current.get(key)} />)}</>;
+}
+
+function PassageAnnotation({ identity, sourceRange }: { identity: string; sourceRange?: Range }) {
+  const session = useDocumentSession();
+  const state = useSession();
+  const [position, setPosition] = useState({ left: 0, top: 0 });
+  const [destinations, setDestinations] = useState(false);
+  const [sending, setSending] = useState(false);
+  const [announcement, setAnnouncement] = useState("");
+  const popup = useRef<HTMLDivElement>(null);
+  const comment = useRef<HTMLTextAreaElement>(null);
+  const grip = useRef<HTMLButtonElement>(null);
+  const draft = state.drafts[identity];
+  const annotation = draft?.annotation;
+  useAutoHideScrollbar(comment, Boolean(annotation && !annotation.completed));
+  const dismiss = () => {
+    const drafts = { ...session.getSnapshot().drafts };
+    delete drafts[identity];
+    session.update({ drafts });
+  };
   useLayoutEffect(() => {
-    if (!annotation || !active) return;
+    if (!annotation) return;
     const place = () => {
-      if (!range.current?.startContainer.isConnected) range.current = null;
       const source = annotation.source;
       let bounds:
         | { left: number; top: number; right: number; bottom: number }
-        | undefined = range.current?.getBoundingClientRect();
+        | undefined = sourceRange?.startContainer.isConnected ? sourceRange.getBoundingClientRect() : undefined;
       if (source.kind === "document" && session.surface)
         bounds = session.surface.anchorBounds(
           source.liveAnchor ?? source.anchor,
@@ -174,9 +182,9 @@ export default function PassageAnnotations({ active }: { active: boolean }) {
       const width = popup.current?.offsetWidth ?? 280;
       const height = popup.current?.offsetHeight ?? 44;
       const top =
-        bounds.bottom + 8 + height < window.innerHeight
-          ? bounds.bottom + 8
-          : bounds.top - height - 8;
+        bounds.top - height - 8 >= 8
+          ? bounds.top - height - 8
+          : bounds.bottom + 8;
       setPosition({
         left: Math.max(8, Math.min(bounds.left, window.innerWidth - width - 8)),
         top: Math.max(8, Math.min(top, window.innerHeight - height - 8)),
@@ -194,13 +202,12 @@ export default function PassageAnnotations({ active }: { active: boolean }) {
       window.removeEventListener("resize", place);
       document.removeEventListener("scroll", place, true);
     };
-  }, [annotation, draft?.content, destinations, active, session]);
+  }, [annotation, draft?.content, destinations, sourceRange, session]);
   async function send() {
-    if (!selected || sending) return;
+    if (sending) return;
     setSending(true);
     try {
-      await session.sendAnnotation(selected);
-      if (selectedKey.current === selected) dismiss();
+      await session.sendAnnotation(identity);
       setAnnouncement("Annotation sent in a new aside.");
     } catch (error) {
       session.fail(error);
@@ -208,7 +215,6 @@ export default function PassageAnnotations({ active }: { active: boolean }) {
       setSending(false);
     }
   }
-  if (!active) return null;
   return createPortal(
     <>
       <span
@@ -249,8 +255,8 @@ export default function PassageAnnotations({ active }: { active: boolean }) {
             session.update({
               drafts: {
                 ...current.drafts,
-                [selected!]: {
-                  ...current.drafts[selected!],
+                [identity]: {
+                  ...current.drafts[identity],
                   annotation: { ...annotation, completed: true },
                 },
               },
@@ -263,7 +269,7 @@ export default function PassageAnnotations({ active }: { active: boolean }) {
             );
           }}
         >
-          <div className="passage-annotation-row composer">
+          <div className="passage-annotation-row">
             {annotation.completed && (
               <button
                 type="button"
@@ -314,8 +320,8 @@ export default function PassageAnnotations({ active }: { active: boolean }) {
                   session.update({
                     drafts: {
                       ...current.drafts,
-                      [selected!]: {
-                        ...current.drafts[selected!],
+                      [identity]: {
+                        ...current.drafts[identity],
                         content: event.target.value,
                       },
                     },
@@ -339,8 +345,8 @@ export default function PassageAnnotations({ active }: { active: boolean }) {
                     session.update({
                       drafts: {
                         ...current.drafts,
-                        [selected!]: {
-                          ...current.drafts[selected!],
+                        [identity]: {
+                          ...current.drafts[identity],
                           annotation: { ...annotation, completed: false },
                         },
                       },

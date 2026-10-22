@@ -1,5 +1,5 @@
 import { threadActivity } from "./domain";
-import type { Anchor, Metadata, Thread } from "./domain";
+import type { Metadata, Thread } from "./domain";
 import type { SessionState } from "./session";
 
 export function resolvableAsides(metadata: Metadata): Thread[] {
@@ -71,24 +71,5 @@ export function asideVisible(state: SessionState, thread: Thread): boolean {
     asideExpanded(state, thread) ||
     (!thread.resolved &&
       (thread.kind === "discussion" || !asideOutdated(state.metadata, thread)))
-  );
-}
-
-export function asideInline(
-  state: SessionState,
-  anchor: Anchor | null,
-  identity?: string,
-): boolean {
-  return (
-    (state.preferences.placement === "inline" || state.asideNarrow) &&
-    !(
-      state.asideReader.open &&
-      (identity === "new" ||
-        Boolean(identity && state.asideReader.threadIds.includes(identity)))
-    ) &&
-    anchor !== null &&
-    anchor.status !== "detached" &&
-    anchor.from <= state.text.length &&
-    anchor.to <= state.text.length
   );
 }

@@ -414,7 +414,7 @@ export class WindowDocument extends DocumentSession {
         if (anchor.status !== "attached" || state.text.slice(anchor.from, anchor.to) !== anchor.quote) throw Error(`Original passage: ${source.quote}`);
         this.surface?.scrollToSource(anchor.from, anchor);
       } else {
-        this.update({ asidesOpen: true, focus: false, threadExpansions: { ...state.threadExpansions, [source.threadId]: true }, asideReader: { ...state.asideReader, open: true, threadIds: [...new Set([...state.asideReader.threadIds, source.threadId])] } });
+        this.update({ asidesOpen: true, focus: false, threadExpansions: { ...state.threadExpansions, [source.threadId]: true } });
         if (state.metadata.threads.find(thread => thread.id === source.threadId)?.resolved) window.dispatchEvent(new CustomEvent("inknb-history-aside", { detail: { documentId: source.documentId, threadId: source.threadId } }));
         requestAnimationFrame(() => {
           const selector = `[data-message-id="${source.messageId}"] [data-message-content="${source.field}"], [data-source-message-id="${source.messageId}"][data-message-content="${source.field}"]`;

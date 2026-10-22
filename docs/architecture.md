@@ -186,13 +186,13 @@ Document order is the saved library array order. React Aria provides pointer and
 
 The active document row uses a butter selection fill. Keyboard focus uses the shared hover fill. Rows retain their text and icon geometry across states.
 
-Margin conversations share one scrollable column outside the document surfaces. Inline conversations occupy a view decoration attached to the same anchor. Presentation changes preserve the annotation data.
+All open conversations share one independently scrolling column outside the document surface. Passage references belong to messages. Suggestions retain their edit targets.
 
-Unattached conversations open in the margin in either placement. The writer can attach them to a new selection.
+Older anchored discussions appear in the same column as discussions with message references. Their source excerpts remain navigable.
 
 The text column retains its geometry when a margin thread opens. Typing has no animation. Short transitions identify opened threads and applied changes. Reduced motion removes positional animation.
 
-The editor uses platform-native selection and caret rendering. A completed selection exposes one aside action at its active end. The document view owns action placement, clipping, and scrolling. Opening an aside preserves the editor selection and focuses the composer. The interaction design is `long-term`.
+The editor uses platform-native selection and caret rendering. Selecting text opens a contextual comment field. The document view owns its placement, clipping, and scrolling.
 
 The selection action uses the same speech bubble icon as the header. Placement uses the full selection bounds when space is available. Selections that fill the viewport use the active end. A draft captures its passage when opened. Text changes map that anchor. Moving the editor selection does not move the draft.
 
@@ -202,7 +202,7 @@ The document view design is `long-term`. Each document stores Write, Preview, or
 
 One optional aside margin sits outside the document surfaces in each window. All conversation contexts use that margin. Threads retain independent expansion states. Completed threads remain visible as compact rows.
 
-The margin becomes a dismissible drawer when the window cannot fit readable document surfaces beside it. Narrow Both views stack the source and preview. The resize separator supports both orientations. The library stores the preferred horizontal preview width.
+The aside column moves below the document when the window cannot fit both surfaces side by side. Narrow Both views stack the source and preview. The resize separator supports both orientations. The library stores the preferred horizontal preview width.
 
 The document toolbar and status bar belong to the window layout. Preview controls appear in the document toolbar. Preview-only mode hides the source without entering native fullscreen. Fullscreen changes only the native window state.
 
@@ -262,13 +262,13 @@ Open passage asides keep a quiet underline while their conversations are collaps
 
 Draft passage asides paint their captured source anchor while the composer is open. Moving focus to the composer does not change that range. Closing the composer removes the draft decoration.
 
-New aside composers show their captured passage or whole-document scope. Passage excerpts expand to the full quote and provide explicit source navigation. Inline conversations retain this context after sending. Creating an aside focuses its input and reveals the draft once within the document viewport. Reading existing asides preserves the scroll position. Table passages retain an inline card after their containing table.
+New aside composers show a source excerpt when they have one. Source excerpts navigate to their passages. Creating an aside focuses its input and reveals the draft within the aside column. Reading existing asides preserves the document scroll position.
 
 Text-size shortcuts and native menu commands use the configuration store. Size changes read the latest saved value under its lock. The store changes only the `font_size` field and publishes the result to writing windows.
 
 ## Sending selected text as an aside
 
-Command-Shift-Return and the selection toolbar send selected manuscript text as a new aside. The host checks the revision and exact source passage. One recovery snapshot stores the new aside and the text removal. Agent delivery starts after recovery succeeds. The aside stays anchored at the removal point. Document Undo restores the removed text. The submitted aside remains in the conversation. Existing composer drafts remain saved.
+Command-Shift-Return sends selected manuscript text as a new aside. The host checks the revision and exact source passage. One recovery snapshot stores the new aside and the text removal. Agent delivery starts after recovery succeeds. The aside stays anchored at the removal point. Document Undo restores the removed text. The submitted aside remains in the conversation. Existing composer drafts remain saved.
 
 
 ## Decisions and connected agents
@@ -300,11 +300,9 @@ Resolved asides stay outside the document's inline and margin layouts. Saved exp
 Operation failures appear through the toolbar's Activity control. Its attention state uses the same control bounds and badge. A synchronized document with no pending writing clears its host timeout. Recovery matches the stored failure message before clearing it.
 
 Passage edits retain their mapped discussion anchors without a repair banner. Changed or detached passages retain their original quote in a collapsed disclosure. The aside menu provides manual relocation to selected text. Proposal conflicts determine whether an edit suggestion is outdated.
-# Aside reading
+## Aside reading
 
-The document reserves a right gutter when the window fits readable prose and notes. Contextual cards share the document scroll. Narrow windows show contextual cards inline.
-
-Aside scope and reading behavior are independent. Document notes open in a reader within the gutter. Any passage aside can stay in that reader while the document scrolls independently. The reader retains several threads, its scroll position, and shared conversation drafts per document window. Source navigation requires Show passage. Incoming replies preserve the current reader selection.
+All open discussions appear in one independently scrolling column. Document and message references provide context within each conversation. Older thread anchors remain navigable. Narrow windows place the same column below the document. The column retains its scroll position and shared conversation drafts per document window. Incoming replies preserve the document position.
 
 ## Agent conversation completion
 
@@ -321,6 +319,6 @@ New proposals retain the originating message identity as `turnId`. A human reque
 
 The `long-term` reference model stores citations on individual messages. A source identifies a document passage or a passage in a human or agent message. Document references retain the original quotation and a live mapped anchor. Message references retain the message identity, field, plain text snapshot, and UTF-16 range. Suggestions retain their edit targets. Annotation format 13 adds message references and reads earlier sidecars.
 
-Selecting document or message text opens a contextual comment field. Enter completes a draggable annotation. Shift+Enter inserts a line. Command+Enter sends the annotation in a new unanchored aside. The manuscript stays unchanged. Dragging adds passage context above the reply. The comment appears above its source excerpt. The reply text and caret stay unchanged. The accessible destination menu adds the same context. Clearing the source selection dismisses the pending annotation. Context already added to a draft remains saved. Reply editors use native ProseMirror transactions for typing, insertion, clipboard references, and Undo. Unsent annotations and reply references persist with document drafts.
+Selecting document or message text opens a contextual comment field. Enter completes a draggable annotation. Shift+Enter inserts a line. Command+Enter sends the annotation in a new unanchored aside. The manuscript stays unchanged. Dragging adds passage context above the reply. The comment appears above its source excerpt. The reply text and caret stay unchanged. The accessible destination menu adds the same context. Clearing the source selection dismisses an empty prompt. Written and completed annotations persist across focus changes and further selections. Escape removes a pending annotation. Context already added to a draft remains saved. Reply editors use native ProseMirror transactions for typing, insertion, clipboard references, and Undo. Unsent annotations and reply references persist with document drafts. One aside column contains all open discussions. Scope labels, placement modes, and repeated saved-status copy are absent.
 
 Agents capture document or message sources with `passage_reference_create`. They attach passage context through `annotations` on `conversation_reply` and `annotation_create`. Inline citations use `references` over content ranges.

@@ -22,7 +22,7 @@ import {
 import { BookOpen, Focus, LayoutTemplate, ListTree, MessageSquarePlus } from "lucide-react";
 import { invoke } from "@tauri-apps/api/core";
 import { getCurrentWindow } from "@tauri-apps/api/window";
-import AsideLayout, { DocumentNotesButton } from "./AsideLayout";
+import AsideLayout, { AsidesButton } from "./AsideLayout";
 import DocumentHistory from "./DocumentHistory";
 import DocumentToolbar from "./DocumentToolbar";
 import { NativeEditor } from "./native-editor";
@@ -152,7 +152,7 @@ function DocumentApp({ active }: { active: boolean }) {
                 open={historyOpen}
                 onOpenChange={setHistoryOpen}
               />
-              <DocumentNotesButton compact />
+              <AsidesButton />
               <IconButton
                 icon={MessageSquarePlus}
                 label="Add aside"

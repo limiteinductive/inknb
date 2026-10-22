@@ -15,7 +15,7 @@ export class PreviewAsides implements AsideSession {
   private state: SessionState;
   private confirmed: PreviewState;
   private listeners = new Set<() => void>();
-  private open = false;
+  private open = true;
   private reader: SessionState["asideReader"];
   private narrow = false;
   private review = {
@@ -37,9 +37,6 @@ export class PreviewAsides implements AsideSession {
   constructor(state: PreviewState) {
     this.confirmed = state;
     this.reader = {
-      open: false,
-      documentNotes: false,
-      threadIds: [],
       scrollTop: 0,
     };
     this.state = {
@@ -47,7 +44,7 @@ export class PreviewAsides implements AsideSession {
       ...this.review,
       asideReader: this.reader,
       asideNarrow: false,
-      asidesOpen: false,
+      asidesOpen: true,
       focus: false,
     };
   }
@@ -59,7 +56,6 @@ export class PreviewAsides implements AsideSession {
   receive(state: PreviewState): void {
     if (state.composer && !this.confirmed.composer) {
       this.open = true;
-      if (!state.composerAnchor && !state.composerPreviewAnchor) this.reader = { ...this.reader, open: true, documentNotes: true };
     }
     this.confirmed = state;
     this.refresh();
@@ -167,10 +163,6 @@ export class PreviewAsides implements AsideSession {
     const receipt = z
       .object({ threadId: z.string().uuid() })
       .parse(await this.request({ kind: "comment", content, threadId }));
-    if (!threadId && this.reader.open) {
-      this.reader = { ...this.reader, threadIds: [...new Set([...this.reader.threadIds, receipt.threadId])] };
-      this.refresh();
-    }
     return receipt;
   }
   async answerDecision(
@@ -179,9 +171,6 @@ export class PreviewAsides implements AsideSession {
     text: string,
   ): Promise<void> {
     await this.request({ kind: "decision-answer", decisionId, option, text });
-  }
-  async setPlacement(placement: "margin" | "inline"): Promise<void> {
-    await this.request({ kind: "placement", placement });
   }
   markThreadRead(threadId: string, activity: string): void {
     this.send({ kind: "read", threadId, activity });
@@ -207,20 +196,6 @@ export class PreviewAsides implements AsideSession {
     this.send({ kind: "reveal", anchor });
   }
   selectThread(threadId: string | null): void {
-    const thread = this.state.metadata.threads.find(
-      (thread) => thread.id === threadId,
-    );
-    const documentNote =
-      thread &&
-      !thread.previewAnchor &&
-      (!thread.anchor || thread.anchor.status === "detached");
-    if (threadId && (this.reader.open || documentNote))
-      this.reader = {
-        ...this.reader,
-        open: true,
-        documentNotes: this.reader.documentNotes || Boolean(documentNote),
-        threadIds: [...new Set([...this.reader.threadIds, threadId])],
-      };
     this.send({ kind: "select", threadId });
     this.refresh();
   }

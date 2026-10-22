@@ -32,9 +32,7 @@ import { captureAnchor, mapAnchor } from "./domain";
 import type { WindowDocument } from "./window-document";
 import { NativeRegionPicker } from "./native-region";
 import { documentScroll } from "./document-scroll";
-import { asideVisible, asideExpanded, asideInline } from "./aside-state";
-import { asidePassages } from "./aside-locations";
-import { InlineAside } from "./Asides";
+import { asideVisible, asideExpanded } from "./aside-state";
 import { SessionContext } from "./use-session";
 import { focusAside } from "./aside-focus";
 import { LinkGesture } from "./link-gesture";
@@ -231,66 +229,6 @@ export class NativeEditor extends NativeDocumentModel {
             const from = documentPosition(this.projection, anchor.from);
             const to = documentPosition(this.projection, anchor.to, -1);
             if (to > from) ranges.push(...passageDecorations(state.doc, from, to, { class: "aside-anchor", "data-decision-anchor": decision.id }));
-          }
-          if (current.asidesOpen && !current.focus) {
-            for (const passage of asidePassages(current)) {
-              const anchor =
-                passage.id === "new"
-                  ? passage.anchor
-                  : (this.anchors[passage.id] ?? passage.anchor);
-              if (!asideInline(current, anchor, passage.id)) continue;
-              const thread = current.metadata.threads.find(
-                (thread) => thread.id === passage.id,
-              );
-              if (thread && !asideVisible(current, thread)) continue;
-              const end = state.doc.resolve(
-                documentPosition(this.projection, anchor!.to, -1),
-              );
-              let position = end.pos;
-              for (let depth = end.depth; depth > 0; depth -= 1) {
-                const node = end.node(depth);
-                if (node.isTextblock || node.type.spec.tableRole === "table")
-                  position = end.after(depth);
-              }
-              ranges.push(
-                Decoration.widget(
-                  position,
-                  () => {
-                    const element = window.document.createElement("aside");
-                    element.className = "inline-aside";
-                    element.contentEditable = "false";
-                    element.setAttribute(
-                      "aria-label",
-                      passage.id === "new"
-                        ? "New inline aside"
-                        : "Inline aside",
-                    );
-                    const root = createRoot(element);
-                    root.render(
-                      createElement(
-                        SessionContext,
-                        { value: session },
-                        createElement(InlineAside, { identity: passage.id }),
-                      ),
-                    );
-                    element.addEventListener(
-                      "inknb-inline-destroy",
-                      () => queueMicrotask(() => root.unmount()),
-                      { once: true },
-                    );
-                    return element;
-                  },
-                  {
-                    key: `aside:${passage.id}`,
-                    side: 1,
-                    ignoreSelection: true,
-                    stopEvent: () => true,
-                    destroy: (element) =>
-                      element.dispatchEvent(new Event("inknb-inline-destroy")),
-                  },
-                ),
-              );
-            }
           }
           for (const proposal of visibleSuggestions(current)) {
             const from = documentPosition(this.projection, proposal.from);

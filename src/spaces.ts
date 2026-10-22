@@ -5,9 +5,6 @@ import { previewAnchorSchema } from "./preview-model";
 import { pageDraftSchema } from "./document-page";
 
 export const asideReaderSchema = z.object({
-  open: z.boolean().default(false),
-  documentNotes: z.boolean().default(false),
-  threadIds: z.array(z.string().uuid()).default([]),
   scrollTop: z.number().nonnegative().default(0),
 });
 

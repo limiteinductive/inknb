@@ -40,7 +40,6 @@ export type AsideSession = Pick<
   | "hasUnreadActivity"
   | "componentMessage"
   | "hideComponent"
-  | "setPlacement"
 >;
 export const AsideContext = createContext<AsideSession | null>(null);
 

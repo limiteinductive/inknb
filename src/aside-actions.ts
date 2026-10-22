@@ -6,10 +6,6 @@ import { previewAnchorSchema } from "./preview-model";
 export const asideActionSchema = z.discriminatedUnion("kind", [
   z.object({ kind: z.literal("decision-answer"), decisionId: z.string().uuid(), option: z.number().int().nonnegative().nullable(), text: z.string() }),
   z.object({
-    kind: z.literal("placement"),
-    placement: z.enum(["margin", "inline"]),
-  }),
-  z.object({
     kind: z.literal("history-read"),
     before: z.number().int().positive().optional(),
   }),
