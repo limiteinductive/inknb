@@ -108,7 +108,7 @@ export async function inspectInterface() {
           });
         else if (
           parameters.action === "activate" &&
-          element.matches('button,[role="menuitem"],input[type="checkbox"]')
+          element.matches('button,[role="menuitem"],[role="menuitemradio"],input[type="checkbox"]')
         )
           element.click();
         else throw new Error("This action is unavailable for this control.");
@@ -123,6 +123,7 @@ export async function inspectInterface() {
         ariaDisabledReflectionType: typeof element.ariaDisabled,
         separatorState: element.dataset.separator,
         pointer: pointerTraces.get(element) ?? null,
+        focused: element === document.activeElement,
         focusVisible:
           element.hasAttribute("data-focus-visible") ||
           element.matches(":focus-visible"),

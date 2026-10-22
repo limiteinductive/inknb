@@ -33,6 +33,8 @@ Decisions, Activity, History, Agents, and Linked resources use this structure. F
 
 Use `IconButton` for icon actions. Text actions use `text-button`. Menus share row spacing, target size, typography, radius, and paper elevation. Asides and cards use the note material and card tokens. A feature does not define another paper surface.
 
+Application choice menus use the shared menu surface and accessible menu primitives. Single choices show a check beside the selected item. Native HTML dropdowns are rejected by the design contract.
+
 Agent attribution uses the session name and role. Unnamed sessions include a short session identifier. Replies, full responses, decisions, recipients, and connection panels share the same label.
 
 Aside cards use one 16 pixel content gutter on every edge. A single header contains collapse and thread actions. Passage context sits below that header. Copy reference remains visible and confirms a successful copy in place.

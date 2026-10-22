@@ -139,7 +139,18 @@ function Composer({
     recipientId &&
     !state.metadata.agents.some((agent) => agent.id === recipientId),
   );
+  const recipientLabel = disconnectedRecipient
+    ? "Disconnected recipient"
+    : agentAttribution(state.metadata.agents.find((agent) => agent.id === recipientId));
   const textarea = useRef<HTMLTextAreaElement>(null);
+  const recipientTrigger = useRef<HTMLButtonElement>(null);
+  const [recipientOpen, setRecipientOpen] = useState(false);
+  const recipientWasOpen = useRef(false);
+  useLayoutEffect(() => {
+    if (recipientWasOpen.current && !recipientOpen)
+      queueMicrotask(() => recipientTrigger.current?.focus({ preventScroll: true }));
+    recipientWasOpen.current = recipientOpen;
+  }, [recipientOpen]);
   useLayoutEffect(() => {
     if (threadId) return;
     const element = textarea.current;
@@ -194,34 +205,59 @@ function Composer({
     >
       {!threadId && <AsidePassage />}
       {(state.metadata.agents.length > 1 || disconnectedRecipient) && (
-        <select
-          className="recipient-select"
-          aria-label="Send to agent"
-          value={recipientId ?? ""}
-          onChange={(event) =>
-            session.update({
-              drafts: {
-                ...state.drafts,
-                [draftKey]: {
-                  content,
-                  images,
-                  recipientAgentId: event.target.value,
-                },
-              },
-            })
-          }
-        >
-          {disconnectedRecipient && (
-            <option value={recipientId!} disabled>
-              Disconnected recipient
-            </option>
-          )}
-          {state.metadata.agents.map((agent) => (
-            <option key={agent.id} value={agent.id}>
-              {agentAttribution(agent)}
-            </option>
-          ))}
-        </select>
+        <MenuTrigger isOpen={recipientOpen} onOpenChange={setRecipientOpen}>
+          <Button
+            ref={recipientTrigger}
+            className="text-button recipient-trigger"
+            aria-label={`Send to agent: ${recipientLabel}`}
+            data-inknb-control={`recipient.open:${draftKey}`}
+          >
+            <span>{recipientLabel}</span>
+            <ChevronDown size={12} aria-hidden="true" />
+          </Button>
+          <Popover className="menu-popover" placement="bottom start" offset={5}>
+            <Menu
+              className="menu"
+              aria-label="Send to agent"
+              selectionMode="single"
+              disallowEmptySelection
+              selectedKeys={recipientId ? [recipientId] : []}
+              onSelectionChange={(selection) => {
+                if (selection === "all") return;
+                const [recipientAgentId] = selection;
+                if (typeof recipientAgentId !== "string") return;
+                session.update({
+                  drafts: {
+                    ...state.drafts,
+                    [draftKey]: { content, images, recipientAgentId },
+                  },
+                });
+              }}
+            >
+              {disconnectedRecipient && (
+                <MenuItem id={recipientId!} className="menu-item" isDisabled>
+                  Disconnected recipient
+                </MenuItem>
+              )}
+              {state.metadata.agents.map((agent) => (
+                <MenuItem
+                  key={agent.id}
+                  id={agent.id}
+                  textValue={agentAttribution(agent)}
+                  className="menu-item"
+                  data-inknb-control={`recipient.select:${agent.id}`}
+                >
+                  {({ isSelected }) => (
+                    <>
+                      <span>{agentAttribution(agent)}</span>
+                      {isSelected && <Check size={15} aria-hidden="true" />}
+                    </>
+                  )}
+                </MenuItem>
+              ))}
+            </Menu>
+          </Popover>
+        </MenuTrigger>
       )}
       <TextField
         value={content}

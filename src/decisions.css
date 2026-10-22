@@ -121,15 +121,6 @@
   color: var(--muted);
   font-size: var(--text-detail-size);
 }
-.recipient-select {
-  border: 0;
-  background: transparent;
-  color: var(--muted);
-  font: inherit;
-  font-size: var(--text-detail-size);
-  padding: var(--space-1) 0;
-  max-width: 100%;
-}
 @media (prefers-reduced-motion: reduce) {
   .decision-heading svg {
     transition: none;

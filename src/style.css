@@ -2153,6 +2153,7 @@ del[data-change="removed"] {
   color: var(--muted);
   font: var(--weight-medium) var(--text-detail-size)/var(--text-detail-height) var(--interface-font);
 }
+.menu-popover,
 .context-menu-popover,
 .space-popover,
 .aside-actions-popover {
@@ -2168,12 +2169,14 @@ del[data-change="removed"] {
   box-shadow: var(--elevation-panel);
   outline: none;
 }
+.menu,
 .context-menu,
 .space-menu,
 .aside-menu {
   outline: none;
   font: var(--text-body-size)/var(--text-body-height) var(--interface-font);
 }
+.menu-item,
 .context-menu-item,
 .space-menu-item,
 .aside-menu [role="menuitem"] {
@@ -2188,8 +2191,31 @@ del[data-change="removed"] {
   cursor: default;
   font: var(--text-body-size)/var(--text-body-height) var(--interface-font);
 }
+.menu-item[data-focused],
 .context-menu-item:is([data-focused], [data-open]) {
   background: var(--hover);
+}
+.menu-item > span {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.menu-item[data-disabled] {
+  color: var(--faint);
+}
+.menu-item > svg,
+.recipient-trigger > svg {
+  flex-shrink: 0;
+}
+.recipient-trigger {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  max-width: 100%;
+}
+.recipient-trigger > span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .context-menu-shortcut {
   color: var(--faint);

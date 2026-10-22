@@ -20,6 +20,8 @@ for (const file of files.filter((file) => file.endsWith(".tsx"))) {
     JSXOpeningElement(location) {
       const node = location.node;
       const name = node.name.type === "JSXIdentifier" ? node.name.name : "";
+      if (name === "select")
+        problems.push(`${filename}: use the shared menu surface for application choices.`);
       const attributes = node.attributes.filter(
         (attribute) => attribute.type === "JSXAttribute",
       );
