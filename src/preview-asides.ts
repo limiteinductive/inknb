@@ -78,7 +78,7 @@ export class PreviewAsides implements AsideSession {
         ...Object.fromEntries(
           [...this.drafts].map(([key, draft]) => [
             key,
-            { content: draft.content, images: draft.images },
+            { content: draft.content, images: draft.images, references: draft.references, annotations: draft.annotations, annotation: draft.annotation, recipientAgentId: draft.recipientAgentId },
           ]),
         ),
       },
@@ -165,7 +165,7 @@ export class PreviewAsides implements AsideSession {
   }
   async comment(content: string, threadId?: string): Promise<CommentReceipt> {
     const receipt = z
-      .object({ threadId: z.string().uuid(), messageId: z.string().uuid() })
+      .object({ threadId: z.string().uuid() })
       .parse(await this.request({ kind: "comment", content, threadId }));
     if (!threadId && this.reader.open) {
       this.reader = { ...this.reader, threadIds: [...new Set([...this.reader.threadIds, receipt.threadId])] };

@@ -1,5 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
 import { z } from "zod";
+import { passageAnnotationSchema, passageReferenceSchema, messageAnnotationSchema } from "./passage-reference";
 
 export async function copyImage(image: HTMLImageElement): Promise<void> {
   await image.decode();
@@ -22,6 +23,9 @@ export const imageSchema = z.object({
 export type ImageAsset = z.infer<typeof imageSchema>;
 export const draftSchema = z.object({
   content: z.string(),
+  references: z.array(passageReferenceSchema).optional(),
+  annotations: z.array(messageAnnotationSchema).optional(),
+  annotation: passageAnnotationSchema.optional(),
   recipientAgentId: z.string().nullable().optional(),
   images: z.array(imageSchema).default([]),
 });

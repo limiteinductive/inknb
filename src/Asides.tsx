@@ -1,6 +1,6 @@
 import { DecisionCard } from "./Decisions";
 import { useAutoHideScrollbar } from "./use-auto-hide-scrollbar";
-import { agentAttribution, defaultAgent, requestAgentId, proposalTurnId } from "./domain";
+import { agentAttribution, messageSummary, defaultAgent, requestAgentId, proposalTurnId } from "./domain";
 import { focusAside, revealAsideComposer } from "./aside-focus";
 import {
   Fragment,
@@ -12,8 +12,6 @@ import {
 } from "react";
 import {
   Button,
-  TextField,
-  TextArea,
   Tooltip,
   TooltipTrigger,
   Popover,
@@ -59,7 +57,6 @@ import {
 import {
   asideDetailsSchema,
   asideLink,
-  parseAsideLink,
 } from "./aside-reference";
 import type { AsideConnection } from "./aside-reference";
 import { SessionContext, useAsideSession, useAsideState } from "./use-session";
@@ -72,6 +69,9 @@ import {
   reviewSuggestion,
 } from "./suggestions";
 import IconButton from "./IconButton";
+import ReferenceEditor from "./ReferenceEditor";
+import PassageText from "./PassageText";
+import AnnotationContext from "./AnnotationContext";
 
 function AsidePassage({ threadId }: { threadId?: string }) {
   const session = useAsideSession();
@@ -128,7 +128,7 @@ function Composer({
   const session = useAsideSession();
   const state = useAsideState();
   const draftKey = threadId ?? "new";
-  const { content, images } = state.drafts[draftKey] ?? {
+  const { content, images, annotations = [] } = state.drafts[draftKey] ?? {
     content: "",
     images: [],
   };
@@ -144,7 +144,7 @@ function Composer({
   const recipientLabel = disconnectedRecipient
     ? "Disconnected recipient"
     : agentAttribution(state.metadata.agents.find((agent) => agent.id === recipientId));
-  const textarea = useRef<HTMLTextAreaElement>(null);
+  const textarea = useRef<HTMLElement>(null);
   const composerContent = useRef<HTMLDivElement>(null);
   useAutoHideScrollbar(composerContent);
   const recipientTrigger = useRef<HTMLButtonElement>(null);
@@ -164,29 +164,10 @@ function Composer({
       session.getSnapshot().preferences.reduce_motion,
     );
   }, [threadId, session]);
-  useLayoutEffect(() => {
-    const element = textarea.current;
-    if (!element) return;
-    const measure = () => {
-      element.style.height = "auto";
-      element.style.height = `${element.scrollHeight}px`;
-    };
-    let width = element.getBoundingClientRect().width;
-    const observer = new ResizeObserver(([entry]) => {
-      if (entry.contentRect.width === width) return;
-      width = entry.contentRect.width;
-      measure();
-    });
-    observer.observe(element);
-    measure();
-    return () => {
-      observer.disconnect();
-    };
-  }, [content]);
   const [sending, setSending] = useState(false);
   const [pasting, setPasting] = useState(0);
   async function send() {
-    if (sending || pasting || (!content.trim() && !images.length)) return;
+    if (sending || pasting || (!content.trim() && !images.length && !annotations.length)) return;
     setSending(true);
     try {
       await session.comment(content, threadId);
@@ -231,7 +212,7 @@ function Composer({
                 session.update({
                   drafts: {
                     ...state.drafts,
-                    [draftKey]: { content, images, recipientAgentId },
+                    [draftKey]: { ...state.drafts[draftKey], content, images, recipientAgentId },
                   },
                 });
               }}
@@ -267,26 +248,28 @@ function Composer({
         data-inknb-control={`composer.scroll:${draftKey}`}
         data-inknb-scroll="true"
       >
-        <TextField
-          value={content}
-          onChange={(content) =>
-            session.update({
-              drafts: {
-                ...state.drafts,
-                [draftKey]: { ...state.drafts[draftKey], content, images },
-              },
-            })
-          }
-          aria-label={
-            threadId ? "Reply to conversation" : "Request to your agent"
-          }
-        >
-          <TextArea
-            ref={textarea}
-            data-inknb-control={`composer.input:${draftKey}`}
-            rows={1}
-            aria-keyshortcuts="Enter Escape"
-            aria-description="Enter to send. Shift+Enter for a new line. Escape to close."
+        {annotations.length > 0 && <AnnotationContext annotations={annotations} onRemove={id => textarea.current?.dispatchEvent(new CustomEvent("inknb-remove-annotation", { detail: id }))} />}
+        <ReferenceEditor
+          annotations={annotations}
+          content={content}
+          references={state.drafts[draftKey]?.references}
+          elementRef={textarea}
+          control={`composer.input:${draftKey}`}
+          label={threadId ? "Reply to conversation" : "Request to your agent"}
+          placeholder={threadId ? "Reply…" : "Write your aside…"}
+          onChange={(content, references, annotations) => {
+            const current = session.getSnapshot();
+            session.update({ drafts: { ...current.drafts, [draftKey]: { ...current.drafts[draftKey], content, references, annotations, images: current.drafts[draftKey]?.images ?? [] } } });
+          }}
+          onSend={() => void send()}
+          onClose={() => {
+            if (onClose) onClose();
+            else if (threadId) session.collapseThread(threadId, true);
+            else {
+              session.update({ composer: false, composerAnchor: null, composerPreviewAnchor: null });
+              session.restoreFocus();
+            }
+          }}
             onPaste={(event) => {
               const files = clipboardImages(event.clipboardData);
               if (!files.length) return;
@@ -317,55 +300,7 @@ function Composer({
                 .catch((error) => session.fail(error))
                 .finally(() => setPasting((count) => count - 1));
             }}
-            placeholder={threadId ? "Reply…" : "Write your aside…"}
-            onKeyDown={(event) => {
-              if (
-                event.nativeEvent.isComposing ||
-                event.nativeEvent.keyCode === 229
-              )
-                return;
-              if (event.key === "Escape") {
-                event.preventDefault();
-                event.stopPropagation();
-                if (onClose) onClose();
-                else if (threadId) session.collapseThread(threadId, true);
-                else {
-                  session.update({
-                    composer: false,
-                    composerAnchor: null,
-                    composerPreviewAnchor: null,
-                  });
-                  session.restoreFocus();
-                }
-                return;
-              }
-              if (event.key !== "Enter") return;
-              if (event.metaKey || event.ctrlKey) {
-                event.preventDefault();
-                const textarea = event.currentTarget;
-                const start = textarea.selectionStart;
-                const end = textarea.selectionEnd;
-                session.update({
-                  drafts: {
-                    ...state.drafts,
-                    [draftKey]: {
-                      ...state.drafts[draftKey],
-                      content: `${content.slice(0, start)}\n${content.slice(end)}`,
-                      images,
-                    },
-                  },
-                });
-                requestAnimationFrame(() =>
-                  textarea.setSelectionRange(start + 1, start + 1),
-                );
-                return;
-              }
-              if (event.shiftKey || event.altKey) return;
-              event.preventDefault();
-              if (!event.repeat) void send();
-            }}
-          />
-        </TextField>
+        />
         {images.length > 0 && (
           <div className="attached-images">
             {images.map((image, index) => (
@@ -661,7 +596,7 @@ export function Conversation({
         agentControl={`aside.copy:${identity}`}
         onPress={() => {
           const excerpt =
-            quote || thread.messages.at(-1)?.content || "Whole document";
+            quote || messageSummary(thread.messages.at(-1)) || "Whole document";
           void invoke("clipboard_write", {
             text: `Aside: ${excerpt}\n${asideLink({ documentId: state.metadata.documentId, threadId: identity })}`,
           })
@@ -799,7 +734,7 @@ export function Conversation({
       onPointerDownCapture={() => {
         if (state.activeThread !== identity) session.selectThread(identity);
       }}
-      aria-label={`Aside: ${quote || thread.messages[0]?.content || thread.messages[0]?.images[0]?.name || "Whole document"}`}
+      aria-label={`Aside: ${quote || messageSummary(thread.messages[0]) || "Whole document"}`}
     >
       <div className="aside-card-heading">
         {collapse}
@@ -898,36 +833,13 @@ export function Conversation({
                   </TooltipTrigger>
               </div>
             )}
+            {message.annotations?.length ? <AnnotationContext annotations={message.annotations} /> : null}
             {message.author === "agent" ? (
               <AgentResponse message={message} />
             ) : (
-              message.content && (
-                <p>
-                  {message.content
-                    .split(/(inknb:\/\/aside\/[\da-f-]{36}\/[\da-f-]{36})/gi)
-                    .map((part, position) => {
-                      const reference = parseAsideLink(part);
-                      return reference ? (
-                        <Button
-                          key={position}
-                          className="aside-citation"
-                          onPress={() => {
-                            try {
-                              session.openAside(reference);
-                            } catch (error) {
-                              session.fail(error);
-                            }
-                          }}
-                        >
-                          Referenced aside
-                        </Button>
-                      ) : (
-                        part
-                      );
-                    })}
-                </p>
-              )
+              message.content && <PassageText message={message} />
             )}
+
             {message.images.length > 0 && (
               <div className="attached-images">
                 {message.images.map((image, index) => (
@@ -1060,7 +972,7 @@ export function InlineAside({ identity }: { identity: string }) {
   if (!thread || !asideVisible(state, thread)) return null;
   const expanded = asideExpanded(state, thread);
   const summary =
-    thread.messages.at(-1)?.content || thread.originalQuote || "Aside";
+    messageSummary(thread.messages.at(-1)) || thread.originalQuote || "Aside";
   return (
     <div data-aside-id={identity} data-expanded={expanded || undefined}>
       {expanded ? (
@@ -1395,7 +1307,7 @@ export default function Asides({
                 const unread = session.hasUnreadActivity(thread.id);
                 const summary =
                   thread.originalQuote ||
-                  thread.messages.at(-1)?.content ||
+                  messageSummary(thread.messages.at(-1)) ||
                   thread.messages.at(-1)?.images[0]?.name ||
                   "Aside";
                 const content = expanded ? (

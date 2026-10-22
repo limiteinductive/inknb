@@ -7,6 +7,7 @@ import { DocumentSession } from "./session";
 import type { CommentReceipt, DocumentHost, SessionState } from "./session";
 import type { Binding, Metadata, Selection } from "./domain";
 import { captureAnchor, mapAnchor } from "./domain";
+import { passageSourceSchema, textRange, mapPassageDrafts } from "./passage-reference";
 import type { AsideAction } from "./aside-actions";
 import type { HostRequest, DocumentExchange } from "./host-protocol";
 import { documentViewSchema } from "./spaces";
@@ -188,6 +189,7 @@ export class WindowDocument extends DocumentSession {
     const state = this.getWorkingSnapshot();
     this.update({
       text: update.source.toString(),
+      drafts: mapPassageDrafts(state.drafts, state.metadata.documentId, update.source.toString(), update.changes),
       selection: update.selection,
       metadata: {
         ...state.metadata,
@@ -325,12 +327,20 @@ export class WindowDocument extends DocumentSession {
       composerAnchor: null,
       composerPreviewAnchor: null,
       drafts:
-        state.drafts[draftKey]?.content === before.drafts[draftKey]?.content &&
-        JSON.stringify(state.drafts[draftKey]?.images ?? []) ===
-          JSON.stringify(before.drafts[draftKey]?.images ?? [])
+        JSON.stringify(state.drafts[draftKey]) === JSON.stringify(before.drafts[draftKey])
           ? { ...state.drafts, [draftKey]: { content: "", images: [] } }
           : state.drafts,
     });
+    return receipt;
+  }
+  async sendAnnotation(key: string): Promise<CommentReceipt> {
+    const before = this.getWorkingSnapshot().drafts[key];
+    const receipt = z.object({ threadId: z.string().uuid() }).parse(await this.action({ kind: "annotation-send", key }));
+    const state = this.getWorkingSnapshot();
+    const drafts = { ...state.drafts };
+    if (JSON.stringify(state.drafts[key]) === JSON.stringify(before)) delete drafts[key];
+    this.update({ asidesOpen: true, focus: false, drafts });
+    this.selectThread(receipt.threadId);
     return receipt;
   }
   override markThreadRead(threadId: string, signature: string): void {
@@ -394,6 +404,37 @@ export class WindowDocument extends DocumentSession {
     method: string,
     parameters: unknown,
   ): Promise<unknown> {
+    if (method === "passage_reveal") {
+      const source = passageSourceSchema.parse(parameters);
+      const state = this.getWorkingSnapshot();
+      if (source.documentId !== state.metadata.documentId) throw Error("Open the source document to follow this reference.");
+      this.host?.beforeNavigation();
+      if (source.kind === "document") {
+        const anchor = source.liveAnchor ?? source.anchor;
+        if (anchor.status !== "attached" || state.text.slice(anchor.from, anchor.to) !== anchor.quote) throw Error(`Original passage: ${source.quote}`);
+        this.surface?.scrollToSource(anchor.from, anchor);
+      } else {
+        this.update({ asidesOpen: true, focus: false, threadExpansions: { ...state.threadExpansions, [source.threadId]: true }, asideReader: { ...state.asideReader, open: true, threadIds: [...new Set([...state.asideReader.threadIds, source.threadId])] } });
+        if (state.metadata.threads.find(thread => thread.id === source.threadId)?.resolved) window.dispatchEvent(new CustomEvent("inknb-history-aside", { detail: { documentId: source.documentId, threadId: source.threadId } }));
+        requestAnimationFrame(() => {
+          const selector = `[data-message-id="${source.messageId}"] [data-message-content="${source.field}"], [data-source-message-id="${source.messageId}"][data-message-content="${source.field}"]`;
+          const reveal = () => {
+            const element = Array.from(document.querySelectorAll(selector)).find(element => element.textContent === source.text);
+            if (!element) { this.fail(Error(`Original passage: ${source.quote}`)); return; }
+            const range = textRange(element, source.from, source.to);
+            if (range && window.CSS?.highlights) CSS.highlights.set("inknb-reference", new Highlight(range));
+            element.scrollIntoView({ block: "nearest" });
+          };
+          if (Array.from(document.querySelectorAll(selector)).some(element => element.textContent === source.text)) reveal();
+          else {
+            document.querySelector<HTMLButtonElement>(`[data-inknb-control="response:${source.messageId}"]`)?.click();
+            requestAnimationFrame(reveal);
+          }
+        });
+      }
+      this.host?.afterNavigation();
+      return null;
+    }
     if (
       [
         "ui_state",
@@ -435,6 +476,8 @@ export class WindowDocument extends DocumentSession {
     }
     if (command === "undo" || command === "redo") {
       const active = document.activeElement;
+      const reply = active?.closest(".reference-editor");
+      if (reply) { reply.dispatchEvent(new CustomEvent("inknb-editor-command", { detail: command })); return; }
       if (active?.closest('input, textarea, [contenteditable="true"]') && !this.surface?.dom.contains(active)) {
         document.execCommand(command);
         return;

@@ -26,6 +26,7 @@ export const asideActionSchema = z.discriminatedUnion("kind", [
     threadId: z.string().uuid().nullable(),
   }),
   draftSchema.extend({ kind: z.literal("draft"), key: z.string() }),
+  z.object({ kind: z.literal("annotation-send"), key: z.string() }),
   z.object({
     kind: z.literal("composer"),
     composer: z.boolean(),

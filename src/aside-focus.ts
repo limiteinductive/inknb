@@ -1,5 +1,5 @@
 export function revealAsideComposer(
-  element: HTMLTextAreaElement,
+  element: HTMLElement,
   reduceMotion: boolean,
 ): () => void {
   let frame = requestAnimationFrame(() => {

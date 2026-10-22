@@ -1,4 +1,4 @@
-import { asideReferenceSchema } from "./domain";
+import { asideReferenceSchema, messageSummary } from "./domain";
 import type { AsideReference, Metadata, Thread } from "./domain";
 import { z } from "zod";
 
@@ -31,7 +31,7 @@ export function asideConnections(
           .find((document) => document.documentId === link.documentId)
           ?.proposals.find((proposal) => proposal.threadId === link.threadId)
           ?.explanation ||
-        target?.messages[0]?.content ||
+        messageSummary(target?.messages[0]) ||
         target?.originalQuote ||
         "Whole document",
     };
@@ -58,7 +58,7 @@ export function asideConnections(
               document.proposals.find(
                 (proposal) => proposal.threadId === source.id,
               )?.explanation ||
-              source.messages[0]?.content ||
+              messageSummary(source.messages[0]) ||
               source.originalQuote ||
               "Whole document",
           });

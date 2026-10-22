@@ -42,9 +42,9 @@ import { suggestionMarkers, openSuggestion } from "./suggestion-markers";
 import { visibleSuggestions } from "./suggestions";
 import { InlineSuggestion } from "./DocumentReview";
 import { clipboardImages, importImages, copyImage } from "./images";
-import { createElement, Fragment as ReactFragment } from "react";
+import { createElement } from "react";
 import { createRoot } from "react-dom/client";
-import { MessageSquarePlus, Send } from "lucide-react";
+import { MessageSquarePlus } from "lucide-react";
 import IconButton from "./IconButton";
 import { invoke } from "@tauri-apps/api/core";
 import { save } from "@tauri-apps/plugin-dialog";
@@ -104,24 +104,17 @@ export class NativeEditor extends NativeDocumentModel {
   private destroyed = false;
   private pastes = new Set<PasteTarget>();
   pasteQueue = Promise.resolve();
-  private selecting = false;
   private links = new LinkGesture(
     () => this.session.getWorkingSnapshot().path,
     (reference) => this.session.openAside(reference),
     (error) => this.session.fail(error),
   );
   private keyboardFocus = false;
-  private selectionActions: HTMLDivElement;
-  private selectionIcon: ReturnType<typeof createRoot>;
   private focusHost: HTMLElement | null;
   private geometryObserver: ResizeObserver;
   private onAsideFocus = (event: Event) => {
     this.focusedAside = (event as CustomEvent<{ id: string | null }>).detail.id;
     this.refresh();
-  };
-  private onSelectionEnd = () => {
-    this.selecting = false;
-    this.positionSelectionAction();
   };
   private onObjectScroll = () => this.positionRegionHighlight();
 
@@ -460,7 +453,6 @@ export class NativeEditor extends NativeDocumentModel {
               view.focus();
               view.dispatch(view.state.tr.setSelection(NodeSelection.create(view.state.doc, position)));
               session.startComment();
-              this.positionSelectionAction();
             },
           };
           asideRoot.render(createElement(IconButton, aside));
@@ -520,7 +512,6 @@ export class NativeEditor extends NativeDocumentModel {
           this.links.pointerDown(event);
           this.keyboardFocus = false;
           this.dom.dataset.input = "pointer";
-          this.selectionActions.hidden = true;
           if (event.button === 0 && !event.shiftKey && event.target instanceof HTMLImageElement && this.selectImage(event.target)) {
             event.preventDefault();
             return true;
@@ -708,39 +699,12 @@ export class NativeEditor extends NativeDocumentModel {
     this.focusHost = this.dom.closest<HTMLElement>(".document-body");
     if (this.focusHost) this.geometryObserver.observe(this.focusHost);
     this.focusHost?.addEventListener("inknb-aside-focus", this.onAsideFocus);
-    this.selectionActions = window.document.createElement("div");
-    this.selectionActions.className = "native-selection-action";
-    this.selectionActions.hidden = true;
-    this.selectionActions.setAttribute("role", "toolbar");
-    this.selectionActions.setAttribute("aria-label", "Selected text actions");
-    this.selectionActions.addEventListener("mousedown", (event) => event.preventDefault());
-    this.selectionIcon = createRoot(this.selectionActions);
-    this.selectionIcon.render(createElement(ReactFragment, null,
-      createElement("button", {
-        type: "button",
-        className: "icon-button",
-        "aria-label": "Add aside (⌘⇧A)",
-        title: "Add aside (⌘⇧A)",
-        "data-inknb-control": "aside.selection",
-        onClick: () => { this.selectionActions.hidden = true; session.startComment(); },
-      }, createElement(MessageSquarePlus, { size: 17, strokeWidth: 1.6, "aria-hidden": true })),
-      createElement("button", {
-        type: "button",
-        className: "icon-button native-selection-send",
-        "aria-label": "Send selection as aside (⌘⇧↩)",
-        title: "Send selection as aside and remove it from the document (⌘⇧↩)",
-        onClick: () => { void session.command("selection-comment").catch((error) => session.fail(error)); },
-      }, createElement(Send, { size: 17, strokeWidth: 1.6, "aria-hidden": true })),
-    ));
-    host.append(this.selectionActions);
-    window.addEventListener("pointerup", this.onSelectionEnd);
-    window.addEventListener("pointercancel", this.onSelectionEnd);
     this.state = this.editor.state;
     session.view = this;
     session.update({
       metadata: {
         ...snapshot.metadata,
-        version: 12,
+        version: 13,
         nativeDocument: captureDocument(document, snapshot.text),
       },
     });
@@ -856,7 +820,6 @@ export class NativeEditor extends NativeDocumentModel {
         target.anchor.status = "detached";
     }
     this.editor.updateState(this.state);
-    this.positionSelectionAction();
     if (update.docChanged) this.requestMeasure();
     this.session.committed();
     return update;
@@ -990,7 +953,6 @@ export class NativeEditor extends NativeDocumentModel {
 
   openFind(): void {
     this.findDialog.hidden = false;
-    this.positionSelectionAction();
     const selection = this.editor.state.selection;
     if (!selection.empty)
       this.findInput.value = this.editor.state.doc.textBetween(
@@ -1052,25 +1014,6 @@ export class NativeEditor extends NativeDocumentModel {
     this.refresh();
   }
 
-  positionSelectionAction(): void {
-    if (!this.selectionActions) return;
-    const selection = this.editor.state.selection;
-    this.selectionActions.hidden =
-      selection.empty ||
-      this.session.getSnapshot().composer ||
-      this.selecting ||
-      !this.editor.hasFocus() ||
-      !this.findDialog.hidden;
-    if (this.selectionActions.hidden) return;
-    this.selectionActions.dataset.textSelection = String(selection instanceof TextSelection);
-    const bounds = this.editor.coordsAtPos(selection.to);
-    const parent =
-      this.selectionActions.offsetParent?.getBoundingClientRect() ??
-      this.dom.getBoundingClientRect();
-    const content = this.dom.getBoundingClientRect();
-    this.selectionActions.style.left = `${Math.min(content.right - this.selectionActions.offsetWidth, Math.max(content.left, bounds.right)) - parent.left}px`;
-    this.selectionActions.style.top = `${bounds.bottom - parent.top + 6}px`;
-  }
 
   refresh(): void {
     if (!this.destroyed) {
@@ -1245,10 +1188,6 @@ export class NativeEditor extends NativeDocumentModel {
     this.dom.removeEventListener("scroll", this.onObjectScroll, true);
     this.regionHighlight.remove();
     this.focusHost?.removeEventListener("inknb-aside-focus", this.onAsideFocus);
-    window.removeEventListener("pointerup", this.onSelectionEnd);
-    window.removeEventListener("pointercancel", this.onSelectionEnd);
-    queueMicrotask(() => this.selectionIcon.unmount());
-    this.selectionActions.remove();
     this.findDialog.remove();
     this.editor.destroy();
   }

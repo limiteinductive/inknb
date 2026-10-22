@@ -315,3 +315,12 @@ A final reply can name an existing continuation aside. The original retains a re
 ## Conversation edit turns
 
 New proposals retain the originating message identity as `turnId`. A human request supplies its message identity. Thread-only edits use the current human turn or the opening agent message. Rendering groups edits by that identity. Older proposals use their request identity or the messages present at their creation time. Unmatched edits appear before the known turns. Status changes preserve turn placement.
+
+
+## Message passage annotations
+
+The `long-term` reference model stores citations on individual messages. A source identifies a document passage or a passage in a human or agent message. Document references retain the original quotation and a live mapped anchor. Message references retain the message identity, field, plain text snapshot, and UTF-16 range. Suggestions retain their edit targets. Annotation format 13 adds message references and reads earlier sidecars.
+
+Selecting document or message text opens a contextual comment field. Enter completes a draggable annotation. Shift+Enter inserts a line. Command+Enter sends the annotation in a new unanchored aside. The manuscript stays unchanged. Dragging adds passage context above the reply. The comment appears above its source excerpt. The reply text and caret stay unchanged. The accessible destination menu adds the same context. Clearing the source selection dismisses the pending annotation. Context already added to a draft remains saved. Reply editors use native ProseMirror transactions for typing, insertion, clipboard references, and Undo. Unsent annotations and reply references persist with document drafts.
+
+Agents capture document or message sources with `passage_reference_create`. They attach passage context through `annotations` on `conversation_reply` and `annotation_create`. Inline citations use `references` over content ranges.

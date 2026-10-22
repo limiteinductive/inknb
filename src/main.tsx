@@ -35,6 +35,7 @@ import DocumentOutline from "./DocumentOutline";
 import DocumentReview, { ReviewButton } from "./DocumentReview";
 import LinkedResources from "./LinkedResources";
 import IconButton from "./IconButton";
+import PassageAnnotations from "./PassageAnnotations";
 import { useContextMenus } from "./context-menu";
 import { captureAnchor } from "./domain";
 import { readWindowChrome, windowChromeSchema } from "./window-chrome";
@@ -187,6 +188,7 @@ function DocumentApp({ active }: { active: boolean }) {
         </main>
       </AsideLayout>
       <DocumentReview active={active} onReveal={(proposal) => session.surface?.scrollToSource(proposal.from, captureAnchor(state.text, proposal))} />
+      <PassageAnnotations active={active} />
     </div>
   );
 }

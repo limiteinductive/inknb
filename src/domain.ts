@@ -1,46 +1,20 @@
 import { ChangeSet, Text } from "@codemirror/state";
-import type { ChangeDesc } from "@codemirror/state";
 import { z } from "zod";
-import { relativeRectangleSchema } from "./geometry";
+import { anchorSchema, selectionSchema, captureAnchor, validateSelection, mapAnchor } from "./anchors";
+export { anchorSchema, selectionSchema, captureAnchor, validateSelection, mapAnchor } from "./anchors";
 import { nativeDocumentSchema } from "./native-schema";
 import { linkedResourceSchema } from "./resources";
 import { documentPageSchema } from "./document-page";
 import { imageSchema } from "./images";
 import type { ImageAsset } from "./images";
+import type { MessageAnnotation } from "./passage-reference";
+import { passageReferenceSchema, messageAnnotationSchema, mapPassageSource } from "./passage-reference";
 import {
   previewAnchorSchema,
   previewBuildSchema,
   previewReferenceSchema,
 } from "./preview-model";
 import type { PreviewAnchor } from "./preview-model";
-
-export const selectionSchema = z.object({
-  from: z.number().int().nonnegative(),
-  to: z.number().int().nonnegative(),
-});
-
-export const anchorSchema = selectionSchema.extend({
-  quote: z.string(),
-  before: z.string(),
-  after: z.string(),
-  status: z.enum(["attached", "changed", "detached"]),
-  native: z
-    .object({
-      quote: z.string(),
-      region: z
-        .object({ identity: z.string(), rectangle: relativeRectangleSchema })
-        .optional(),
-      from: z.object({
-        identity: z.string(),
-        offset: z.number().int().nonnegative(),
-      }),
-      to: z.object({
-        identity: z.string(),
-        offset: z.number().int().nonnegative(),
-      }),
-    })
-    .optional(),
-});
 
 export const sourceSchema = z.object({
   id: z.string().uuid(),
@@ -87,6 +61,8 @@ export const messageSchema = z.object({
   createdAt: z.string(),
   sources: z.array(sourceSchema),
   images: z.array(imageSchema).default([]),
+  references: z.array(passageReferenceSchema).optional(),
+  annotations: z.array(messageAnnotationSchema).optional(),
   requestId: z.string().uuid().optional(),
   awaitingHuman: z.boolean().optional(),
   status: z.enum(["working", "complete"]).optional(),
@@ -259,6 +235,7 @@ export const metadataSchema = z
       z.literal(10),
       z.literal(11),
       z.literal(12),
+      z.literal(13),
     ]),
     documentId: z.string().uuid(),
     revision: z.number().int().nonnegative(),
@@ -345,7 +322,7 @@ export const metadataSchema = z
               ?.threadId ?? request.threadId,
         };
       }),
-      version: 12 as const,
+      version: 13 as const,
       agentAccess:
         metadata.version < 5
           ? ("read" as const)
@@ -394,6 +371,9 @@ export type Selection = z.infer<typeof selectionSchema>;
 export type Anchor = z.infer<typeof anchorSchema>;
 export type Source = z.infer<typeof sourceSchema>;
 export type Message = z.infer<typeof messageSchema>;
+export function messageSummary(message: Message | undefined): string {
+  return message?.content || message?.annotations?.[0]?.comment || message?.annotations?.[0]?.source.quote || message?.images[0]?.name || "";
+}
 export type Thread = z.infer<typeof threadSchema>;
 export type AsideReference = z.infer<typeof asideReferenceSchema>;
 export type AgentConnection = z.infer<typeof agentConnectionSchema>;
@@ -486,7 +466,7 @@ export const defaultPreferences: Preferences = {
 
 export function createMetadata(): Metadata {
   return {
-    version: 12,
+    version: 13,
     documentId: crypto.randomUUID(),
     revision: 0,
     documentHash: "",
@@ -512,37 +492,6 @@ export function threadHasStaleSources(thread: Thread): boolean {
       message.sources.some((source) => source.status !== "current"),
     )
   );
-}
-
-export function validateSelection(text: string, selection: Selection): void {
-  selectionSchema.parse(selection);
-  if (selection.from > selection.to || selection.to > text.length) {
-    throw new Error("The passage is outside the document.");
-  }
-  for (const position of [selection.from, selection.to]) {
-    const previous = text.charCodeAt(position - 1);
-    const current = text.charCodeAt(position);
-    if (
-      previous >= 0xd800 &&
-      previous <= 0xdbff &&
-      current >= 0xdc00 &&
-      current <= 0xdfff
-    ) {
-      throw new Error("The passage splits a Unicode character.");
-    }
-  }
-}
-
-export function captureAnchor(text: string, selection: Selection): Anchor {
-  validateSelection(text, selection);
-  return {
-    from: selection.from,
-    to: selection.to,
-    quote: text.slice(selection.from, selection.to),
-    before: text.slice(Math.max(0, selection.from - 48), selection.from),
-    after: text.slice(selection.to, selection.to + 48),
-    status: "attached",
-  };
 }
 
 export function relocateAnchor(text: string, anchor: Anchor): Anchor {
@@ -601,6 +550,7 @@ export function applyChanges(
   const nextText = changes.apply(Text.of(text.split("\n"))).toString();
   const threads = metadata.threads.map((thread) => ({
     ...thread,
+    messages: thread.messages.map(message => ({ ...message, ...(message.references ? { references: message.references.map(reference => ({ ...reference, source: mapPassageSource(reference.source, metadata.documentId, nextText, changes) })) } : {}), ...(message.annotations ? { annotations: message.annotations.map(annotation => ({ ...annotation, source: mapPassageSource(annotation.source, metadata.documentId, nextText, changes) })) } : {}) })),
     anchor: thread.anchor ? mapAnchor(nextText, thread.anchor, changes) : null,
     anchorSuggestions: thread.anchorSuggestions
       .map((candidate) => ({
@@ -630,32 +580,6 @@ export function applyChanges(
   };
 }
 
-export function mapAnchor(
-  nextText: string,
-  anchor: Anchor,
-  changes: ChangeDesc,
-): Anchor {
-  if (anchor.status === "detached") return anchor;
-  const isCaret = anchor.from === anchor.to;
-  let touched = false;
-  let fromAssociation = 1;
-  let toAssociation = isCaret ? 1 : -1;
-  changes.iterChangedRanges((start, end) => {
-    if (end > start && start === anchor.from) fromAssociation = -1;
-    if (end > start && end === anchor.to) toAssociation = 1;
-    if (
-      (start < anchor.to && end > anchor.from) ||
-      (start === end && start > anchor.from && start < anchor.to)
-    )
-      touched = true;
-  });
-  const from = changes.mapPos(anchor.from, fromAssociation);
-  const to = Math.max(from, changes.mapPos(anchor.to, toAssociation));
-  const status =
-    !isCaret && from === to ? "detached" : touched ? "changed" : anchor.status;
-  return { ...anchor, ...captureAnchor(nextText, { from, to }), status };
-}
-
 export function createConversation(
   text: string,
   metadata: Metadata,
@@ -664,8 +588,9 @@ export function createConversation(
   permission: AgentRequest["permission"],
   previewAnchor: PreviewAnchor | null = null,
   images: ImageAsset[] = [],
+  annotations: MessageAnnotation[] = [],
 ): NewConversation {
-  if (content.trim().length === 0 && images.length === 0)
+  if (content.trim().length === 0 && images.length === 0 && annotations.length === 0)
     throw new Error("Write a question or request first.");
   const anchor = selection ? captureAnchor(text, selection) : null;
   const createdAt = new Date().toISOString();
@@ -673,6 +598,7 @@ export function createConversation(
     id: crypto.randomUUID(),
     author: "human",
     content: content.trim(),
+    annotations,
     createdAt,
     sources: [],
     images,

@@ -95,8 +95,11 @@ export default function DetachedPreview() {
     const menu = getCurrentWindow().listen<string>(
       "inknb-preview-menu",
       (event) => {
-        if (event.payload === "undo" || event.payload === "redo")
-          document.execCommand(event.payload);
+        if (event.payload === "undo" || event.payload === "redo") {
+          const reply = document.activeElement?.closest(".reference-editor");
+          if (reply) reply.dispatchEvent(new CustomEvent("inknb-editor-command", { detail: event.payload }));
+          else document.execCommand(event.payload);
+        }
         if (event.payload === "comment-document" || event.payload === "resolve-asides")
           void invoke("preview_window_action", {
             documentId: snapshotRef.current?.state.metadata.documentId,

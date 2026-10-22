@@ -45,7 +45,7 @@ Aside cards use one 16 pixel content gutter on every edge. A single header conta
 
 Your messages use a tinted surface and align to the right. Agent replies use the full text width and display their session name. The shared conversation retains all messages in a scroll region. Aside cards stop at 640 pixels or the viewport height minus 128 pixels. Reader cards also fit the reader viewport, with a 240 pixel minimum reading allowance. Their heading and reply composer stay outside the message region. New replies preserve the position when the reader scrolls through earlier messages.
 
-The reply textarea grows with its text. One composer viewport scrolls the draft and its attachments. The form and textarea have no separate scrollbars. Aside scrollbars appear during scrolling or near the edge, then hide after inactivity. Forced colors retain system scrollbars. Reduced motion removes the fade.
+The reply editor grows with its text. One composer viewport scrolls the draft and its attachments. The form and editor have no separate scrollbars. Aside scrollbars appear during scrolling or near the edge, then hide after inactivity. Forced colors retain system scrollbars. Reduced motion removes the fade.
 
 Aside scrollbars use a 4 pixel track with a 2 pixel thumb. Each viewport keeps a 2 pixel gap between its content and track. Reader cards stay inside the reader's content edge.
 
@@ -76,3 +76,6 @@ Build checks verify component contracts. Screenshot inspection verifies composit
 - [Spectrum spacing principles](https://spectrum.adobe.com/foundations/layout-and-structure/spacing/spacing-overview)
 - [Spectrum component spacing](https://spectrum.adobe.com/foundations/layout-and-structure/spacing/component-spacing)
 - [Spectrum typography](https://spectrum.adobe.com/foundations/typography/typography-system)
+
+
+Passage annotations use the shared note material, control radius, spacing, and elevation. The comment field grows from one line. Focus changes the neutral border. The completed annotation shows its comment as the drag surface. Passage context sits above the reply, with the comment above its source excerpt. Citation text remains selectable. Reply citations remain editable.

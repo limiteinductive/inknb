@@ -599,7 +599,7 @@ class AppHost {
           if (previous) return null;
           resources = [...resources, resource];
         }
-        session.changed({ ...metadata, version: 12, resources });
+        session.changed({ ...metadata, version: 13, resources });
         return null;
       });
       await invoke("host_changed");
