@@ -307,3 +307,7 @@ Aside scope and reading behavior are independent. Document notes open in a reade
 Replies declare whether work is ongoing or complete. A working reply keeps its request active. A complete reply records the answer and resolves the discussion when human requests, choices, linked suggestions, and drafts permit closure. Suggestion review can finish a declared completion without another agent wakeup. Unread final answers remain in Activity and open directly to the conversation. Replies from older clients retain their existing behavior.
 
 A final reply can name an existing continuation aside. The original retains a replacement link and closes when review permits it. Backlinks connect the continuation to its source. A human reopen persists until a later completion.
+
+## Conversation edit turns
+
+New proposals retain the originating message identity as `turnId`. A human request supplies its message identity. Thread-only edits use the current human turn or the opening agent message. Rendering groups edits by that identity. Older proposals use their request identity or the messages present at their creation time. Unmatched edits appear before the known turns. Status changes preserve turn placement.

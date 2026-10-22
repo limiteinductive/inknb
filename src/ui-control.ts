@@ -108,7 +108,7 @@ export async function inspectInterface() {
           });
         else if (
           parameters.action === "activate" &&
-          element.matches('button,[role="menuitem"],[role="menuitemradio"],input[type="checkbox"]')
+          element.matches('button,summary,[role="menuitem"],[role="menuitemradio"],input[type="checkbox"]')
         )
           element.click();
         else throw new Error("This action is unavailable for this control.");
@@ -135,6 +135,9 @@ export async function inspectInterface() {
         },
         disabled: element.matches(":disabled"),
         rectangle: element.getBoundingClientRect().toJSON(),
+        clientWidth: element.clientWidth,
+        clientHeight: element.clientHeight,
+        scrollWidth: element.scrollWidth,
         scrollTop:
           element.dataset.inknbScroll === "true"
             ? documentScroll(element).scrollTop

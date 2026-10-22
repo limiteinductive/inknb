@@ -183,6 +183,7 @@ button,
   font-variant-numeric: tabular-nums;
 }
 .aside-reader-scroll {
+  container-type: size;
   flex: 1;
   min-height: 0;
   overflow: auto;
@@ -197,6 +198,7 @@ button,
   padding-inline: 0;
 }
 .aside-reader-scroll .margin-note {
+  max-height: min(var(--aside-max-height), calc(100dvh - var(--aside-viewport-inset)), max(var(--aside-min-readable-height), 100cqh));
   border: 1px solid var(--line);
 }
 .aside-reader-empty {
@@ -744,6 +746,10 @@ kbd {
 }
 .margin-note {
   --aside-padding: var(--space-4);
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  max-height: min(var(--aside-max-height), calc(100dvh - var(--aside-viewport-inset)));
   background: var(--material-note);
   border-radius: var(--radius-card);
   padding: var(--aside-padding);
@@ -787,11 +793,12 @@ kbd {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 8px;
-  min-height: 32px;
+  gap: var(--space-2);
+  margin-block-end: var(--space-1);
 }
 .aside-card-heading {
   display: flex;
+  flex-shrink: 0;
   align-items: center;
   justify-content: space-between;
   gap: var(--space-2);
@@ -832,24 +839,53 @@ kbd {
   color: var(--ink);
   background: var(--hover);
 }
-.margin-note .message {
-  margin-bottom: var(--space-4);
+.aside-conversation-scroll {
+  flex: 1 1 auto;
+  min-height: var(--space-8);
+  padding-inline-end: var(--space-1);
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
 }
-.margin-note .message > p {
-  margin-top: 2px;
+.aside-conversation-scroll:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+.messages {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+.margin-note .message {
+  min-width: 0;
+  margin: 0;
+}
+.message.human {
+  align-self: flex-end;
+  max-width: calc(100% - var(--space-6));
+  padding: var(--space-3);
+  background: var(--human-message-surface);
+  border-radius: var(--radius-card);
+}
+.margin-note > .composer {
+  flex-shrink: 1;
+  max-height: min(var(--aside-composer-max-height), 35dvh);
+  overflow: auto;
+  overscroll-behavior: contain;
+  margin-block-start: var(--space-3);
+}
+.margin-note .message.human > p {
+  margin: 0;
 }
 .aside-menu [data-focused] {
   background: var(--hover);
 }
-.aside-history,
 .aside-scope,
 .aside-context {
   font-size: var(--aside-detail-size);
   color: var(--muted);
   margin: 0 0 12px;
-}
-.aside-history:hover {
-  color: var(--ink);
 }
 .aside-passage {
   display: flex;
@@ -1084,20 +1120,27 @@ kbd {
   color: var(--faint);
   font-size: 8px;
 }
-.proposal {
-  border-top: 1px solid var(--line);
-  padding-top: 12px;
-  margin: 14px 0;
+.turn-edits {
+  border-top: 1px solid var(--line-soft);
+  padding-block-start: var(--space-3);
+  font: var(--text-detail-size)/var(--text-detail-height) var(--interface-font);
+  color: var(--muted);
 }
-.proposal p {
-  font-size: inherit;
-  margin: 6px 0;
+.turn-edits > summary {
+  cursor: pointer;
+  overflow-wrap: anywhere;
 }
-.proposal-actions {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  margin-top: 12px;
+.turn-edit-list {
+  display: grid;
+  gap: var(--space-3);
+  margin-block-start: var(--space-3);
+}
+.turn-edit p {
+  margin: 0;
+  color: var(--ink);
+}
+.turn-edit .text-button {
+  margin-block-start: var(--space-1);
 }
 .connection-status {
   display: flex;

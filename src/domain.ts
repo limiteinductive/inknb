@@ -222,6 +222,7 @@ export const requestSchema = z.object({
 
 export const proposalSchema = z.object({
   id: z.string().uuid(),
+  turnId: z.string().uuid().nullable().optional(),
   threadId: z.string().uuid().nullable().default(null),
   requestId: z.string().uuid().nullable().default(null),
   revision: z.number().int().nonnegative(),
@@ -707,6 +708,35 @@ export function createConversation(
   return { thread, request };
 }
 
+export function proposalTurnId(
+  metadata: Metadata,
+  proposal: Pick<Proposal, "requestId" | "createdAt" | "turnId">,
+  thread: Thread,
+): string | null {
+  const request = metadata.requests.find(
+    (request) => request.id === proposal.requestId,
+  );
+  const explicit = proposal.turnId ?? request?.messageId;
+  if (explicit) return explicit;
+  const origin =
+    metadata.threads.find((candidate) =>
+      thread.links.some(
+        (link) =>
+          link.relation === "suggestion_for" &&
+          link.documentId === metadata.documentId &&
+          link.threadId === candidate.id,
+      ),
+    ) ?? thread;
+  const preceding = origin.messages.filter(
+    (message) => message.createdAt <= proposal.createdAt,
+  );
+  return (
+    preceding.filter((message) => message.author === "human").at(-1)?.id ??
+    preceding[0]?.id ??
+    null
+  );
+}
+
 export function createProposal(
   text: string,
   metadata: Metadata,
@@ -736,8 +766,10 @@ export function createProposal(
     );
   if (text.slice(selection.from, selection.to) !== expectedText)
     throw new Error("The passage no longer matches the expected text.");
+  const createdAt = new Date().toISOString();
   return {
     id: crypto.randomUUID(),
+    turnId: thread ? proposalTurnId(metadata, { requestId, createdAt }, thread) : null,
     threadId: contextThreadId,
     requestId,
     revision,
@@ -751,7 +783,7 @@ export function createProposal(
     replacement,
     explanation,
     status: "pending",
-    createdAt: new Date().toISOString(),
+    createdAt,
   };
 }
 

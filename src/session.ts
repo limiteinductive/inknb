@@ -71,6 +71,7 @@ import {
   createMetadata,
   componentSchema,
   createProposal,
+  proposalTurnId,
   defaultPreferences,
   figureMarkdown,
   tableMarkdown,
@@ -3510,6 +3511,7 @@ export class DocumentSession {
         )
           throw Error("The outdated suggestion belongs to another discussion.");
         proposal.threadId = owner.id;
+        proposal.turnId = proposalTurnId(this.state.metadata, previous, owner);
       }
       if (method === "edit_propose") {
         const thread = this.state.metadata.threads.find(

@@ -41,6 +41,10 @@ Agent attribution uses the session name and role. Unnamed sessions include a sho
 
 Aside cards use one 16 pixel content gutter on every edge. A single header contains collapse and thread actions. Passage context sits below that header. Copy reference remains visible and confirms a successful copy in place.
 
+Your messages use a tinted surface and align to the right. Agent replies use the full text width and display their session name. The shared conversation retains all messages in a scroll region. Aside cards stop at 640 pixels or the viewport height minus 128 pixels. Reader cards also fit the reader viewport, with a 240 pixel minimum reading allowance. Their heading and reply composer stay outside the message region. New replies preserve the position when the reader scrolls through earlier messages.
+
+Edit summaries follow their originating turn. Each turn has one collapsed summary with counts by status. Expanding it shows the individual explanations and review actions. Later messages do not move earlier edits to the bottom.
+
 Suggested changes use the note material, neutral card edge, and 16 pixel content gutter. The header places collapse on the left. The footer groups decisions and suggestion navigation. Color marks changed content. Diff blocks use a light wash without vertical rails.
 
 Whole-table anchors highlight the table surface. They do not underline or highlight its text separately. Object selections suppress the browser's text selection paint. Text selections within cells retain text highlighting.

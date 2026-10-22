@@ -1,7 +1,8 @@
 import { DecisionCard } from "./Decisions";
-import { agentAttribution, defaultAgent, requestAgentId } from "./domain";
+import { agentAttribution, defaultAgent, requestAgentId, proposalTurnId } from "./domain";
 import { focusAside, revealAsideComposer } from "./aside-focus";
 import {
+  Fragment,
   useContext,
   useEffect,
   useLayoutEffect,
@@ -45,7 +46,7 @@ import PreviewCapture from "./PreviewCapture";
 import AttachedImage from "./AttachedImage";
 import AgentResponse from "./AgentResponse";
 import { clipboardImages, importImages } from "./images";
-import type { AgentRequest, Source } from "./domain";
+import type { AgentRequest, Message, Proposal, Source } from "./domain";
 import { threadActivity } from "./domain";
 import {
   asideVisible,
@@ -490,13 +491,30 @@ export function Conversation({
   const documentSession = useContext(SessionContext);
   const state = useAsideState();
   const card = useRef<HTMLElement>(null);
-  const [showHistory, setShowHistory] = useState(false);
+  const conversationScroll = useRef<HTMLDivElement>(null);
+  const previousMessage = useRef<{ threadId: string; messageId: string } | null>(null);
+  const followMessages = useRef(true);
   const [copiedReference, setCopiedReference] = useState<string | null>(null);
   const [references, setReferences] = useState<AsideConnection[]>([]);
   const thread = state.metadata.threads.find(
     (thread) => thread.id === identity,
   );
   const activity = thread ? threadActivity(state.metadata, thread) : null;
+  const latestMessage = thread?.messages.at(-1);
+  useLayoutEffect(() => {
+    const viewport = conversationScroll.current;
+    if (!viewport || !thread || !latestMessage) return;
+    const first = previousMessage.current?.threadId !== identity;
+    if (!first && previousMessage.current?.messageId === latestMessage.id) return;
+    previousMessage.current = { threadId: identity, messageId: latestMessage.id };
+    if (!first && !followMessages.current && latestMessage.author !== "human") return;
+    const target = first
+      ? thread.messages.filter((message) => message.author === "human").at(-1) ?? latestMessage
+      : latestMessage;
+    const element = viewport.querySelector<HTMLElement>(`[data-message-id="${target.id}"]`);
+    if (element)
+      viewport.scrollTop += element.getBoundingClientRect().top - viewport.getBoundingClientRect().top;
+  }, [identity, latestMessage?.id]);
   useEffect(() => {
     if (!copiedReference) return;
     const timer = setTimeout(() => setCopiedReference(null), 2000);
@@ -562,6 +580,30 @@ export function Conversation({
     (proposal) =>
       proposal.threadId === identity && proposal.status !== "superseded",
   );
+  const turnProposals = state.metadata.proposals.filter((proposal) => proposal.status !== "superseded" && (
+    proposal.threadId === identity ||
+    state.metadata.requests.some((request) => request.id === proposal.requestId && request.threadId === identity) ||
+    state.metadata.threads.find((owner) => owner.id === proposal.threadId)?.links.some((link) => link.relation === "suggestion_for" && link.documentId === state.metadata.documentId && link.threadId === identity)
+  ));
+  const turns: { id: string | null; messages: Message[]; proposals: Proposal[] }[] = [];
+  for (const message of thread.messages) {
+    if (message.author === "human" || !turns.length)
+      turns.push({ id: message.id, messages: [], proposals: [] });
+    turns.at(-1)!.messages.push(message);
+  }
+  for (const proposal of turnProposals) {
+    const turnId = proposalTurnId(state.metadata, proposal, thread);
+    let turn = turns.find((turn) => turn.messages.some((message) => message.id === turnId));
+    if (!turn) {
+      turn = turns.find((turn) => turn.id === null);
+      if (!turn) {
+        turn = { id: null, messages: [], proposals: [] };
+        turns.unshift(turn);
+      }
+    }
+    turn.proposals.push(proposal);
+  }
+  const conversationReferences = references.filter((reference) => reference.documentId !== state.metadata.documentId || !turnProposals.some((proposal) => proposal.threadId === reference.threadId));
   const shown = visibleSuggestions(state);
   const pending = proposals.filter((proposal) => proposal.status === "pending");
   const passage =
@@ -573,46 +615,17 @@ export function Conversation({
     : thread.anchor?.status === "attached" && documentSession?.view
       ? documentSession.view.passageText(thread.anchor)
       : thread.originalQuote;
-  let latestHuman = -1;
-  for (let index = thread.messages.length - 1; index >= 0; index -= 1) {
-    if (thread.messages[index].author !== "human") continue;
-    latestHuman = index;
-    break;
-  }
-  const recentStart = Math.max(
-    0,
-    Math.min(
-      latestHuman < 0 ? thread.messages.length - 1 : latestHuman,
-      thread.messages.length - 2,
-    ),
-  );
-  const messages = showHistory
-    ? thread.messages
-    : thread.messages.slice(recentStart);
-  const firstMessage = messages[0];
-  const proposalAuthor = proposals.at(-1)?.creator;
-  const firstAuthor = firstMessage
-    ? firstMessage.author === "human"
-      ? null
-      : agentAttribution(firstMessage.agent)
-    : proposalAuthor
-      ? agentAttribution(proposalAuthor)
-      : thread.kind === "suggestion"
-        ? "Suggestion"
-        : "Discussion";
+  const firstMessage = thread.messages[0];
   const collapse = (
     <TooltipTrigger delay={500}>
       <Button
         className="aside-collapse"
-        aria-label={
-          firstAuthor ? `Collapse aside from ${firstAuthor}` : "Collapse aside"
-        }
+        aria-label="Collapse aside"
         aria-expanded={true}
         data-inknb-control={`conversation.collapse:${identity}`}
         onPress={() => (onClose ? onClose() : session.collapseThread(identity))}
       >
         <ChevronDown size={15} strokeWidth={1.6} aria-hidden="true" />
-        {firstAuthor && <span>{firstAuthor}</span>}
       </Button>
       <Tooltip className="control-tooltip" offset={7}>
         Collapse aside
@@ -782,23 +795,24 @@ export function Conversation({
         {collapse}
         {actions}
       </div>
+      <div
+        ref={conversationScroll}
+        className="aside-conversation-scroll"
+        role="region"
+        aria-label="Conversation messages"
+        tabIndex={0}
+        data-inknb-control={`conversation.scroll:${identity}`}
+        data-inknb-scroll="true"
+        onScroll={(event) => {
+          const viewport = event.currentTarget;
+          followMessages.current = viewport.scrollHeight - viewport.clientHeight - viewport.scrollTop <= 48;
+        }}
+      >
       {(state.preferences.placement === "inline" ||
         state.asideNarrow ||
         state.asideReader.open ||
         (!thread.anchor && !thread.previewAnchor)) && (
         <AsidePassage threadId={identity} />
-      )}
-      {recentStart > 0 && (
-        <Button
-          className="aside-history"
-          aria-expanded={showHistory}
-          aria-controls={`messages-${thread.id}`}
-          onPress={() => setShowHistory(!showHistory)}
-        >
-          {showHistory
-            ? "Hide earlier messages"
-            : `${recentStart} earlier ${recentStart === 1 ? "message" : "messages"}`}
-        </Button>
       )}
       {thread.resolution && (
         <p className="aside-resolution">
@@ -845,7 +859,9 @@ export function Conversation({
         </details>
       )}
       <div className="messages" id={`messages-${thread.id}`}>
-        {messages.map((message, index) => {
+        {turns.map((turn) => (
+          <Fragment key={turn.id ?? "earlier-edits"}>
+        {turn.messages.map((message) => {
           const request = message.author === "human"
             ? requests.filter((request) =>
                 request.trigger.kind === "human" && request.messageId === message.id,
@@ -855,9 +871,10 @@ export function Conversation({
           <article
             className={`message ${message.author}`}
             data-message-id={message.id}
+            aria-label={message.author === "human" ? "Your message" : `Message from ${agentAttribution(message.agent)}`}
             key={message.id}
           >
-            {index > 0 && message.author === "agent" && (
+            {message.author === "agent" && (
               <div className="message-heading">
                   <TooltipTrigger delay={500}>
                     <Button className="message-author">
@@ -921,10 +938,42 @@ export function Conversation({
           </article>
           );
         })}
+        {turn.proposals.length > 0 && (
+          <details className="turn-edits" data-turn-id={turn.id ?? "earlier-edits"}>
+            <summary data-inknb-control={`turn.edits:${identity}:${turn.id ?? "earlier"}`}>
+              {turn.id === null && thread.messages.length > 0 && "Earlier edits · "}
+              {(["applied", "pending", "conflict", "rejected", "undone"] as const).map((status) => {
+                const count = turn.proposals.filter((proposal) => proposal.status === status).length;
+                const label = { applied: "applied", pending: "pending", conflict: "out of date", rejected: "dismissed", undone: "undone" }[status];
+                return count ? `${count} ${count === 1 ? "edit" : "edits"} ${label}` : null;
+              }).filter(Boolean).join(" · ")}
+            </summary>
+            <div className="turn-edit-list">
+              {turn.proposals.map((proposal) => (
+                <div className="turn-edit" key={proposal.id}>
+                  <p>{proposal.explanation}</p>
+                  {["pending", "conflict"].includes(proposal.status) && (
+                    <Button
+                      className="text-button"
+                      data-inknb-control={`proposal.review:${proposal.id}`}
+                      onPress={() => currentSuggestions(state).some((current) => current.id === proposal.id)
+                        ? reviewSuggestion(proposal.id, session)
+                        : void session.proposal(proposal.id, false).catch((error) => session.fail(error))}
+                    >
+                      {currentSuggestions(state).some((current) => current.id === proposal.id) ? "Show in document" : "Dismiss earlier suggestion"}
+                    </Button>
+                  )}
+                </div>
+              ))}
+            </div>
+          </details>
+        )}
+          </Fragment>
+        ))}
       </div>
-      {references.length > 0 && (
+      {conversationReferences.length > 0 && (
         <div className="aside-references">
-          {references.map((reference, position) => (
+          {conversationReferences.map((reference, position) => (
             <Button
               key={`${reference.documentId}:${reference.threadId}:${position}`}
               className="aside-reference"
@@ -969,44 +1018,10 @@ export function Conversation({
             Show {component.title}
           </Button>
         ))}
-      {proposals.map((proposal) => (
-        <div className="proposal" key={proposal.id}>
-          <div className="eyebrow">
-            {proposal.status === "pending"
-              ? "Proposed edit"
-              : proposal.status === "conflict"
-                ? "Suggestion out of date"
-                : `Edit ${proposal.status}`}
-          </div>
-          <p>{proposal.explanation}</p>
-          {["pending", "conflict"].includes(proposal.status) && (
-            <div className="proposal-actions">
-              <Button
-                className="text-button"
-                data-inknb-control={`proposal.review:${proposal.id}`}
-                onPress={() =>
-                  currentSuggestions(state).some(
-                    (current) => current.id === proposal.id,
-                  )
-                    ? reviewSuggestion(proposal.id, session)
-                    : void session
-                        .proposal(proposal.id, false)
-                        .catch((error) => session.fail(error))
-                }
-              >
-                {currentSuggestions(state).some(
-                  (current) => current.id === proposal.id,
-                )
-                  ? "Show in document"
-                  : "Dismiss earlier suggestion"}
-              </Button>
-            </div>
-          )}
-        </div>
-      ))}
       {latest && latest.trigger.kind !== "human" && latest.state !== "answered" && (
         <DeliveryReceipt request={latest} />
       )}
+      </div>
       {(!thread.resolved ||
         state.drafts[identity]?.content ||
         state.drafts[identity]?.images.length) && (
