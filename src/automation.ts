@@ -1,3 +1,4 @@
+import { conversationBlocker } from "./conversation-lifecycle";
 import { agentAttribution, defaultAgent } from "./domain";
 import type { AgentRequest, Metadata } from "./domain";
 
@@ -59,6 +60,7 @@ export function planAutomation(
   previous: Metadata,
   next: Metadata,
   actor = "You",
+  draftThreadIds: string[] = [],
 ): { metadata: Metadata; events: EventInput[] } {
   const events: EventInput[] = [];
   const reviews: AgentRequest[] = [];
@@ -91,6 +93,46 @@ export function planAutomation(
         },
       };
     }),
+  };
+  next = {
+    ...next,
+    threads: next.threads.map((thread) => {
+      const message = thread.messages.at(-1);
+      if (
+        thread.resolved ||
+        message?.author !== "agent" ||
+        message.status !== "complete" ||
+        thread.reopenedMessageId === message.id ||
+        draftThreadIds.includes(thread.id)
+      )
+        return thread;
+      const outcome = message.continuedIn
+        ? ("superseded" as const)
+        : ("done" as const);
+      if (conversationBlocker(next, thread, outcome)) return thread;
+      return {
+        ...thread,
+        resolved: true,
+        resolution: {
+          reason: message.continuedIn
+            ? "Work continued in another aside."
+            : "Request completed.",
+          outcome,
+          actor: agentAttribution(message.agent),
+          createdAt: new Date().toISOString(),
+          lastMessageId: message.id,
+        },
+      };
+    }),
+  };
+  next = {
+    ...next,
+    requests: next.requests.map((request) =>
+      request.trigger.kind === "completion_review" &&
+      next.threads.find((thread) => thread.id === request.threadId)?.resolved
+        ? { ...request, state: "answered" as const }
+        : request,
+    ),
   };
   next = {
     ...next,
@@ -152,6 +194,7 @@ export function planAutomation(
     );
     if (
       !thread.resolved &&
+      thread.messages.at(-1)?.status !== "complete" &&
       finished &&
       suggestions.every((suggestion) => suggestion.resolved) &&
       !next.requests.some(
@@ -206,6 +249,7 @@ export function planAutomation(
           resolved: thread.resolved,
           resolution: thread.resolution,
           links: thread.links,
+          completion: thread.messages.at(-1)?.status === "complete",
           message:
             thread.messages.at(-1)?.id !== before?.messages.at(-1)?.id
               ? {

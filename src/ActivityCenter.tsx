@@ -137,7 +137,9 @@ export default function ActivityCenter() {
           .filter((proposal) => proposal.threadId === thread.id)
           .at(-1)
       : undefined);
-  const completed = proposal ? proposal.status !== "pending" : thread?.resolved;
+  const completed = proposal
+    ? proposal.status !== "pending"
+    : thread?.resolved && selected?.kind !== "reply";
   const resultLabel = proposal
     ? {
         pending: "Suggestion ready",

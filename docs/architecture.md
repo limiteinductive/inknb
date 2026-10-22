@@ -301,3 +301,9 @@ Passage edits retain their mapped discussion anchors without a repair banner. Ch
 The document reserves a right gutter when the window fits readable prose and notes. Contextual cards share the document scroll. Narrow windows show contextual cards inline.
 
 Aside scope and reading behavior are independent. Document notes open in a reader within the gutter. Any passage aside can stay in that reader while the document scrolls independently. The reader retains several threads, its scroll position, and shared conversation drafts per document window. Source navigation requires Show passage. Incoming replies preserve the current reader selection.
+
+## Agent conversation completion
+
+Replies declare whether work is ongoing or complete. A working reply keeps its request active. A complete reply records the answer and resolves the discussion when human requests, choices, linked suggestions, and drafts permit closure. Suggestion review can finish a declared completion without another agent wakeup. Unread final answers remain in Activity and open directly to the conversation. Replies from older clients retain their existing behavior.
+
+A final reply can name an existing continuation aside. The original retains a replacement link and closes when review permits it. Backlinks connect the continuation to its source. A human reopen persists until a later completion.

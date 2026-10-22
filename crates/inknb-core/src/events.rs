@@ -178,7 +178,7 @@ impl EventStore {
                 .map_err(|error| error.to_string())?;
             if event.kind == "conversation.updated" {
                 if payload["resolved"] == true {
-                    transaction.execute("UPDATE activities SET resolved=1 WHERE document=?1 AND json_extract(content,'$.threadId')=?2",params![event.document_id.to_string(),thread_id.map(|identity|identity.to_string())]).map_err(|error|error.to_string())?;
+                    transaction.execute("UPDATE activities SET resolved=1 WHERE document=?1 AND json_extract(content,'$.threadId')=?2 AND (?3=0 OR read=1 OR json_extract(content,'$.kind')!='reply')",params![event.document_id.to_string(),thread_id.map(|identity|identity.to_string()),payload["completion"] == true]).map_err(|error|error.to_string())?;
                 } else if payload["message"]["author"] == "human" {
                     transaction.execute("UPDATE activities SET resolved=1 WHERE document=?1 AND json_extract(content,'$.threadId')=?2 AND json_extract(content,'$.kind')='question'",params![event.document_id.to_string(),thread_id.map(|identity|identity.to_string())]).map_err(|error|error.to_string())?;
                 }
@@ -187,7 +187,8 @@ impl EventStore {
             let mut read = false;
             let (kind, target, title, detail) = match event.kind.as_str() {
                 "conversation.updated"
-                    if payload["message"]["author"] == "agent" && payload["resolved"] != true =>
+                    if payload["message"]["author"] == "agent"
+                        && (payload["resolved"] != true || payload["completion"] == true) =>
                 {
                     (
                         if payload["message"]["awaitingHuman"] == true {

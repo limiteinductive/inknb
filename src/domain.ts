@@ -74,6 +74,11 @@ export const agentIdentitySchema = z.object({
   sessionUrl: z.string().url().optional(),
 });
 
+export const asideReferenceSchema = z.object({
+  documentId: z.string().uuid(),
+  threadId: z.string().uuid(),
+});
+
 export const messageSchema = z.object({
   id: z.string().uuid(),
   author: z.enum(["human", "agent"]),
@@ -84,6 +89,8 @@ export const messageSchema = z.object({
   images: z.array(imageSchema).default([]),
   requestId: z.string().uuid().optional(),
   awaitingHuman: z.boolean().optional(),
+  status: z.enum(["working", "complete"]).optional(),
+  continuedIn: asideReferenceSchema.optional(),
   agent: agentIdentitySchema.optional(),
 });
 
@@ -99,11 +106,6 @@ export const componentSchema = z.object({
 
 export type ComponentInstance = z.infer<typeof componentSchema>;
 
-export const asideReferenceSchema = z.object({
-  documentId: z.string().uuid(),
-  threadId: z.string().uuid(),
-});
-
 export const threadSchema = z.object({
   id: z.string().uuid(),
   kind: z.enum(["discussion", "suggestion"]).default("discussion"),
@@ -114,6 +116,7 @@ export const threadSchema = z.object({
   createdRevision: z.number().int().nonnegative(),
   createdAt: z.string(),
   resolved: z.boolean(),
+  reopenedMessageId: z.string().uuid().optional(),
   resolution: z
     .object({
       reason: z.string(),
