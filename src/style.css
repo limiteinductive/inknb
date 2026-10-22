@@ -1,5 +1,6 @@
 @import url("./tokens.css");
 @import url("./scrollbars.css");
+@import url("./reading-typography.css");
 
 * {
   box-sizing: border-box;

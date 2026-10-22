@@ -76,6 +76,13 @@ for (const file of files.filter((file) => file.endsWith(".css"))) {
   stylesheet.walkRules((rule) => {
     const selectors = rule.selectors;
     if (
+      filename !== "src/reading-typography.css" &&
+      selectors.some((selector) =>
+        /\.(?:native|response)-content\b/.test(selector) && /\bh[1-6]\b/.test(selector),
+      )
+    )
+      problems.push(`${filename}: reading heading styles belong to reading-typography.css.`);
+    if (
       filename !== "src/panel.css" &&
       selectors.some((selector) =>
         /\.panel-(?:heading|surface|body|empty|actions|filters)\b/.test(

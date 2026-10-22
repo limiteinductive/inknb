@@ -1,0 +1,30 @@
+:is(.native-content, .response-content) :is(h1, h2, h3, h4, h5, h6) {
+  font-weight: var(--weight-heading);
+  line-height: var(--reading-heading-height);
+  letter-spacing: var(--reading-heading-tracking);
+  margin-block: var(--reading-heading-before) var(--reading-heading-after);
+}
+:is(.native-content, .response-content) h1 {
+  font-size: var(--reading-heading-1-size);
+}
+:is(.native-content, .response-content) h2 {
+  font-size: var(--reading-heading-2-size);
+}
+:is(.native-content, .response-content) h3 {
+  font-size: var(--reading-heading-3-size);
+}
+:is(.native-content, .response-content) h4 {
+  font-size: var(--reading-heading-4-size);
+}
+:is(.native-content, .response-content) h5 {
+  font-size: var(--reading-heading-5-size);
+}
+:is(.native-content, .response-content) h6 {
+  font-size: var(--reading-heading-6-size);
+}
+:is(.native-content, .response-content) > :is(h1, h2, h3, h4, h5, h6):first-child {
+  margin-block-start: 0;
+}
+:is(.native-content, .response-content) :is(h1, h2, h3, h4, h5, h6) + :is(h1, h2, h3, h4, h5, h6) {
+  margin-block-start: var(--reading-heading-stack-gap);
+}

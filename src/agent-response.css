@@ -11,22 +11,8 @@
 .response-content > :last-child {
   margin-bottom: 0;
 }
-.response-content :is(h1, h2, h3, h4) {
-  font-weight: 500;
-  line-height: 1.35;
-  margin: 1.5em 0 0.6em;
-}
 .response-content > :first-child {
   margin-top: 0;
-}
-.response-content h1 {
-  font-size: 1.7em;
-}
-.response-content h2 {
-  font-size: 1.4em;
-}
-.response-content h3 {
-  font-size: 1.15em;
 }
 .response-content :is(ul, ol) {
   padding-left: 1.5em;

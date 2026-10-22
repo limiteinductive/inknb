@@ -162,11 +162,6 @@
 .native-content p {
   margin: 0 0 1em;
 }
-.native-content h1,
-.native-content h2,
-.native-content h3 {
-  line-height: 1.3;
-}
 .sr-only {
   position: absolute;
   width: 1px;
@@ -224,26 +219,6 @@
 }
 .native-content[data-input="pointer"] .native-equation:focus-within {
   box-shadow: none;
-}
-.native-content h1,
-.native-content h2,
-.native-content h3 {
-  font-weight: 500;
-  letter-spacing: -0.02em;
-}
-.native-content h1 {
-  font-size: 2em;
-  margin: 0.67em 0;
-}
-.native-content h2 {
-  font-size: calc(25em / 17);
-  margin: 0.83em 0;
-}
-.native-content h3 {
-  margin: 1em 0;
-}
-.native-content h1:first-child {
-  margin-top: 0;
 }
 .native-content pre {
   font: calc(12em / 17) / 1.7 var(--mono-font);

@@ -21,6 +21,8 @@ Keep related labels and controls closer than separate groups. A section gap uses
 
 Panel headings have no browser heading margins. Interface titles use the system font. Manuscript and response prose retain their reading typography.
 
+`reading-typography.css` owns all six heading levels in manuscripts and rendered responses. Their scale, weight, line height, and spacing use shared tokens. Headings have more space above than below. Consecutive headings use a smaller gap. Inline emphasis retains the body size. The design contract rejects separate heading styles in feature files.
+
 Titles identify the surface. Secondary text explains its contents. Actions use their shared control dimensions and remain aligned with the title. Labels wrap or truncate deliberately. Empty states, errors, and long labels must not change the panel's chosen width.
 
 ## Components
