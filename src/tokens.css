@@ -75,6 +75,8 @@
   --ink: #2d3443;
   --scrollbar-thumb: color-mix(in srgb, var(--ink) 22%, transparent);
   --scrollbar-thumb-hover: color-mix(in srgb, var(--ink) 38%, transparent);
+  --scrollbar-compact-width: 4px;
+  --scrollbar-compact-gap: 2px;
   --muted: #555e6d;
   --faint: #59616f;
   --placeholder: #555e6d;

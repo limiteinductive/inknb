@@ -13,6 +13,11 @@
     scrollbar-color: var(--scrollbar-thumb) transparent;
   }
   @supports selector(::-webkit-scrollbar) {
+    [data-auto-hide-scrollbar],
+    [data-auto-hide-scrollbar][data-scrollbar-visible] {
+      scrollbar-width: auto;
+      scrollbar-color: auto;
+    }
     *,
     *:hover {
       scrollbar-width: auto;
@@ -37,7 +42,12 @@
     }
     [data-auto-hide-scrollbar]::-webkit-scrollbar-thumb {
       background-color: transparent;
+      border-width: 0 1px;
       transition: background-color var(--feedback);
+    }
+    [data-auto-hide-scrollbar]::-webkit-scrollbar {
+      width: var(--scrollbar-compact-width);
+      height: var(--scrollbar-compact-width);
     }
     [data-auto-hide-scrollbar][data-scrollbar-visible]::-webkit-scrollbar-thumb {
       background-color: var(--scrollbar-thumb);

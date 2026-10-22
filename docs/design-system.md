@@ -47,6 +47,8 @@ Your messages use a tinted surface and align to the right. Agent replies use the
 
 The reply textarea grows with its text. One composer viewport scrolls the draft and its attachments. The form and textarea have no separate scrollbars. Aside scrollbars appear during scrolling or near the edge, then hide after inactivity. Forced colors retain system scrollbars. Reduced motion removes the fade.
 
+Aside scrollbars use a 4 pixel track with a 2 pixel thumb. Each viewport keeps a 2 pixel gap between its content and track. Reader cards stay inside the reader's content edge.
+
 Edit summaries follow their originating turn. Each turn has one collapsed summary with counts by status. Expanding it shows the individual explanations and review actions. Later messages do not move earlier edits to the bottom.
 
 Suggested changes use the note material, neutral card edge, and 16 pixel content gutter. The header places collapse on the left. The footer groups decisions and suggestion navigation. Color marks changed content. Diff blocks use a light wash without vertical rails.

@@ -7,6 +7,7 @@ export function useAutoHideScrollbar(reference: RefObject<HTMLElement | null>, a
     if (!element || !active) return;
     let timer: ReturnType<typeof setTimeout> | undefined;
     const reveal = () => {
+      if (element.scrollHeight <= element.clientHeight) return;
       element.dataset.scrollbarVisible = "true";
       clearTimeout(timer);
       timer = setTimeout(() => delete element.dataset.scrollbarVisible, 1000);

@@ -186,11 +186,13 @@ button,
   container-type: size;
   flex: 1;
   min-height: 0;
-  overflow: auto;
+  overflow-x: hidden;
+  overflow-y: scroll;
   overflow-anchor: none;
   overscroll-behavior: contain;
   scrollbar-gutter: stable;
   padding-block: var(--space-4) var(--space-6);
+  padding-inline-end: var(--scrollbar-compact-gap);
   background: var(--material-reading);
   pointer-events: auto;
 }
@@ -842,9 +844,9 @@ kbd {
 .aside-conversation-scroll {
   flex: 1 1 auto;
   min-height: var(--space-8);
-  padding-inline-end: var(--space-1);
+  padding-inline-end: var(--scrollbar-compact-gap);
   overflow-x: hidden;
-  overflow-y: auto;
+  overflow-y: scroll;
   overscroll-behavior: contain;
   scrollbar-gutter: stable;
 }
@@ -989,6 +991,7 @@ kbd {
   min-height: 1lh;
   max-height: var(--aside-draft-max-height);
   overflow: auto;
+  padding-inline-end: var(--scrollbar-compact-gap);
   overscroll-behavior: contain;
 }
 .composer textarea {
