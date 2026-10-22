@@ -8,6 +8,8 @@ The CLI provides a JSON event stream and an executable hook runner. Hook program
 
 Human requests and maintenance requests share one work queue. Work events never grant permission to change prose. Document access controls direct edits. Source changes, affected proposals, and detached anchors create maintenance work. Events remain available to independent backends.
 
+Each human message owns a request identity. A reply answers only its named request. `conversation_reply` returns `pendingRequests` with the caller's unanswered human messages in the same aside, including messages received during execution. Agents handle those requests before ending their turn. Working replies retain their request in that list. Delivery acknowledgements retain unanswered work. Duplicate reply retries return the current pending list.
+
 Untouched proposals follow document edits. A change to the proposed passage invalidates that proposal and requests a refresh. Incoming edits still require the current document revision and expected text.
 
 Source reviews name the observed fingerprint. A review cannot claim to cover a newer file. Original source fingerprints remain available for inspection.

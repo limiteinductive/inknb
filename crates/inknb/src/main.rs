@@ -307,7 +307,7 @@ fn run_mcp(channel: bool, connection: Option<String>) {
             if request["state"] != "pending" {
                 continue;
             }
-            let notification = json!({"jsonrpc":"2.0","method":"notifications/claude/channel","params":{"content":format!("Work in ink and butter. Read requests_list and document_read. Respect its trigger and permissions. Request: {}",request),"meta":{"request_id":request["id"].as_str().unwrap_or_default()}}});
+            let notification = json!({"jsonrpc":"2.0","method":"notifications/claude/channel","params":{"content":format!("Work in ink and butter. Read requests_list and document_read. Handle every unanswered human message assigned to you. Each conversation_reply returns pendingRequests, including messages sent while you worked. Continue with those requests before ending your turn. Reply by each requestId. Respect its trigger and permissions. Request: {}",request),"meta":{"request_id":request["id"].as_str().unwrap_or_default()}}});
             if write_message(&monitor_output, &notification).is_ok() {
                 let _ = call_as(
                     "request_delivered",
