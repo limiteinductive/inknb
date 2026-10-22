@@ -10,7 +10,7 @@ import {
 import { Button } from "react-aria-components";
 import { ListTree, X } from "lucide-react";
 import { useDocumentSession, useSession } from "./use-session";
-import { sourcePosition } from "./native-source";
+import { documentOutline } from "./document-structure";
 import { workspace } from "./window-workspace";
 
 export default function DocumentOutline({ active }: { active: boolean }) {
@@ -30,24 +30,10 @@ export default function DocumentOutline({ active }: { active: boolean }) {
   const panelVisible = docked || expanded;
   const model = session.model;
   const headings = useMemo(() => {
-    const entries: {
-      identity: string;
-      title: string;
-      level: number;
-      from: number;
-    }[] = [];
-    model?.state.doc.descendants((node, position) => {
-      if (node.type.name !== "heading") return;
-      const level = Number(node.attrs.level);
-      if (level < options.min_level || level > options.max_level) return;
-      entries.push({
-        identity: String(node.attrs.identity),
-        title: node.textContent || "Untitled heading",
-        level,
-        from: sourcePosition(model.projection, position + 1),
-      });
-    });
-    return entries;
+    if (!model) return [];
+    return documentOutline(model.state.doc, model.projection)
+      .filter((heading) => heading.level >= options.min_level && heading.level <= options.max_level)
+      .map((heading) => ({ ...heading, title: heading.title || "Untitled heading" }));
   }, [model?.state.doc, model?.projection, options.min_level, options.max_level]);
   useLayoutEffect(() => {
     const element = container.current?.closest<HTMLElement>(".workspace");

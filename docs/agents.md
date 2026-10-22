@@ -107,6 +107,8 @@ Agents manage Spaces. Read `spaces_read` before using `space_create` or `space_u
 
 `document_read.native.format` reports the saved document format. Use `document_format` with the document identity, current revision, and `text`, `markdown`, `html`, or `latex` to change it. The source text and filename stay intact. The format survives reload, external source edits, and file moves.
 
+`document_read.native.outline` lists semantic headings with their identities, levels, titles, and UTF-16 source positions. `native.authoring` supplies the document structure contract. Use headings for sections and subsections. Keep sibling levels consistent. Put headings in separate blocks before their explanations. Bold spans remain inline emphasis. The app supplies typography. Formatting preserves wording and follows normal edit permissions or suggestion review.
+
 `document_read`, `document_save`, and `requests_list` accept a document identity. Supply it when work continues after a human document switch. Replies route by request identity. Source attachments route by message identity.
 
 `document_activate` switches the visible document. Activate it before selecting a passage or acting on its interface. Each document retains its buffer, Undo history, selection, and drafts.

@@ -247,6 +247,8 @@ Linked resources belong to document metadata. Internal targets use document iden
 
 The heading outline uses native heading identities. A compact rail tracks the current section from heading positions in the document viewport. An expanded heading list overlays the gutter without resizing the manuscript. Each window stores its visibility choice for each document. Configuration supplies the default.
 
+Document structure uses semantic heading nodes. `document_read.native.outline` and the navigation outline share heading identities, levels, titles, and source positions. Each document read includes the authoring contract. Agents use headings for sections and bold spans for inline emphasis. The reading typography owns heading presentation. Structural edits retain the document's permission and review requirements.
+
 The outline remains beside the manuscript while the document scrolls. A configured panel uses the compact rail when its workspace has at most 760 pixels available. The rail opens on hover or focus. Its list fits the document viewport, including when a notes reader shares the window. Configuration retains the preferred presentation, side, and width.
 
 App context menus share selection restoration and native clipboard commands. Suggestion displays share word-level removed and inserted text. File-aside scope and composer position remain separate state.

@@ -23,6 +23,8 @@ Panel headings have no browser heading margins. Interface titles use the system 
 
 `reading-typography.css` owns all six heading levels in manuscripts and rendered responses. Their scale, weight, line height, and spacing use shared tokens. Headings have more space above than below. Consecutive headings use a smaller gap. Inline emphasis retains the body size. The design contract rejects separate heading styles in feature files.
 
+Document headings express section structure. Sibling sections use the same level. Subsections use the next level. Headings occupy separate blocks before their explanations. Bold spans mark emphasis inside prose. Agents receive the current semantic outline and this authoring contract through `document_read.native`. The navigation outline and agent outline share one projection. Formatting changes preserve wording and follow document edit permissions.
+
 Titles identify the surface. Secondary text explains its contents. Actions use their shared control dimensions and remain aligned with the title. Labels wrap or truncate deliberately. Empty states, errors, and long labels must not change the panel's chosen width.
 
 ## Components

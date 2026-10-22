@@ -103,6 +103,13 @@ for (const file of files.filter((file) => file.endsWith(".css"))) {
         /^(?:(?:min-|max-)?width|padding(?:-.+)?|margin(?:-.+)?|font(?:-.+)?|line-height|border-radius|box-shadow|background(?:-.+)?)$/.test(
           property,
         );
+      if (filename !== "src/tokens.css" && property.startsWith("--reading-heading-"))
+        problems.push(`${filename}: reading heading tokens belong to tokens.css.`);
+      if (
+        filename === "src/reading-typography.css" &&
+        metric && /\d+(?:px|rem|em)\b/.test(value)
+      )
+        problems.push(`${filename}: use a shared reading token for ${property}.`);
       if (component && (metric || /^(?:color|border(?:-.+)?)$/.test(property)))
         problems.push(
           `${filename}:${declaration.source.start.line}: ${rule.selector} cannot override shared ${property}.`,
