@@ -8,7 +8,7 @@ import { documentPageSchema } from "./document-page";
 import { imageSchema } from "./images";
 import type { ImageAsset } from "./images";
 import type { MessageAnnotation } from "./passage-reference";
-import { passageReferenceSchema, messageAnnotationSchema, mapPassageSource } from "./passage-reference";
+import { passageReferenceSchema, messageAnnotationSchema, passageSourceSchema, mapPassageSource } from "./passage-reference";
 import {
   previewAnchorSchema,
   previewBuildSchema,
@@ -169,12 +169,13 @@ export const decisionSchema = z.object({
 
 export const requestSchema = z.object({
   id: z.string().uuid(),
-  threadId: z.string().uuid(),
+  threadId: z.string().uuid().nullable(),
   messageId: z.string().uuid().nullable(),
   revision: z.number().int().nonnegative(),
   trigger: z
     .discriminatedUnion("kind", [
       z.object({ kind: z.literal("human") }),
+      z.object({ kind: z.literal("annotation"), annotationId: z.string().uuid() }),
       z.object({
         kind: z.literal("source_changed"),
         sourceId: z.string().uuid(),
@@ -196,9 +197,22 @@ export const requestSchema = z.object({
   error: z.string().nullable(),
 });
 
+export const annotationWorkSchema = z.object({
+  id: z.string().uuid(),
+  source: passageSourceSchema,
+  comment: z.string(),
+  createdAt: z.string(),
+  status: z.enum(["open", "waiting", "resolved"]),
+  continuedIn: asideReferenceSchema.nullable(),
+  reason: z.string().nullable(),
+  resolvedBy: agentIdentitySchema.optional(),
+});
+export type AnnotationWork = z.infer<typeof annotationWorkSchema>;
+
 export const proposalSchema = z.object({
   id: z.string().uuid(),
   turnId: z.string().uuid().nullable().optional(),
+  annotationId: z.string().uuid().optional(),
   threadId: z.string().uuid().nullable().default(null),
   requestId: z.string().uuid().nullable().default(null),
   revision: z.number().int().nonnegative(),
@@ -236,12 +250,14 @@ export const metadataSchema = z
       z.literal(11),
       z.literal(12),
       z.literal(13),
+      z.literal(14),
     ]),
     documentId: z.string().uuid(),
     revision: z.number().int().nonnegative(),
     documentHash: z.string(),
     nativeDocument: nativeDocumentSchema.nullable().optional(),
     threads: z.array(threadSchema),
+    annotations: z.array(annotationWorkSchema).default([]),
     requests: z.array(requestSchema),
     proposals: z.array(proposalSchema),
     resources: z.array(linkedResourceSchema).default([]),
@@ -322,7 +338,7 @@ export const metadataSchema = z
               ?.threadId ?? request.threadId,
         };
       }),
-      version: 13 as const,
+      version: 14 as const,
       agentAccess:
         metadata.version < 5
           ? ("read" as const)
@@ -466,11 +482,12 @@ export const defaultPreferences: Preferences = {
 
 export function createMetadata(): Metadata {
   return {
-    version: 13,
+    version: 14,
     documentId: crypto.randomUUID(),
     revision: 0,
     documentHash: "",
     threads: [],
+    annotations: [],
     requests: [],
     proposals: [],
     resources: [],
@@ -576,7 +593,7 @@ export function applyChanges(
   });
   return {
     text: nextText,
-    metadata: { ...metadata, revision, threads, proposals, decisions: metadata.decisions.map((decision) => ({ ...decision, anchor: decision.anchor ? mapAnchor(nextText, decision.anchor, changes) : null })) },
+    metadata: { ...metadata, revision, annotations: metadata.annotations.map(annotation => ({ ...annotation, source: mapPassageSource(annotation.source, metadata.documentId, nextText, changes) })), threads, proposals, decisions: metadata.decisions.map((decision) => ({ ...decision, anchor: decision.anchor ? mapAnchor(nextText, decision.anchor, changes) : null })) },
   };
 }
 

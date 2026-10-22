@@ -41,6 +41,7 @@ export const passageAnnotationSchema = z.object({
 export const annotationTransferSchema = z.object({
   source: passageSourceSchema,
   comment: z.string(),
+  annotationId: z.string().uuid().optional(),
 });
 export const messageAnnotationSchema = annotationTransferSchema.extend({
   id: z.string().uuid(),

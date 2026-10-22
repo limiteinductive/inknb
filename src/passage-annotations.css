@@ -21,6 +21,7 @@
 }
 .passage-annotation[data-completed="true"] {
   width: auto;
+  max-width: min(280px, calc(100vw - var(--space-4)));
 }
 .passage-annotation[data-completed="true"]:has(.annotation-destinations) {
   width: min(280px, calc(100vw - var(--space-4)));
@@ -31,8 +32,10 @@
   gap: var(--space-1);
 }
 .annotation-token {
-  cursor: grab;
-  flex-shrink: 0;
+  cursor: pointer;
+  min-width: 0;
+  white-space: normal;
+  overflow-wrap: anywhere;
 }
 .annotation-token:active {
   cursor: grabbing;

@@ -1,4 +1,5 @@
-import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import type { RefObject } from "react";
 import { createPortal } from "react-dom";
 import { captureAnchor } from "./domain";
 import type { PassageSource } from "./passage-reference";
@@ -6,6 +7,7 @@ import { annotationTransferType, textRange } from "./passage-reference";
 import { useDocumentSession, useSession } from "./use-session";
 import "./passage-annotations.css";
 import { useAutoHideScrollbar } from "./use-auto-hide-scrollbar";
+import { annotationSpace } from "./annotation-layout";
 
 export default function PassageAnnotations({ active }: { active: boolean }) {
   const session = useDocumentSession();
@@ -14,15 +16,26 @@ export default function PassageAnnotations({ active }: { active: boolean }) {
   const selectedKey = useRef<string | null>(null);
   selectedKey.current = selected;
   const ranges = useRef(new Map<string, Range>());
+  const reply = useRef<HTMLElement | null>(null);
+  useEffect(() => {
+    const focus = (event: FocusEvent) => {
+      if (!(event.target instanceof Element)) return;
+      const editor = event.target.closest<HTMLElement>(".reference-editor");
+      if (editor) reply.current = editor;
+      else if (!event.target.closest(".passage-annotation")) reply.current = null;
+    };
+    document.addEventListener("focusin", focus);
+    return () => document.removeEventListener("focusin", focus);
+  }, []);
   useEffect(() => {
     if (!active || !window.CSS?.highlights) return;
-    const passages = Object.keys(state.drafts).flatMap(key => {
+    const passages = [...Object.keys(state.drafts), ...state.metadata.annotations.filter(annotation => annotation.status === "open").map(annotation => `annotation:${annotation.id}`)].flatMap(key => {
       const range = ranges.current.get(key);
-      return state.drafts[key].annotation && range?.startContainer.isConnected ? [range] : [];
+      return range?.startContainer.isConnected ? [range] : [];
     });
     CSS.highlights.set("inknb-annotation", new Highlight(...passages));
     return () => { CSS.highlights.delete("inknb-annotation"); };
-  }, [active, state.drafts]);
+  }, [active, state.drafts, state.metadata.annotations]);
   useEffect(() => {
     if (!active) return;
     const select = (event: Event) => {
@@ -135,60 +148,95 @@ export default function PassageAnnotations({ active }: { active: boolean }) {
     };
   }, [active, session]);
   if (!active) return null;
-  return <>{Object.entries(state.drafts).filter(([key, draft]) => draft.annotation && (key === selected || draft.content.trim() || draft.annotation.completed)).map(([key]) => <PassageAnnotation key={key} identity={key} sourceRange={ranges.current.get(key)} />)}</>;
+  const identities = new Set([
+    ...Object.entries(state.drafts).filter(([key, draft]) => draft.annotation && (key === selected || draft.content.trim() || draft.annotation.completed)).map(([key]) => key),
+    ...state.metadata.annotations.filter(annotation => annotation.status === "open").map(annotation => `annotation:${annotation.id}`),
+  ]);
+  return <>{[...identities].map(identity => <PassageAnnotation key={identity} identity={identity} sourceRange={ranges.current.get(identity)} reply={reply} />)}</>;
 }
 
-function PassageAnnotation({ identity, sourceRange }: { identity: string; sourceRange?: Range }) {
+function PassageAnnotation({ identity, sourceRange, reply }: { identity: string; sourceRange?: Range; reply: RefObject<HTMLElement | null> }) {
   const session = useDocumentSession();
   const state = useSession();
-  const [position, setPosition] = useState({ left: 0, top: 0 });
+  const [position, setPosition] = useState({ left: 0, top: 0, clipPath: "none", visibility: "hidden" as "hidden" | "visible" });
   const [destinations, setDestinations] = useState(false);
   const [sending, setSending] = useState(false);
   const [announcement, setAnnouncement] = useState("");
   const popup = useRef<HTMLDivElement>(null);
   const comment = useRef<HTMLTextAreaElement>(null);
   const grip = useRef<HTMLButtonElement>(null);
-  const draft = state.drafts[identity];
+  const reserved = useRef<HTMLElement | null>(null);
+  const work = state.metadata.annotations.find(annotation => identity === `annotation:${annotation.id}`);
+  const draft = useMemo(() => state.drafts[identity] ?? (work ? { content: work.comment, images: [], annotation: { source: work.source, completed: true } } : null), [state.drafts[identity], work]);
   const annotation = draft?.annotation;
   useAutoHideScrollbar(comment, Boolean(annotation && !annotation.completed));
   const dismiss = () => {
+    if (work) { void session.dismissAnnotation(work.id).catch(error => session.fail(error)); return; }
     const drafts = { ...session.getSnapshot().drafts };
     delete drafts[identity];
     session.update({ drafts });
   };
+  useLayoutEffect(() => () => {
+    if (reserved.current) annotationSpace(reserved.current, identity, 0);
+    reserved.current = null;
+  }, [identity]);
   useLayoutEffect(() => {
     if (!annotation) return;
     const place = () => {
       const source = annotation.source;
+      let sourceElement: Element | null | undefined = sourceRange?.startContainer.parentElement;
+      let passageRange = sourceRange?.startContainer.isConnected ? sourceRange : null;
       let bounds:
         | { left: number; top: number; right: number; bottom: number }
         | undefined = sourceRange?.startContainer.isConnected ? sourceRange.getBoundingClientRect() : undefined;
-      if (source.kind === "document" && session.surface)
+      if (source.kind === "document" && session.surface) {
+        sourceElement = session.surface.passageElement(source.liveAnchor ?? source.anchor);
         bounds = session.surface.anchorBounds(
           source.liveAnchor ?? source.anchor,
         );
+      }
       if (!bounds && source.kind === "message") {
         const element = document.querySelector(
-          `[data-message-id="${source.messageId}"] [data-message-content="${source.field}"]`,
+          `[data-message-id="${source.messageId}"] [data-message-content="${source.field}"], [data-source-message-id="${source.messageId}"][data-message-content="${source.field}"]`,
         );
-        if (element?.textContent === source.text)
-          bounds = textRange(
-            element,
-            source.from,
-            source.to,
-          )?.getBoundingClientRect();
+        if (element?.textContent === source.text) {
+          sourceElement = element;
+          passageRange = textRange(element, source.from, source.to);
+          bounds = passageRange?.getBoundingClientRect();
+        }
       }
-      if (!bounds) return;
+      const paragraph = source.kind === "document"
+        ? sourceElement
+        : passageRange?.startContainer.parentElement?.closest("p, h1, h2, h3, h4, h5, h6, li, pre, blockquote") ?? sourceElement;
+      if (!(paragraph instanceof HTMLElement) || !bounds) {
+        if (reserved.current) annotationSpace(reserved.current, identity, 0);
+        reserved.current = null;
+        setPosition(current => current.visibility === "hidden" ? current : { ...current, visibility: "hidden" });
+        return;
+      }
       const width = popup.current?.offsetWidth ?? 280;
       const height = popup.current?.offsetHeight ?? 44;
-      const top =
-        bounds.top - height - 8 >= 8
-          ? bounds.top - height - 8
-          : bounds.bottom + 8;
-      setPosition({
-        left: Math.max(8, Math.min(bounds.left, window.innerWidth - width - 8)),
-        top: Math.max(8, Math.min(top, window.innerHeight - height - 8)),
-      });
+      if (reserved.current && reserved.current !== paragraph) annotationSpace(reserved.current, identity, 0);
+      reserved.current = paragraph;
+      const offset = annotationSpace(paragraph, identity, height + 8);
+      const paragraphBounds = paragraph.getBoundingClientRect();
+      const viewport = { left: 0, top: 0, right: window.innerWidth, bottom: window.innerHeight };
+      for (let parent = sourceElement; parent; parent = parent.parentElement) {
+        if (!parent.matches(".document-scroll, .aside-reader-scroll, .aside-conversation-scroll, .response-scroll")) continue;
+        const rectangle = parent.getBoundingClientRect();
+        viewport.left = Math.max(viewport.left, rectangle.left);
+        viewport.top = Math.max(viewport.top, rectangle.top);
+        viewport.right = Math.min(viewport.right, rectangle.right);
+        viewport.bottom = Math.min(viewport.bottom, rectangle.bottom);
+      }
+      const top = paragraphBounds.top + offset + 4;
+      if (top + height <= viewport.top || top >= viewport.bottom || paragraphBounds.right <= viewport.left || paragraphBounds.left >= viewport.right) {
+        setPosition(current => current.visibility === "hidden" ? current : { ...current, visibility: "hidden" });
+        return;
+      }
+      const left = Math.max(viewport.left + 8, Math.min(bounds.left, viewport.right - width - 8));
+      const clipPath = `inset(${Math.max(0, viewport.top - top)}px 0 ${Math.max(0, top + height - viewport.bottom)}px 0)`;
+      setPosition(current => current.left === left && current.top === top && current.clipPath === clipPath && current.visibility === "visible" ? current : { left, top, clipPath, visibility: "visible" });
     };
     const element = comment.current;
     if (element) {
@@ -196,13 +244,23 @@ function PassageAnnotation({ identity, sourceRange }: { identity: string; source
       element.style.height = `${Math.min(160, element.scrollHeight)}px`;
     }
     place();
+    const observer = new ResizeObserver(place);
+    if (popup.current) observer.observe(popup.current);
+    if (reserved.current) {
+      observer.observe(reserved.current);
+      const viewport = reserved.current.closest(".document-scroll, .aside-conversation-scroll, .response-scroll");
+      if (viewport) observer.observe(viewport);
+    }
     window.addEventListener("resize", place);
     document.addEventListener("scroll", place, true);
+    document.addEventListener("inknb-annotations-layout", place);
     return () => {
+      observer.disconnect();
       window.removeEventListener("resize", place);
       document.removeEventListener("scroll", place, true);
+      document.removeEventListener("inknb-annotations-layout", place);
     };
-  }, [annotation, draft?.content, destinations, sourceRange, session]);
+  }, [annotation, draft?.content, destinations, sourceRange, session, state.ready, state.epoch]);
   async function send() {
     if (sending) return;
     setSending(true);
@@ -251,22 +309,11 @@ function PassageAnnotation({ identity, sourceRange }: { identity: string; source
               return;
             }
             if (event.target !== comment.current) return;
-            const current = session.getSnapshot();
-            session.update({
-              drafts: {
-                ...current.drafts,
-                [identity]: {
-                  ...current.drafts[identity],
-                  annotation: { ...annotation, completed: true },
-                },
-              },
-            });
-            setAnnouncement(
-              "Annotation ready. Drag it into a reply, or press Command Enter to send a new aside.",
-            );
-            requestAnimationFrame(() =>
-              grip.current?.focus({ preventScroll: true }),
-            );
+            setSending(true);
+            void session.commitAnnotation(identity).then(() => {
+              setAnnouncement("Annotation queued for your agent. Click it while writing a reply to add context.");
+              requestAnimationFrame(() => grip.current?.focus({ preventScroll: true }));
+            }).catch(error => session.fail(error)).finally(() => setSending(false));
           }}
         >
           <div className="passage-annotation-row">
@@ -275,16 +322,21 @@ function PassageAnnotation({ identity, sourceRange }: { identity: string; source
                 type="button"
                 ref={grip}
                 className="annotation-token"
-                data-inknb-control="annotation.token"
+                data-inknb-control={`annotation.token:${work?.id ?? identity}`}
                 draggable={!sending}
                 aria-label={
                   annotation.completed
-                    ? `Annotation: ${draft.content || annotation.source.quote}. Drag into a reply or choose a destination.`
+                    ? `Annotation: ${draft.content || annotation.source.quote}. Click to add to your active reply, or drag into a reply.`
                     : "Drag annotation into a reply or choose a destination"
                 }
                 aria-expanded={destinations}
-                onClick={() => setDestinations(!destinations)}
-                onDragEnd={event => { if (event.dataTransfer.dropEffect === "copy") dismiss(); }}
+                onClick={() => {
+                  const destination = reply.current;
+                  if (!destination?.isConnected || !destination.getClientRects().length) { setDestinations(!destinations); return; }
+                  destination.dispatchEvent(new CustomEvent("inknb-insert-annotation", { detail: { source: annotation.source, comment: draft.content, ...(work ? { annotationId: work.id } : {}) } }));
+                  setAnnouncement("Annotation added to your reply context.");
+                }}
+                onDragEnd={event => { if (!work && event.dataTransfer.dropEffect === "copy") dismiss(); }}
                 onDragStart={(event) => {
                   event.dataTransfer.effectAllowed = "copy";
                   event.dataTransfer.setData(
@@ -292,11 +344,8 @@ function PassageAnnotation({ identity, sourceRange }: { identity: string; source
                     JSON.stringify({
                       source: annotation.source,
                       comment: draft.content,
+                      ...(work ? { annotationId: work.id } : {}),
                     }),
-                  );
-                  event.dataTransfer.setData(
-                    "text/plain",
-                    `“${annotation.source.quote}”${draft.content ? ` ${draft.content}` : ""}`,
                   );
                   setDestinations(false);
                 }}
@@ -310,9 +359,9 @@ function PassageAnnotation({ identity, sourceRange }: { identity: string; source
                 value={draft.content}
                 rows={1}
                 aria-label="Comment on selected passage"
-                data-inknb-control="annotation.comment"
+                data-inknb-control={`annotation.comment:${identity}`}
                 aria-keyshortcuts="Enter Meta+Enter Shift+Enter"
-                aria-description="Enter keeps a draggable annotation. Command Enter sends a new aside. Shift Enter adds a line."
+                aria-description="Enter queues an annotation for your agent. Command Enter sends a new aside. Shift Enter adds a line."
                 placeholder="Comment…"
                 disabled={sending}
                 onChange={(event) => {
@@ -336,7 +385,7 @@ function PassageAnnotation({ identity, sourceRange }: { identity: string; source
               role="group"
               aria-label="Annotation destinations"
             >
-              {annotation.completed && (
+              {annotation.completed && !work && (
                 <button
                   type="button"
                   className="text-button"
@@ -373,10 +422,11 @@ function PassageAnnotation({ identity, sourceRange }: { identity: string; source
                         detail: {
                           source: annotation.source,
                           comment: draft.content,
+                          ...(work ? { annotationId: work.id } : {}),
                         },
                       }),
                     );
-                    dismiss();
+                    if (!work) dismiss();
                   }}
                 >
                   {element

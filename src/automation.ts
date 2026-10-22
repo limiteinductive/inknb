@@ -393,11 +393,27 @@ export function planAutomation(
         });
     }
   }
+  next = {
+    ...next,
+    annotations: next.annotations.map(annotation => {
+      if (annotation.status === "open") {
+        const destination = next.threads.find(thread => thread.messages.some(message => message.annotations?.some(context => context.annotationId === annotation.id)));
+        if (destination) annotation = { ...annotation, status: "waiting", continuedIn: { documentId: next.documentId, threadId: destination.id } };
+      }
+      const discussion = annotation.continuedIn?.documentId === next.documentId
+        ? next.threads.find(thread => thread.id === annotation.continuedIn?.threadId)
+        : null;
+      if (annotation.status !== "waiting" || !discussion?.resolved) return annotation;
+      return { ...annotation, status: "resolved" as const, reason: discussion.resolution?.reason ?? "Completed." };
+    }),
+  };
   const metadata = {
     ...next,
     requests: [
       ...next.requests.map((request) => {
         if (request.state === "answered") return request;
+        const annotationId = request.trigger.kind === "annotation" ? request.trigger.annotationId : null;
+        if (annotationId && next.annotations.find(annotation => annotation.id === annotationId)?.status !== "open") return { ...request, state: "answered" as const };
         const thread = next.threads.find(
           (thread) => thread.id === request.threadId,
         );

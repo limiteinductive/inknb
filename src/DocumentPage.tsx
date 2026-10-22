@@ -83,6 +83,15 @@ export default function DocumentPage() {
         }
         return element.getBoundingClientRect();
       },
+      passageElement(anchor) {
+        const resolved = session.model!.state.doc.resolve(documentPosition(session.model!.projection, anchor.from));
+        for (let depth = resolved.depth; depth > 0; depth -= 1) {
+          const identity = String(resolved.node(depth).attrs.identity);
+          const target = element.querySelector<HTMLElement>(`[data-page-identity="${identity}"]`);
+          if (target) return target;
+        }
+        return element;
+      },
       anchorBounds(anchor) {
         const region = anchor.native?.region;
         if (!region) return this.coordsAtPos(anchor.from);

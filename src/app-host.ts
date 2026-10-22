@@ -599,7 +599,7 @@ class AppHost {
           if (previous) return null;
           resources = [...resources, resource];
         }
-        session.changed({ ...metadata, version: 13, resources });
+        session.changed({ ...metadata, version: 14, resources });
         return null;
       });
       await invoke("host_changed");
@@ -675,7 +675,7 @@ class AppHost {
       if (!agentId) throw Error("Identify the connected caller first.");
       return [...this.documents.sessions.values()].flatMap((session) => {
         const metadata = session.getSnapshot().metadata;
-        return metadata.requests.filter((request) => request.state !== "answered" && request.binding && `${request.binding.provider}:${request.binding.sessionId}` === agentId).map((request) => ({ ...request, documentId: metadata.documentId, thread: metadata.threads.find((thread) => thread.id === request.threadId), permission: session.agentAccess }));
+        return metadata.requests.filter((request) => request.state !== "answered" && request.binding && `${request.binding.provider}:${request.binding.sessionId}` === agentId).map((request) => ({ ...request, documentId: metadata.documentId, thread: metadata.threads.find((thread) => thread.id === request.threadId), annotation: metadata.annotations.find(annotation => request.trigger.kind === "annotation" && annotation.id === request.trigger.annotationId), permission: session.agentAccess }));
       });
     }
     if (method === "spaces_read")

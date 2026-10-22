@@ -141,6 +141,7 @@ export default function ReferenceEditor({
     if (!host.current) return;
     const insertAnnotation = (value: unknown) => {
       const annotation = annotationTransferSchema.parse(value);
+      if (annotation.annotationId && view.state.doc.attrs.annotations.some((current: MessageAnnotation) => current.annotationId === annotation.annotationId)) { view.focus(); return; }
       view.dispatch(
         closeHistory(view.state.tr).setDocAttribute("annotations", [
           ...view.state.doc.attrs.annotations,

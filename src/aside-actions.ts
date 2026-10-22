@@ -23,6 +23,8 @@ export const asideActionSchema = z.discriminatedUnion("kind", [
   }),
   draftSchema.extend({ kind: z.literal("draft"), key: z.string() }),
   z.object({ kind: z.literal("annotation-send"), key: z.string() }),
+  z.object({ kind: z.literal("annotation-commit"), key: z.string() }),
+  z.object({ kind: z.literal("annotation-dismiss"), annotationId: z.string().uuid() }),
   z.object({
     kind: z.literal("composer"),
     composer: z.boolean(),

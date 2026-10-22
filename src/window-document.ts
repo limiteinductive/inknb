@@ -333,6 +333,17 @@ export class WindowDocument extends DocumentSession {
     });
     return receipt;
   }
+  async commitAnnotation(key: string): Promise<void> {
+    const before = this.getWorkingSnapshot().drafts[key];
+    await this.action({ kind: "annotation-commit", key });
+    const state = this.getWorkingSnapshot();
+    const drafts = { ...state.drafts };
+    if (JSON.stringify(state.drafts[key]) === JSON.stringify(before)) delete drafts[key];
+    this.update({ drafts });
+  }
+  async dismissAnnotation(annotationId: string): Promise<void> {
+    await this.action({ kind: "annotation-dismiss", annotationId });
+  }
   async sendAnnotation(key: string): Promise<CommentReceipt> {
     const before = this.getWorkingSnapshot().drafts[key];
     const receipt = z.object({ threadId: z.string().uuid() }).parse(await this.action({ kind: "annotation-send", key }));

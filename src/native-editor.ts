@@ -29,6 +29,7 @@ import { captureDocument } from "./native-document";
 import { documentPosition } from "./native-source";
 import type { Anchor } from "./domain";
 import { captureAnchor, mapAnchor } from "./domain";
+import { annotationTransferType } from "./passage-reference";
 import type { WindowDocument } from "./window-document";
 import { NativeRegionPicker } from "./native-region";
 import { documentScroll } from "./document-scroll";
@@ -222,6 +223,14 @@ export class NativeEditor extends NativeDocumentModel {
                 "data-aside-thread": thread.id,
               }),
             );
+          }
+          if (!current.focus) for (const annotation of current.metadata.annotations) {
+            if (annotation.status !== "open" || annotation.source.kind !== "document") continue;
+            const anchor = annotation.source.liveAnchor ?? annotation.source.anchor;
+            if (anchor.status !== "attached" || anchor.to > this.projection.text.length) continue;
+            const from = documentPosition(this.projection, anchor.from);
+            const to = documentPosition(this.projection, anchor.to, -1);
+            if (to > from) ranges.push(...passageDecorations(state.doc, from, to, { class: "annotated-passage", "data-annotation-id": annotation.id }));
           }
           if (!current.focus) for (const decision of current.metadata.decisions) {
             const anchor = this.anchors[decision.id] ?? decision.anchor;
@@ -446,6 +455,11 @@ export class NativeEditor extends NativeDocumentModel {
         },
       },
       handleDOMEvents: {
+        drop: (_view, event) => {
+          if (!event.dataTransfer?.types.includes(annotationTransferType)) return false;
+          event.preventDefault();
+          return true;
+        },
         pointerdown: (_view, event) => {
           this.links.pointerDown(event);
           this.keyboardFocus = false;
@@ -642,7 +656,7 @@ export class NativeEditor extends NativeDocumentModel {
     session.update({
       metadata: {
         ...snapshot.metadata,
-        version: 13,
+        version: 14,
         nativeDocument: captureDocument(document, snapshot.text),
       },
     });
@@ -1010,6 +1024,16 @@ export class NativeEditor extends NativeDocumentModel {
     if (preview) return preview.getBoundingClientRect();
     return this.editor.coordsAtPos(documentPosition(this.projection, position));
   }
+  passageElement(anchor: Anchor): HTMLElement {
+    const position = documentPosition(this.projection, anchor.from);
+    const resolved = this.editor.state.doc.resolve(position);
+    for (let depth = resolved.depth; depth > 0; depth -= 1) {
+      const node = this.editor.nodeDOM(resolved.before(depth));
+      if (node instanceof HTMLElement) return node;
+    }
+    return this.dom;
+  }
+
   anchorBounds(anchor: Anchor): {
     left: number;
     right: number;

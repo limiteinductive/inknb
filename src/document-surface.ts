@@ -4,6 +4,7 @@ export interface WritingSurface {
   readonly dom: HTMLElement;
   coordsAtPos(position: number): { left: number; top: number; right: number; bottom: number };
   anchorBounds(anchor: Anchor): { left: number; top: number; right: number; bottom: number };
+  passageElement(anchor: Anchor): HTMLElement;
   scrollToSource(position: number, anchor?: Anchor): void;
   requestMeasure(): void;
   focus(): void;
