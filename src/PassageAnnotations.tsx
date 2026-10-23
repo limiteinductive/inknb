@@ -330,16 +330,7 @@ function PassageAnnotation({ identity, sourceRange, reply }: { identity: string;
             if (event.target !== comment.current && !event.metaKey && !event.ctrlKey) return;
             event.preventDefault();
             event.stopPropagation();
-            if (event.metaKey || event.ctrlKey) {
-              if (!event.repeat) void send();
-              return;
-            }
-            if (event.target !== comment.current) return;
-            setSending(true);
-            void session.commitAnnotation(identity).then(() => {
-              setAnnouncement(work ? "Annotation updated." : "Annotation queued for your agent. Click it while writing a reply to add context.");
-              requestAnimationFrame(() => grip.current?.focus({ preventScroll: true }));
-            }).catch(error => session.fail(error)).finally(() => setSending(false));
+            if (!event.repeat) void send();
           }}
         >
           <div className="passage-annotation-row">
@@ -396,7 +387,7 @@ function PassageAnnotation({ identity, sourceRange, reply }: { identity: string;
                 aria-label="Comment on selected passage"
                 data-inknb-control={`annotation.comment:${identity}`}
                 aria-keyshortcuts="Enter Meta+Enter Shift+Enter"
-                aria-description="Enter queues an annotation for your agent. Command Enter sends a new aside. Shift Enter adds a line."
+                aria-description="Enter sends the annotation in a new aside. Shift Enter adds a line."
                 placeholder="Comment…"
                 disabled={sending}
                 onChange={(event) => {

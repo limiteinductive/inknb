@@ -41,7 +41,7 @@ Web links reveal a preview after a short hover or on keyboard focus. The preview
 
 Links use the hand pointer, including inside editable text. Whole-table annotations reserve space above the table and align with its right edge.
 
-Annotations align above the right edge of their passage. Their opaque material and neutral edge separate them from the reading surface. Double-click or F2 edits the existing annotation. Enter saves its comment. Escape cancels an edit. Send and delete use the glyph variant of the shared icon control. These actions appear on hover or focus. A single click focuses the annotation. Hidden actions reserve no space.
+Annotations align above the right edge of their passage. Their opaque material and neutral edge separate them from the reading surface. Double-click or F2 edits the existing annotation. Enter sends its comment in a new aside. Shift+Enter inserts a line. Escape cancels an edit. Send and delete use the glyph variant of the shared icon control. These actions appear on hover or focus. A single click focuses the annotation. Hidden actions reserve no space.
 
 Application choice menus use the shared menu surface and accessible menu primitives. Single choices show a check beside the selected item. Native HTML dropdowns are rejected by the design contract.
 
