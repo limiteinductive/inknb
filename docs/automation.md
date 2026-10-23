@@ -90,6 +90,8 @@ Run `npm ci` in the repository before using that example. The handler reads the 
 
 `requests_list` includes a `trigger` for each item. The trigger kinds are `human`, `source_changed`, `proposal_stale`, and `anchor_detached`.
 
+Human messages can carry comments in `annotations` with empty `content`. Request adapters retain the complete message, including annotations, images, and references.
+
 For `source_changed`, read the referenced file and call `source_review` with its observed hash and a concise explanation. A newer fingerprint rejects the review. Restoring the original file supersedes an obsolete review request.
 
 For `proposal_stale`, read the current passage and call `edit_propose` with `replaces` set to the old proposal ID. The replacement remains a suggestion. It does not inherit direct edit permission.

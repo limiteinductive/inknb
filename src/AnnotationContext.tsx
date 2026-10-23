@@ -27,6 +27,7 @@ export default function AnnotationContext({
               className="annotation-context-source"
               data-message-content={`annotation-quote:${annotation.id}`}
               aria-label={`Show passage: ${annotation.source.quote}`}
+              title={annotation.source.quote}
               onClick={() => {
                 if (!window.getSelection()?.isCollapsed) return;
                 void session

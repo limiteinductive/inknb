@@ -65,7 +65,7 @@ New tables and whole-table replacements use the same table review layout. The pr
 
 Whole-table anchors highlight the table surface. They do not underline or highlight its text separately. Object selections suppress the browser's text selection paint. Text selections within cells retain text highlighting.
 
-Passage references occupy one line and truncate with an ellipsis. Whole-table references show a table icon and the first column heading. The anchor retains the full table. Clicking the reference reveals its source.
+Passage references wrap across up to two lines and truncate with an ellipsis. Hover reveals the full quotation. Their content stays within the message width. Whole-table references show a table icon and the first column heading. The anchor retains the full table. Clicking the reference reveals its source.
 
 Each table exposes the shared comment-plus icon with a tooltip and accessible label. Selection and deletion remain in the table context menu.
 

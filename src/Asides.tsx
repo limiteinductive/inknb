@@ -95,6 +95,7 @@ function AsidePassage({ threadId }: { threadId?: string }) {
       type="button"
       className="aside-passage annotation-context-source"
       aria-label={tableTitle ? `Show table: ${tableTitle}` : `Show passage: ${quote || "This position"}`}
+      title={quote || "This position"}
       data-inknb-control={`aside.passage:${threadId ?? "new"}`}
       onClick={() => {
         if (!window.getSelection()?.isCollapsed) return;
