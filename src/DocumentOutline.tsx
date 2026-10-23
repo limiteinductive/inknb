@@ -8,7 +8,7 @@ import {
   type CSSProperties,
 } from "react";
 import { Button } from "react-aria-components";
-import { ListTree, X } from "lucide-react";
+import { X } from "lucide-react";
 import { useDocumentSession, useSession } from "./use-session";
 import { documentOutline } from "./document-structure";
 import { workspace } from "./window-workspace";
@@ -52,7 +52,7 @@ export default function DocumentOutline({ active }: { active: boolean }) {
     observer.observe(element);
     observer.observe(viewport);
     return () => observer.disconnect();
-  }, [active, visible, state.pageVisible, state.preferences.line_width]);
+  }, [active, visible, state.pageVisible, state.preferences.line_width, headings.length]);
   useEffect(() => {
     const viewport =
       container.current?.closest<HTMLElement>(".document-scroll");
@@ -108,9 +108,9 @@ export default function DocumentOutline({ active }: { active: boolean }) {
       (list.current.clientHeight - selected.offsetHeight) / 2;
   }, [panelVisible, options.follow, current]);
   useLayoutEffect(() => {
-    if (!active || !visible || state.pageVisible) setExpanded(false);
-  }, [active, visible, state.pageVisible]);
-  if (!visible || state.pageVisible) return null;
+    if (!active || !visible || state.pageVisible || !headings.length) setExpanded(false);
+  }, [active, visible, state.pageVisible, headings.length]);
+  if (!visible || state.pageVisible || !headings.length) return null;
   const currentHeading = headings.find(
     (heading) => heading.identity === current,
   );
@@ -185,7 +185,6 @@ export default function DocumentOutline({ active }: { active: boolean }) {
               }}
             />
           ))}
-          {!headings.length && <ListTree size={18} />}
         </span>
       </Button>
       <div className="outline-panel" id={panelId} hidden={!panelVisible}>
@@ -260,9 +259,6 @@ export default function DocumentOutline({ active }: { active: boolean }) {
             </li>
           ))}
         </ol>
-        {!headings.length && (
-          <p className="quiet-note">Headings will appear here.</p>
-        )}
       </div>
     </nav>
   );
