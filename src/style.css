@@ -480,6 +480,14 @@ button,
   color: var(--accent);
   background: var(--accent-wash);
 }
+.icon-button-glyph {
+  width: var(--control-small-height);
+  height: var(--control-small-height);
+}
+.icon-button-glyph:is(:hover, [data-hovered], :focus-visible, [data-focus-visible]) {
+  background: transparent;
+  color: var(--ink);
+}
 .workspace {
   flex: 1;
   min-height: 0;

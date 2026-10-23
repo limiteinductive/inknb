@@ -343,6 +343,9 @@ export class WindowDocument extends DocumentSession {
   }
   async dismissAnnotation(annotationId: string): Promise<void> {
     await this.action({ kind: "annotation-dismiss", annotationId });
+    const drafts = { ...this.getWorkingSnapshot().drafts };
+    delete drafts[`annotation:${annotationId}`];
+    this.update({ drafts });
   }
   async sendAnnotation(key: string): Promise<CommentReceipt> {
     const before = this.getWorkingSnapshot().drafts[key];

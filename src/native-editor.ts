@@ -1071,10 +1071,15 @@ export class NativeEditor extends NativeDocumentModel {
     }
     const start = this.coordsAtPos(anchor.from);
     const end = this.coordsAtPos(Math.max(anchor.from, anchor.to - 1));
+    const first = this.editor.domAtPos(documentPosition(this.projection, anchor.from));
+    const last = this.editor.domAtPos(documentPosition(this.projection, anchor.to, -1));
+    const range = document.createRange();
+    range.setStart(first.node, first.offset);
+    range.setEnd(last.node, last.offset);
     return {
       left: start.left,
       top: start.top,
-      right: end.right,
+      right: Math.max(start.right, end.right, range.getBoundingClientRect().right),
       bottom: end.bottom,
     };
   }

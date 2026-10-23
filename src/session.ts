@@ -582,14 +582,18 @@ export class DocumentSession {
           if (!draft?.annotation) throw Error("This annotation is unavailable.");
           const identity = z.string().uuid().parse(action.key.replace(/^annotation:/, ""));
           const previous = this.state.metadata.annotations.find(annotation => annotation.id === identity);
-          if (previous) return { annotationId: previous.id };
-          const source = this.currentPassage(draft.annotation.source);
+          if (previous?.comment === draft.content) return { annotationId: previous.id };
+          if (previous && draft.annotation.expectedComment !== undefined && previous.comment !== draft.annotation.expectedComment)
+            throw Error("This annotation changed elsewhere. Your draft stays saved.");
+          const source = previous?.source ?? this.currentPassage(draft.annotation.source);
           const recipient = requestAgentId(this.state.metadata, undefined, draft.recipientAgentId);
           const createdAt = new Date().toISOString();
           this.changed({
             ...this.state.metadata,
-            annotations: [...this.state.metadata.annotations, { id: identity, source, comment: draft.content, createdAt, status: "open", continuedIn: null, reason: null }],
-            requests: [...this.state.metadata.requests, {
+            annotations: previous
+              ? this.state.metadata.annotations.map(annotation => annotation.id === identity ? { ...annotation, comment: draft.content, status: "open", reason: null, resolvedBy: undefined } : annotation)
+              : [...this.state.metadata.annotations, { id: identity, source, comment: draft.content, createdAt, status: "open", continuedIn: null, reason: null }],
+            requests: [...this.state.metadata.requests.map(request => request.trigger.kind === "annotation" && request.trigger.annotationId === identity ? { ...request, state: "answered" as const } : request), {
               id: crypto.randomUUID(), threadId: null, messageId: null, revision: this.state.metadata.revision,
               trigger: { kind: "annotation", annotationId: identity }, permission: this.agentAccess, state: "pending",
               binding: this.state.metadata.agents.find(agent => agent.id === recipient) ?? null,

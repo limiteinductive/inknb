@@ -22,6 +22,9 @@
     var(--paper-grain);
   --material-reading: var(--paper-reading-texture), var(--surface);
   --material-note: var(--paper-note-texture), var(--surface);
+  --annotation-surface: #eeece2;
+  --annotation-edge: color-mix(in srgb, var(--annotation-surface) 80%, var(--ink));
+  --material-annotation: var(--paper-note-texture), var(--annotation-surface);
   --space-1: 4px;
   --space-2: 8px;
   --space-3: 12px;
@@ -131,6 +134,7 @@
   --paper-light: #ffffff06;
   --paper-shade: #0000000a;
   --surface: #272d3b;
+  --annotation-surface: #394355;
   --toolbar-glint: #ffffff1c;
   --toolbar-surface: #303746;
   --toolbar-divider: #50596b;

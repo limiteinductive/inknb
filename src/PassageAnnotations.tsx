@@ -8,6 +8,8 @@ import { useDocumentSession, useSession } from "./use-session";
 import "./passage-annotations.css";
 import { useAutoHideScrollbar } from "./use-auto-hide-scrollbar";
 import { annotationSpace } from "./annotation-layout";
+import { ArrowUp, X } from "lucide-react";
+import IconButton from "./IconButton";
 
 export default function PassageAnnotations({ active }: { active: boolean }) {
   const session = useDocumentSession();
@@ -159,17 +161,24 @@ function PassageAnnotation({ identity, sourceRange, reply }: { identity: string;
   const session = useDocumentSession();
   const state = useSession();
   const [position, setPosition] = useState({ left: 0, top: 0, clipPath: "none", visibility: "hidden" as "hidden" | "visible" });
-  const [destinations, setDestinations] = useState(false);
   const [sending, setSending] = useState(false);
   const [announcement, setAnnouncement] = useState("");
   const popup = useRef<HTMLDivElement>(null);
   const comment = useRef<HTMLTextAreaElement>(null);
   const grip = useRef<HTMLButtonElement>(null);
   const reserved = useRef<HTMLElement | null>(null);
+  const clickTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const work = state.metadata.annotations.find(annotation => identity === `annotation:${annotation.id}`);
   const draft = useMemo(() => state.drafts[identity] ?? (work ? { content: work.comment, images: [], annotation: { source: work.source, completed: true } } : null), [state.drafts[identity], work]);
   const annotation = draft?.annotation;
   useAutoHideScrollbar(comment, Boolean(annotation && !annotation.completed));
+  const edit = () => {
+    if (!annotation || sending) return;
+    clearTimeout(clickTimer.current);
+    const current = session.getSnapshot();
+    session.update({ drafts: { ...current.drafts, [identity]: { ...draft, content: draft?.content ?? "", images: draft?.images ?? [], annotation: { ...annotation, completed: false, ...(work ? { expectedComment: work.comment } : {}) } } } });
+    requestAnimationFrame(() => comment.current?.focus({ preventScroll: true }));
+  };
   const dismiss = () => {
     if (work) { void session.dismissAnnotation(work.id).catch(error => session.fail(error)); return; }
     const drafts = { ...session.getSnapshot().drafts };
@@ -177,6 +186,7 @@ function PassageAnnotation({ identity, sourceRange, reply }: { identity: string;
     session.update({ drafts });
   };
   useLayoutEffect(() => () => {
+    clearTimeout(clickTimer.current);
     if (reserved.current) annotationSpace(reserved.current, identity, 0);
     reserved.current = null;
   }, [identity]);
@@ -234,7 +244,7 @@ function PassageAnnotation({ identity, sourceRange, reply }: { identity: string;
         setPosition(current => current.visibility === "hidden" ? current : { ...current, visibility: "hidden" });
         return;
       }
-      const preferredLeft = paragraph.matches(".native-table") ? paragraphBounds.right - width : bounds.left;
+      const preferredLeft = (paragraph.matches(".native-table") ? paragraphBounds.right : bounds.right) - width;
       const left = Math.max(viewport.left + 8, Math.min(preferredLeft, viewport.right - width - 8));
       const clipPath = `inset(${Math.max(0, viewport.top - top)}px 0 ${Math.max(0, top + height - viewport.bottom)}px 0)`;
       setPosition(current => current.left === left && current.top === top && current.clipPath === clipPath && current.visibility === "visible" ? current : { left, top, clipPath, visibility: "visible" });
@@ -261,11 +271,12 @@ function PassageAnnotation({ identity, sourceRange, reply }: { identity: string;
       document.removeEventListener("scroll", place, true);
       document.removeEventListener("inknb-annotations-layout", place);
     };
-  }, [annotation, draft?.content, destinations, sourceRange, session, state.ready, state.epoch]);
+  }, [annotation, draft?.content, sourceRange, session, state.ready, state.epoch]);
   async function send() {
     if (sending) return;
     setSending(true);
     try {
+      if (work && annotation && !annotation.completed) await session.commitAnnotation(identity);
       await session.sendAnnotation(identity);
       setAnnouncement("Annotation sent in a new aside.");
     } catch (error) {
@@ -299,10 +310,24 @@ function PassageAnnotation({ identity, sourceRange, reply }: { identity: string;
               return;
             if (event.key === "Escape") {
               event.stopPropagation();
+              if (work && !annotation.completed) {
+                const drafts = { ...session.getSnapshot().drafts };
+                delete drafts[identity];
+                session.update({ drafts });
+                requestAnimationFrame(() => grip.current?.focus({ preventScroll: true }));
+                return;
+              }
               dismiss();
               return;
             }
+            if (event.key === "F2" && annotation.completed) {
+              event.preventDefault();
+              event.stopPropagation();
+              edit();
+              return;
+            }
             if (event.key !== "Enter" || event.shiftKey || event.altKey) return;
+            if (event.target !== comment.current && !event.metaKey && !event.ctrlKey) return;
             event.preventDefault();
             event.stopPropagation();
             if (event.metaKey || event.ctrlKey) {
@@ -312,7 +337,7 @@ function PassageAnnotation({ identity, sourceRange, reply }: { identity: string;
             if (event.target !== comment.current) return;
             setSending(true);
             void session.commitAnnotation(identity).then(() => {
-              setAnnouncement("Annotation queued for your agent. Click it while writing a reply to add context.");
+              setAnnouncement(work ? "Annotation updated." : "Annotation queued for your agent. Click it while writing a reply to add context.");
               requestAnimationFrame(() => grip.current?.focus({ preventScroll: true }));
             }).catch(error => session.fail(error)).finally(() => setSending(false));
           }}
@@ -327,15 +352,24 @@ function PassageAnnotation({ identity, sourceRange, reply }: { identity: string;
                 draggable={!sending}
                 aria-label={
                   annotation.completed
-                    ? `Annotation: ${draft.content || annotation.source.quote}. Click to add to your active reply, or drag into a reply.`
+                    ? `Annotation: ${draft.content || annotation.source.quote}. Double-click or press F2 to edit. Click to add to your active reply, or drag into a reply.`
                     : "Drag annotation into a reply or choose a destination"
                 }
-                aria-expanded={destinations}
-                onClick={() => {
-                  const destination = reply.current;
-                  if (!destination?.isConnected || !destination.getClientRects().length) { setDestinations(!destinations); return; }
-                  destination.dispatchEvent(new CustomEvent("inknb-insert-annotation", { detail: { source: annotation.source, comment: draft.content, ...(work ? { annotationId: work.id } : {}) } }));
-                  setAnnouncement("Annotation added to your reply context.");
+                onClick={(event) => {
+                  event.currentTarget.focus({ preventScroll: true });
+                  clearTimeout(clickTimer.current);
+                  if (event.detail > 1) return;
+                  clickTimer.current = setTimeout(() => {
+                    const destination = reply.current;
+                    if (!destination?.isConnected || !destination.getClientRects().length) return;
+                    destination.dispatchEvent(new CustomEvent("inknb-insert-annotation", { detail: { source: annotation.source, comment: draft.content, ...(work ? { annotationId: work.id } : {}) } }));
+                    setAnnouncement("Annotation added to your reply context.");
+                  }, event.detail === 0 ? 0 : 500);
+                }}
+                onDoubleClick={(event) => {
+                  event.preventDefault();
+                  event.stopPropagation();
+                  edit();
                 }}
                 onDragEnd={event => { if (!work && event.dataTransfer.dropEffect === "copy") dismiss(); }}
                 onDragStart={(event) => {
@@ -348,7 +382,7 @@ function PassageAnnotation({ identity, sourceRange, reply }: { identity: string;
                       ...(work ? { annotationId: work.id } : {}),
                     }),
                   );
-                  setDestinations(false);
+                  clearTimeout(clickTimer.current);
                 }}
               >
                 {draft.content || annotation.source.quote}
@@ -379,73 +413,11 @@ function PassageAnnotation({ identity, sourceRange, reply }: { identity: string;
                 }}
               />
             )}
-          </div>
-          {destinations && (
-            <div
-              className="annotation-destinations"
-              role="group"
-              aria-label="Annotation destinations"
-            >
-              {annotation.completed && !work && (
-                <button
-                  type="button"
-                  className="text-button"
-                  onClick={() => {
-                    const current = session.getSnapshot();
-                    session.update({
-                      drafts: {
-                        ...current.drafts,
-                        [identity]: {
-                          ...current.drafts[identity],
-                          annotation: { ...annotation, completed: false },
-                        },
-                      },
-                    });
-                    setDestinations(false);
-                    requestAnimationFrame(() =>
-                      comment.current?.focus({ preventScroll: true }),
-                    );
-                  }}
-                >
-                  Edit comment
-                </button>
-              )}
-              {Array.from(
-                document.querySelectorAll<HTMLElement>(".reference-editor"),
-              ).map((element) => (
-                <button
-                  type="button"
-                  className="text-button"
-                  key={element.dataset.inknbControl}
-                  onClick={() => {
-                    element.dispatchEvent(
-                      new CustomEvent("inknb-insert-annotation", {
-                        detail: {
-                          source: annotation.source,
-                          comment: draft.content,
-                          ...(work ? { annotationId: work.id } : {}),
-                        },
-                      }),
-                    );
-                    if (!work) dismiss();
-                  }}
-                >
-                  {element
-                    .closest(".margin-note")
-                    ?.querySelector(".message")
-                    ?.textContent?.slice(0, 70) || "New aside draft"}
-                </button>
-              ))}
-              <button
-                type="button"
-                className="text-button"
-                disabled={sending}
-                onClick={() => void send()}
-              >
-                Send in a new aside
-              </button>
+            <div className="annotation-actions">
+              <IconButton icon={ArrowUp} appearance="glyph" label="Send in a new aside" disabled={sending} onPress={() => void send()} />
+              <IconButton icon={X} appearance="glyph" label="Delete annotation" agentControl={`annotation.delete:${identity}`} disabled={sending} onPress={dismiss} />
             </div>
-          )}
+          </div>
         </div>
       )}
     </>,

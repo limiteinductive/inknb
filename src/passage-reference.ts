@@ -37,6 +37,7 @@ export const passageReferenceSchema = z.object({
 export const passageAnnotationSchema = z.object({
   source: passageSourceSchema,
   completed: z.boolean(),
+  expectedComment: z.string().optional(),
 });
 export const annotationTransferSchema = z.object({
   source: passageSourceSchema,

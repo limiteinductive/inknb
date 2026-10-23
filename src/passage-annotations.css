@@ -3,9 +3,9 @@
   z-index: 45;
   width: min(280px, calc(100vw - var(--space-4)));
   padding: var(--space-2) var(--space-3);
-  border: 0;
+  border: 1px solid var(--annotation-edge);
   border-radius: var(--radius-control);
-  background: var(--material-note);
+  background: var(--material-annotation);
   box-shadow: var(--elevation-card);
   color: var(--ink);
   font: var(--text-body-size)/var(--text-body-height) var(--interface-font);
@@ -23,15 +23,13 @@
   width: auto;
   max-width: min(280px, calc(100vw - var(--space-4)));
 }
-.passage-annotation[data-completed="true"]:has(.annotation-destinations) {
-  width: min(280px, calc(100vw - var(--space-4)));
-}
 .passage-annotation-row {
   display: flex;
   align-items: flex-start;
   gap: var(--space-1);
 }
 .annotation-token {
+  flex: 1;
   cursor: pointer;
   min-width: 0;
   white-space: normal;
@@ -59,16 +57,14 @@
   outline: none;
   box-shadow: none;
 }
-.annotation-destinations {
-  display: grid;
-  gap: var(--space-1);
-  padding: var(--space-1);
-  border-top: 1px solid var(--line);
+.annotation-actions {
+  display: none;
+  flex-shrink: 0;
+  margin-block: calc(-1 * var(--space-1));
+  margin-inline-end: calc(-1 * var(--space-2));
 }
-.annotation-destinations button {
-  text-align: left;
-  white-space: normal;
-  overflow-wrap: anywhere;
+.passage-annotation:is(:hover, :focus-within) .annotation-actions {
+  display: flex;
 }
 .reference-editor {
   min-height: 1lh;
