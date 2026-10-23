@@ -20,6 +20,7 @@ import {
   deleteRow,
   deleteColumn,
   TableView,
+  CellSelection,
 } from "prosemirror-tables";
 import { NativeDocumentModel, selectionForRange } from "./native-model";
 import type { NativeUpdate } from "./native-model";
@@ -137,6 +138,13 @@ export class NativeEditor extends NativeDocumentModel {
     this.refresh();
   };
   private onObjectScroll = () => this.positionRegionHighlight();
+  private onGutterPointerDown = (event: Event) => {
+    if (!(event instanceof PointerEvent) || event.button !== 0 || !(event.target instanceof Element)) return;
+    if (!event.target.matches(".document-canvas, .document-surface-container, .workspace, .writing-region, .editor-host")) return;
+    const selection = this.editor.state.selection;
+    if (!(selection instanceof CellSelection) && !(selection instanceof NodeSelection && selection.node.type.name === "table")) return;
+    this.editor.dispatch(this.editor.state.tr.setSelection(Selection.near(selection.$from)));
+  };
 
   constructor(host: HTMLElement, session: WindowDocument) {
     super(session, []);
@@ -644,6 +652,7 @@ export class NativeEditor extends NativeDocumentModel {
     this.geometryObserver.observe(this.dom);
     this.geometryObserver.observe(host);
     this.dom.addEventListener("scroll", this.onObjectScroll, true);
+    this.dom.closest(".document-canvas")?.addEventListener("pointerdown", this.onGutterPointerDown);
     this.focusHost = this.dom.closest<HTMLElement>(".document-body");
     if (this.focusHost) this.geometryObserver.observe(this.focusHost);
     this.focusHost?.addEventListener("inknb-aside-focus", this.onAsideFocus);
@@ -800,6 +809,7 @@ export class NativeEditor extends NativeDocumentModel {
     };
     return {
       actions: [
+        { text: "Zoom Image", action: () => { window.dispatchEvent(new CustomEvent("inknb-image-zoom", { detail: image })); } },
         { text: "Copy Image", action: () => copyImage(image) },
         { text: "Save Image As…", action: async () => {
           const path = await save({ defaultPath: name, filters: [{ name: "Image", extensions: [extension] }] });
@@ -1158,6 +1168,7 @@ export class NativeEditor extends NativeDocumentModel {
     this.region.stop(false);
     this.geometryObserver.disconnect();
     this.dom.removeEventListener("scroll", this.onObjectScroll, true);
+    this.dom.closest(".document-canvas")?.removeEventListener("pointerdown", this.onGutterPointerDown);
     this.regionHighlight.remove();
     this.focusHost?.removeEventListener("inknb-aside-focus", this.onAsideFocus);
     this.findDialog.remove();

@@ -37,6 +37,7 @@ import LinkedResources from "./LinkedResources";
 import IconButton from "./IconButton";
 import PassageAnnotations from "./PassageAnnotations";
 import LinkPreview from "./LinkPreview";
+import ImageViewer from "./ImageViewer";
 import { useContextMenus } from "./context-menu";
 import { captureAnchor } from "./domain";
 import { readWindowChrome, windowChromeSchema } from "./window-chrome";
@@ -464,6 +465,7 @@ createRoot(document.getElementById("root")!).render(
   windowLabel === "host" ? null : (
     <>
       <LinkPreview />
+      <ImageViewer />
       {windowLabel === "preview" ? (
         <Suspense fallback={<p className="quiet-note">Opening preview…</p>}>
           <DetachedPreview />

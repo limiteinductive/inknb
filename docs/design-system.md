@@ -65,6 +65,8 @@ Whole-table anchors highlight the table surface. They do not underline or highli
 
 Each table exposes the shared comment-plus icon with a tooltip and accessible label. Selection and deletion remain in the table context menu.
 
+Double-clicking an image opens a fitted preview. The image context menu also provides Zoom Image. Clicking the preview toggles actual size. The viewer scrolls at actual size. Escape and the close icon return to the document without changing its content.
+
 Wide tables expand the document column to use available space. Prose keeps its reading width and center. The aside gutter remains separate. Tables scroll horizontally when the available space cannot fit them. Tables inside cards, lists, and quotes stay within their parent.
 
 ## Build enforcement

@@ -56,6 +56,23 @@ export function selectionForRange(
   return TextSelection.between(start, document.resolve(to));
 }
 
+function sourceSelection(selection: Selection, projection: SourceProjection): SourceSelection {
+  let selectionFrom = selection.from;
+  let selectionTo = selection.to;
+  if (selection instanceof CellSelection && selection.isRowSelection() && selection.isColSelection()) {
+    const depth = selection.$anchorCell.depth - 1;
+    selectionFrom = selection.$anchorCell.before(depth);
+    selectionTo = selectionFrom + selection.$anchorCell.node(depth).nodeSize;
+  }
+  const from = sourcePosition(projection, selectionFrom);
+  return {
+    from,
+    to: selection.empty
+      ? from
+      : Math.max(from, sourcePosition(projection, selectionTo, -1)),
+  };
+}
+
 export interface NativeUpdate {
   before: Text;
   source: Text;
@@ -143,21 +160,7 @@ export class NativeDocumentModel {
   }
 
   get selection(): SourceSelection {
-    const selection = this.state.selection;
-    let selectionFrom = selection.from;
-    let selectionTo = selection.to;
-    if (selection instanceof CellSelection && selection.isRowSelection() && selection.isColSelection()) {
-      const depth = selection.$anchorCell.depth - 1;
-      selectionFrom = selection.$anchorCell.before(depth);
-      selectionTo = selectionFrom + selection.$anchorCell.node(depth).nodeSize;
-    }
-    const from = sourcePosition(this.projection, selectionFrom);
-    return {
-      from,
-      to: selection.empty
-        ? from
-        : Math.max(from, sourcePosition(this.projection, selectionTo, -1)),
-    };
+    return sourceSelection(this.state.selection, this.projection);
   }
 
   capture(anchor: Anchor): Anchor {
@@ -401,13 +404,7 @@ export class NativeDocumentModel {
       document: captureDocument(next.doc, projection.text),
       anchors,
       statuses,
-      selection: {
-        from: sourcePosition(projection, next.selection.from),
-        to: Math.max(
-          sourcePosition(projection, next.selection.from),
-          sourcePosition(projection, next.selection.to, -1),
-        ),
-      },
+      selection: sourceSelection(next.selection, projection),
       docChanged,
     };
     this.session.onEditorUpdate(update);
