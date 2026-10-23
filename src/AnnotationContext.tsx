@@ -34,7 +34,7 @@ export default function AnnotationContext({
                   .catch((error) => session.fail(error));
               }}
             >
-              {annotation.source.quote}
+              <span className="annotation-context-label">{annotation.source.quote}</span>
             </button>
           </div>
           {onRemove && (

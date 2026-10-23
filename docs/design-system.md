@@ -63,6 +63,8 @@ Table suggestions share one table projection and one compact review bar. Propose
 
 Whole-table anchors highlight the table surface. They do not underline or highlight its text separately. Object selections suppress the browser's text selection paint. Text selections within cells retain text highlighting.
 
+Passage references occupy one line and truncate with an ellipsis. Whole-table references show a table icon and the first column heading. The anchor retains the full table. Clicking the reference reveals its source.
+
 Each table exposes the shared comment-plus icon with a tooltip and accessible label. Selection and deletion remain in the table context menu.
 
 Double-clicking an image opens a fitted preview. The image context menu also provides Zoom Image. Clicking the preview toggles actual size. The viewer scrolls at actual size. Escape and the close icon return to the document without changing its content.

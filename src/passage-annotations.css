@@ -140,9 +140,11 @@
   white-space: pre-wrap;
 }
 .annotation-context-source {
-  display: -webkit-box;
-  -webkit-line-clamp: 1;
-  -webkit-box-orient: vertical;
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+  gap: var(--space-2);
+  min-width: 0;
   overflow: hidden;
   max-width: 100%;
   padding: 0;
@@ -153,6 +155,16 @@
   text-underline-offset: 0.15em;
   user-select: text;
   -webkit-user-select: text;
+}
+.annotation-context-source > svg {
+  flex-shrink: 0;
+}
+.annotation-context-label {
+  display: block;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
 }
 
 .passage-citation {

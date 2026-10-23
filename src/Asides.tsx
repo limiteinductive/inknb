@@ -32,6 +32,7 @@ import {
   RotateCcw,
   CornerDownRight,
   FileText,
+  Table2,
   MessageSquare,
   X,
 } from "lucide-react";
@@ -81,11 +82,19 @@ function AsidePassage({ threadId }: { threadId?: string }) {
     : anchor && anchor.status !== "detached" && documentSession?.view
       ? documentSession.view.passageText(anchor)
       : preview?.quote || anchor?.quote || thread?.originalQuote || "";
+  let tableTitle = "";
+  if (anchor?.native && anchor.native.from.identity === anchor.native.to.identity) {
+    documentSession?.model?.state.doc.descendants(node => {
+      if (node.type.name !== "table" || node.attrs.identity !== anchor.native!.from.identity) return;
+      tableTitle = node.firstChild?.firstChild?.textContent || "Table";
+      return false;
+    });
+  }
   return (
     <button
       type="button"
       className="aside-passage annotation-context-source"
-      aria-label={`Show passage: ${quote || "This position"}`}
+      aria-label={tableTitle ? `Show table: ${tableTitle}` : `Show passage: ${quote || "This position"}`}
       data-inknb-control={`aside.passage:${threadId ?? "new"}`}
       onClick={() => {
         if (!window.getSelection()?.isCollapsed) return;
@@ -94,7 +103,8 @@ function AsidePassage({ threadId }: { threadId?: string }) {
         else if (anchor && anchor.status !== "detached") documentSession?.surface?.scrollToSource(anchor.from, anchor);
       }}
     >
-      {quote || "This position"}
+      {tableTitle && <Table2 size={14} strokeWidth={1.6} aria-hidden="true" />}
+      <span className="annotation-context-label">{tableTitle || quote || "This position"}</span>
     </button>
   );
 }
