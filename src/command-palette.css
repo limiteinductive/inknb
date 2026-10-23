@@ -48,3 +48,17 @@
   color: var(--muted);
   font: var(--text-detail-size)/var(--text-detail-height) var(--interface-font);
 }
+.command-option > span {
+  min-width: 0;
+}
+.command-option-label,
+.command-option small {
+  display: block;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.command-option small {
+  color: var(--muted);
+  font: var(--text-detail-size)/var(--text-detail-height) var(--interface-font);
+}

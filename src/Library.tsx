@@ -14,7 +14,7 @@ import {
   TextField,
   useDragAndDrop,
 } from "react-aria-components";
-import { ChevronRight, Command, FileText, Folder, Plus, Search, X } from "lucide-react";
+import { ChevronRight, Command, FileText, Folder, Plus } from "lucide-react";
 import { workspace } from "./window-workspace";
 import DocumentNavigation from "./DocumentNavigation";
 import type { LibraryEntry, LibraryNode } from "./workspace";
@@ -44,16 +44,10 @@ function documentContextMenu(
 
 function DocumentRow({
   entry,
-  snippet,
-  from,
-  length,
   onNavigate,
   shortcut = false,
 }: {
   entry: LibraryEntry;
-  snippet?: string;
-  from?: number;
-  length?: number;
   onNavigate?: () => void;
   shortcut?: boolean;
 }) {
@@ -128,14 +122,12 @@ function DocumentRow({
             startRenaming();
           }}
           onPress={() => {
-            if (from === undefined) workspace.activate(entry.id);
-            else workspace.reveal(entry.id, from, from + (length ?? 0));
+            workspace.activate(entry.id);
             onNavigate?.();
           }}
         >
           <span>
             <span className="document-label">{entry.title}</span>
-            {snippet && <small>{snippet}</small>}
           </span>
         </Button>
       )}
@@ -158,13 +150,8 @@ export default function Library({
     workspace.subscribe,
     workspace.getSnapshot,
   );
-  const [query, setQuery] = useState("");
   const draggedIds = useRef<string[]>([]);
   const resize = useRef<{ start: number; width: number } | null>(null);
-  const search = query.trim();
-  const expression = search
-    ? new RegExp(search.replace(/[.*+?^${}()|[\]\\]/gu, "\\$&"), "iu")
-    : null;
   const available = library.documents.filter((entry) =>
     workspace.sessions.has(entry.id),
   );
@@ -180,37 +167,11 @@ export default function Library({
     }
   }
   const preferences = workspace.active?.getSnapshot().preferences;
-  const flat = Boolean(search) || preferences?.library_depth === 0;
-  const documents = available.flatMap((entry) => {
-    const text = workspace.sessions.get(entry.id)!.getSnapshot().text;
-    const match = expression?.exec(text);
-    if (expression && !expression.test(entry.title) && !match) return [];
-    return [
-      {
-        entry,
-        from: match?.index,
-        length: match?.[0].length,
-        snippet: match
-          ? text
-              .slice(match.index, match.index + Math.max(search.length, 72))
-              .split("\n")
-              .join(" ")
-          : undefined,
-      },
-    ];
-  });
+  const flat = preferences?.library_depth === 0;
+  const documents = available.map(entry => ({ entry }));
   function navigateDocument(identity: string | number) {
-    const result = documents.find(
-      (candidate) => candidate.entry.id === identity,
-    );
-    if (!result) return;
-    if (result.from === undefined) workspace.activate(result.entry.id);
-    else
-      workspace.reveal(
-        result.entry.id,
-        result.from,
-        result.from + (result.length ?? 0),
-      );
+    if (!available.some(entry => entry.id === identity)) return;
+    workspace.activate(String(identity));
     onNavigate?.();
   }
   const nodes = flat
@@ -244,13 +205,9 @@ export default function Library({
   for (const siblings of children.values()) {
     siblings.sort(compareNodes);
   }
-  const pinned = search
-    ? []
-    : documents
-        .filter((result) => result.entry.pinned)
-        .sort((left, right) => compareNodes(left.entry, right.entry));
+  const pinned = documents.filter(result => result.entry.pinned).sort((left, right) => compareNodes(left.entry, right.entry));
   const { dragAndDropHooks } = useDragAndDrop({
-    isDisabled: Boolean(search) || flat,
+    isDisabled: flat,
     getItems: (keys) => {
       draggedIds.current = [...keys].map(String);
       return draggedIds.current.map((identity) => ({
@@ -462,27 +419,6 @@ export default function Library({
         <IconButton icon={Command} label="Commands (⌘P)" agentControl="commands.open" onPress={() => void workspace.command("commands")} />
         <ActivityButton />
       </header>
-      <TextField
-        className="library-search"
-        aria-label="Search all writing"
-        value={query}
-        onChange={setQuery}
-      >
-        <Search size={14} aria-hidden="true" />
-        <Input
-          placeholder="Search your writing"
-          data-inknb-control="library.search"
-        />
-        {query && (
-          <Button
-            className="icon-button"
-            aria-label="Clear search"
-            onPress={() => setQuery("")}
-          >
-            <X size={12} />
-          </Button>
-        )}
-      </TextField>
       <div
         className="library-content"
         data-inknb-control="library.content"
@@ -529,11 +465,10 @@ export default function Library({
             </div>
           </section>
         )}
-        <section aria-label={search ? "Search results" : "Saved writing"}>
+        <section aria-label="Saved writing">
           <div className="library-section-label">
-            {search ? "Results" : <SpaceMenu />}
-            {!search && (
-              <Button
+            <SpaceMenu />
+            <Button
                 className="icon-button"
                 aria-label="New document"
                 data-inknb-control="document.new"
@@ -548,7 +483,6 @@ export default function Library({
               >
                 <Plus size={13} />
               </Button>
-            )}
           </div>
           <div className="library-document-list">
             <LibrarySelection />
@@ -581,7 +515,7 @@ export default function Library({
           </div>
           {!documents.length && (
             <p className="library-empty">
-              {search ? "No matching writing." : "No documents here yet."}
+              No documents here yet.
             </p>
           )}
         </section>

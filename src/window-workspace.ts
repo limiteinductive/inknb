@@ -25,7 +25,9 @@ import type { Library, LibraryNode } from "./workspace";
 import { WindowDocument } from "./window-document";
 import { currentSuggestions, reviewSuggestion } from "./suggestions";
 
-type CommandSurface = "commands" | "agents" | "decisions" | "resources" | "history";
+export const compactLibraryWidth = 980;
+
+type CommandSurface = "commands" | "project-search" | "agents" | "decisions" | "resources" | "history";
 
 class WindowWorkspace implements DocumentHost {
   private state: Library & {
@@ -410,7 +412,7 @@ class WindowWorkspace implements DocumentHost {
     }
   }
   async command(command: string): Promise<void> {
-    if (command === "commands" || command === "agents" || command === "decisions" || command === "resources" || command === "history") {
+    if (command === "commands" || command === "project-search" || command === "agents" || command === "decisions" || command === "resources" || command === "history") {
       activity.update({ open: false });
       this.update({ commandSurface: command });
       return;

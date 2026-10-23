@@ -66,7 +66,7 @@ Human New and Open commands assign documents to the current Space. Agent creatio
 
 Writing windows exchange revisioned ProseMirror steps with the host. The host rebases each view through the shared step history. Conflicting recovery retains the window's pending source. Closing and quitting flush source steps and drafts before destroying windows.
 
-The library searches exact document text and titles within its Space. Folders contain document references. The canonical source, conversations, revision history, and Undo remain shared across windows.
+Command+K opens project search. It searches document titles and text within the current Space. Selecting a text result reveals its first matching passage. The sidebar has no search field. Project search also appears in the Command+P palette. Folders contain document references. The canonical source, conversations, revision history, and Undo remain shared across windows.
 
 The sidebar header owns its toggle, Commands, and notifications. The writing view has no top bar. A standalone library toggle remains when the sidebar is hidden. Command+P opens the command palette. It filters commands by name and supports arrow keys, Enter, and Escape. Back and Forward remain available through the palette and native shortcuts. Narrow windows show the library in a dismissible modal drawer. Navigation closes that drawer and restores writing focus.
 

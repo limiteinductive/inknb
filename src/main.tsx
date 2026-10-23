@@ -26,7 +26,7 @@ import DocumentHistory from "./DocumentHistory";
 import { NativeEditor } from "./native-editor";
 import { SessionContext, useDocumentSession, useSession } from "./use-session";
 import { appHost } from "./app-host";
-import { workspace } from "./window-workspace";
+import { compactLibraryWidth, workspace } from "./window-workspace";
 import Library from "./Library";
 import DocumentOutline from "./DocumentOutline";
 import DocumentReview from "./DocumentReview";
@@ -302,8 +302,8 @@ function App() {
                   ? "new"
                   : key === "a" && event.shiftKey
                     ? "comment"
-                    : key === "k" && event.shiftKey
-                      ? "activity"
+                    : key === "k"
+                      ? event.shiftKey ? "activity" : "project-search"
                       : key === "f" && event.shiftKey
                         ? "focus"
                         : null;
@@ -326,7 +326,7 @@ function App() {
     );
   const active = workspace.active?.getSnapshot();
   const sidebar = library.sidebarOpen && !active?.focus;
-  const compact = windowWidth <= 980;
+  const compact = windowWidth <= compactLibraryWidth;
   const maximumSidebarWidth = Math.min(480, Math.floor(windowWidth * 0.4));
   const sidebarWidth = Math.min(library.sidebarWidth, maximumSidebarWidth);
   return (

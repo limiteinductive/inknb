@@ -1775,6 +1775,7 @@ fn main() {
                 .build()?;
             let view = SubmenuBuilder::new(app, "View")
                 .item(&MenuItem::with_id(app, "commands", "Commands…", true, Some("CmdOrCtrl+P"))?)
+                .item(&MenuItem::with_id(app, "project-search", "Search Project…", true, Some("CmdOrCtrl+K"))?)
                 .item(&MenuItem::with_id(app, "sidebar", "Toggle Library", true, Some("CmdOrCtrl+Backslash"))?)
                 .separator()
                 .item(&MenuItem::with_id(app, "text-larger", "Larger Text", true, Some("CmdOrCtrl+Equal"))?)

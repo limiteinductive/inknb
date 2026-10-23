@@ -75,9 +75,9 @@ Wide tables expand the document column to use available space. Prose keeps its r
 
 ## Writing commands
 
-The writing view has no top bar. The sidebar header contains the library toggle, Commands, and notifications. A standalone library toggle remains when the sidebar is hidden. Command+P opens a searchable palette. Arrow keys select a result. Enter runs it. Escape closes it. Unavailable actions retain their disabled state.
+The writing view has no top bar. The sidebar header contains the library toggle, Commands, and notifications. A standalone library toggle remains when the sidebar is hidden. Command+P opens a searchable command palette. Command+K opens project search in the same palette. Project results show a document title and a passage excerpt. The sidebar has no search field. Arrow keys select a result. Enter runs it. Escape closes it. Unavailable actions retain their disabled state.
 
-Command panels and notifications use the shared modal panel. Popovers and modal panels share heading, body, spacing, material, and height limits. A panel fits the current viewport. The palette opens near the top of the window.
+Command panels and notifications use the shared modal panel. Popovers and modal panels share heading, body, spacing, material, and height limits. A panel fits the current viewport. The palette opens near the top of the window. Modal overlays open and close without a decorative fade.
 
 ## Build enforcement
 
