@@ -722,6 +722,9 @@ kbd {
   padding: var(--aside-padding);
   font: var(--aside-text-size)/1.55 var(--interface-font);
 }
+.margin-note:has(> .aside-card-heading) {
+  padding-block-start: var(--space-1);
+}
 .inline-aside-summary {
   position: relative;
   display: flex;
@@ -754,7 +757,7 @@ kbd {
   justify-content: space-between;
   gap: var(--space-2);
   min-height: var(--control-size);
-  margin-block-end: var(--space-2);
+  margin-block-end: var(--space-1);
 }
 .aside-actions {
   display: flex;

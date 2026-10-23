@@ -47,7 +47,7 @@ Application choice menus use the shared menu surface and accessible menu primiti
 
 Agent attribution uses the session name and role. Unnamed sessions include a short session identifier. Replies, full responses, decisions, recipients, and connection panels share the same label.
 
-Aside cards use one 16 pixel content gutter on every edge. A single header contains collapse and thread actions. Passage context sits below that header. Copy reference remains visible and confirms a successful copy in place.
+Aside cards use a 16 pixel content gutter. Conversation headers keep 4 pixels above and below their control row. Controls retain their standard target size. A single header contains collapse and thread actions. Passage context sits below that header. Copy reference remains visible and confirms a successful copy in place.
 
 Your messages use a tinted surface and align to the right. Agent replies use the full text width and display their session name. The shared conversation retains all messages in a scroll region. Aside cards stop at 640 pixels or the viewport height minus 128 pixels. Reader cards also fit the reader viewport, with a 240 pixel minimum reading allowance. Their heading and reply composer stay outside the message region. New replies preserve the position when the reader scrolls through earlier messages.
 
