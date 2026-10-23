@@ -14,10 +14,12 @@ export function suggestionMarkers(
   projection: SourceProjection,
   document: DocumentNode,
   offset = 0,
+  excluded?: ReadonlySet<string>,
 ): Decoration[] {
   if (state.focus) return [];
   const markers: Decoration[] = [];
   for (const proposal of currentSuggestions(state)) {
+    if (excluded?.has(proposal.id)) continue;
     const start = documentPosition(projection, proposal.from) - offset;
     const end = documentPosition(projection, proposal.to, -1) - offset;
     if (start > document.content.size || end < 0) continue;

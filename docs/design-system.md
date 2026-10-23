@@ -61,6 +61,8 @@ Suggested changes use the note material, neutral card edge, and 16 pixel content
 
 Table suggestions share one table projection and one compact review bar. Proposed values occupy their cells. Changed cells are keyboard focusable and select the change to review. The bar provides accept, dismiss, original comparison, navigation, and collapse through shared icon controls. Pending changes retain the document's revision and text checks. Preview tables share the manuscript's table width and horizontal scrolling.
 
+New tables and whole-table replacements use the same table review layout. The proposed table occupies its document position. Source tables and empty placeholders stay hidden while the proposal is expanded. Expanded table previews have no separate insertion marker. A single change has no count or navigation arrows. An empty aside reader reserves no space.
+
 Whole-table anchors highlight the table surface. They do not underline or highlight its text separately. Object selections suppress the browser's text selection paint. Text selections within cells retain text highlighting.
 
 Passage references occupy one line and truncate with an ellipsis. Whole-table references show a table icon and the first column heading. The anchor retains the full table. Clicking the reference reveals its source.

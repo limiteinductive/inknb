@@ -272,8 +272,8 @@ export class NativeEditor extends NativeDocumentModel {
           const tables = tableSuggestionGroups(this, currentSuggestions(current)).filter(table => table.proposals.some(proposal => visible.some(candidate => candidate.id === proposal.id)));
           const tableProposals = new Set(tables.flatMap(table => table.proposals.map(proposal => proposal.id)));
           for (const table of tables) {
-            ranges.push(Decoration.node(table.position, table.position + table.node.nodeSize, { class: "suggestion-replaced" }));
-            ranges.push(suggestionWidget(table.position + table.node.nodeSize, table.identity, session, true));
+            if (table.node) ranges.push(Decoration.node(table.position, table.position + table.node.nodeSize, { class: "suggestion-replaced" }));
+            ranges.push(suggestionWidget(table.position + (table.node?.nodeSize ?? 0), table.identity, session, true));
           }
           for (const proposal of visible) {
             if (tableProposals.has(proposal.id)) continue;
@@ -302,7 +302,7 @@ export class NativeEditor extends NativeDocumentModel {
             ranges.push(suggestionWidget(position, proposal.id, session, false));
           }
           ranges.push(
-            ...suggestionMarkers(current, this.projection, state.doc),
+            ...suggestionMarkers(current, this.projection, state.doc, 0, tableProposals),
           );
           if (this.keyboardFocus) {
             const selected = state.selection.$from;

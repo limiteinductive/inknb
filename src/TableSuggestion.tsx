@@ -75,19 +75,22 @@ export default function TableSuggestion({ identity }: { identity: string }) {
       const projection = projectDocument(projected);
       let suggested = group.node;
       let suggestedPosition = group.position;
+      let tableIndex = 0;
       projected.descendants((node, position) => {
-        if (node.attrs.identity === identity) {
+        if (node.type.spec.tableRole !== "table") return;
+        if (tableIndex++ === group.tableIndex) {
           suggested = node;
           suggestedPosition = position;
-          return false;
         }
+        return false;
       });
+      if (!suggested) throw Error("The suggested table is no longer available.");
       const fragment = renderFragmentsChange(
         Fragment.from(group.node),
         Fragment.from(suggested),
       );
       const originalCells: { from: number; to: number }[] = [];
-      group.node.descendants((node, position) => {
+      group.node?.descendants((node, position) => {
         if (["cell", "header_cell"].includes(node.type.spec.tableRole ?? ""))
           originalCells.push({
             from: group.position + position + 2,
@@ -95,15 +98,17 @@ export default function TableSuggestion({ identity }: { identity: string }) {
           });
       });
       const sameShape =
-        group.node.childCount === suggested.childCount &&
+        group.node && group.node.childCount === suggested.childCount &&
         group.node.content.content.every(
-          (row, index) => row.childCount === suggested.child(index).childCount,
+          (row, index) => row.childCount === suggested!.child(index).childCount,
         );
-      for (const [index, table] of [
-        ...fragment.querySelectorAll("table"),
+      for (const [index, version] of [
+        ...fragment.querySelectorAll(".change-version"),
       ].entries()) {
+        const table = version.querySelector("table");
+        if (!table) continue;
         const cells: { from: number; to: number }[] = [];
-        (index === 0 ? group.node : suggested).descendants((node, position) => {
+        (index === 0 ? group.node : suggested)?.descendants((node, position) => {
           if (["cell", "header_cell"].includes(node.type.spec.tableRole ?? ""))
             cells.push({
               from:
@@ -307,6 +312,7 @@ export default function TableSuggestion({ identity }: { identity: string }) {
           onPress={() => setOriginal(!original)}
         />
         <div className="review-navigation">
+          {group.proposals.length > 1 && <>
           <span aria-live="polite">
             {index + 1} / {group.proposals.length}
           </span>
@@ -334,6 +340,7 @@ export default function TableSuggestion({ identity }: { identity: string }) {
               )
             }
           />
+          </>}
           <IconButton
             icon={ChevronDown}
             label="Collapse table suggestions"

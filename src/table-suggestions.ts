@@ -7,7 +7,8 @@ import { semanticSignature } from "./native-schema";
 export interface TableSuggestionGroup {
   identity: string;
   position: number;
-  node: DocumentNode;
+  tableIndex: number;
+  node: DocumentNode | null;
   proposals: Proposal[];
 }
 
@@ -27,12 +28,13 @@ export function tableSuggestionGroups(
     tables.push({
       identity: String(node.attrs.identity),
       position,
+      tableIndex: tables.length,
       node,
       proposals: [],
     });
     return false;
   });
-  if (!tables.length) return [];
+  const insertions: TableSuggestionGroup[] = [];
   const signature = semanticSignature(document);
   for (const proposal of proposals) {
     let projected: DocumentNode;
@@ -43,24 +45,42 @@ export function tableSuggestionGroups(
     } catch {
       continue;
     }
+    let tableIndex = 0;
     projected.descendants((node, position) => {
       if (node.type.spec.tableRole !== "table") return;
       const table = tables.find(
         (table) => table.identity === node.attrs.identity,
-      );
-      if (!table || semanticSignature(table.node) === semanticSignature(node))
-        return false;
+      ) ?? tables[tableIndex];
+      const index = tableIndex++;
+      if (table?.node) {
+        if (semanticSignature(table.node) === semanticSignature(node)) return false;
+        const restored = projected.replace(
+          position,
+          position + node.nodeSize,
+          new Slice(Fragment.from(table.node), 0, 0),
+        );
+        if (semanticSignature(restored) === signature) {
+          table.proposals.push(proposal);
+          return false;
+        }
+      }
+      if (proposal.expectedText) return false;
+      const placeholder = document.childCount === 1 && document.firstChild?.type.name === "paragraph" && !document.firstChild.content.size
+        ? document.firstChild
+        : null;
+      const parent = projected.resolve(position);
+      if (!parent.parent.canReplace(parent.index(), parent.index() + 1, Fragment.from(placeholder))) return false;
       const restored = projected.replace(
         position,
         position + node.nodeSize,
-        new Slice(Fragment.from(table.node), 0, 0),
+        new Slice(Fragment.from(placeholder), 0, 0),
       );
-      if (semanticSignature(restored) !== signature) return false;
-      table.proposals.push(proposal);
+      if (semanticSignature(restored) === signature)
+        insertions.push({ identity: proposal.id, position, tableIndex: index, node: placeholder, proposals: [proposal] });
       return false;
     });
   }
-  const groups = tables.filter((table) => table.proposals.length);
+  const groups = [...tables.filter((table) => table.proposals.length), ...insertions];
   const entries =
     cache.get(document) ?? new Map<string, TableSuggestionGroup[]>();
   entries.set(key, groups);

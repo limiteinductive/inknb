@@ -44,7 +44,8 @@ export default function AsideLayout({
     Math.min(preferredWidth, maximumWidth),
   );
   const narrow = width < minimumProse + cardWidth + 176;
-  const open = state.asidesOpen && !state.focus;
+  const hasContent = state.composer || state.metadata.threads.some(thread => asideVisible(state, thread)) || state.metadata.decisions.some(decision => ["open", "answered"].includes(decision.status));
+  const open = state.asidesOpen && !state.focus && hasContent;
   const reserved = open && !narrow;
   useAutoHideScrollbar(readerViewport, open);
   useLayoutEffect(() => {
