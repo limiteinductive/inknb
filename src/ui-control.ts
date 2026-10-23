@@ -151,6 +151,31 @@ export async function inspectInterface() {
             : element.scrollHeight,
       };
     });
+  const links = [
+    ...document.querySelectorAll<HTMLAnchorElement>('a[href^="https://"],a[href^="http://"]'),
+  ]
+    .filter(isVisible)
+    .map((link, index) => {
+      const identity = `link:${index}`;
+      inspectedTargets.set(identity, async (parameters) => {
+        if (!isVisible(link) || parameters.action !== "focus")
+          throw Error("This link supports focus only.");
+        link.focus();
+        return { acted: true };
+      });
+      return {
+        id: identity,
+        text: link.textContent,
+        reference: link.getAttribute("href"),
+        cursor: getComputedStyle(link).cursor,
+        focused: link === document.activeElement,
+        rectangle: link.getBoundingClientRect().toJSON(),
+      };
+    });
+  const preview = document.querySelector<HTMLElement>(".link-preview");
+  const linkPreview = preview
+    ? { text: preview.textContent, rectangle: preview.getBoundingClientRect().toJSON() }
+    : null;
   const components = await Promise.all(
     [...componentRuntimes]
       .filter(([identity]) =>
@@ -203,7 +228,7 @@ export async function inspectInterface() {
   for (const [identity, action] of inspectedTargets)
     targets.set(identity, action);
   snapshotId = inspectionId;
-  return { snapshotId: inspectionId, controls, components };
+  return { snapshotId: inspectionId, controls, links, linkPreview, components };
 }
 
 export async function actOnInterface(parameters: unknown) {

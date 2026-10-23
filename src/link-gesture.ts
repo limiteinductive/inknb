@@ -1,6 +1,15 @@
 import { invoke } from "@tauri-apps/api/core";
 import { parseAsideLink } from "./aside-reference";
 import type { AsideReference } from "./domain";
+import type { MarkViewConstructor } from "prosemirror-view";
+
+export const linkMarkView: MarkViewConstructor = (mark) => {
+  const link = document.createElement("a");
+  link.setAttribute("href", String(mark.attrs.href));
+  if (mark.attrs.title) link.title = String(mark.attrs.title);
+  link.tabIndex = 0;
+  return { dom: link, contentDOM: link };
+};
 
 export class LinkGesture {
   private pressed: { link: HTMLAnchorElement; left: number; top: number; moved: boolean } | null = null;

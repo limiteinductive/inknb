@@ -37,6 +37,10 @@ Decisions, Activity, History, Agents, and Linked resources use this structure. F
 
 Use `IconButton` for icon actions. Text actions use `text-button`. Menus share row spacing, target size, typography, radius, and paper elevation. Asides and cards use the note material and card tokens. A feature does not define another paper surface.
 
+Web links reveal a preview after a short hover or on keyboard focus. The preview uses the shared hover surface. It shows the page title, description, and destination. It remains visible while hovered and dismisses on Escape, scrolling, or selection. Metadata requests use no browser credentials. Unavailable metadata leaves the destination visible.
+
+Links use the hand pointer, including inside editable text. Whole-table annotations reserve space above the table and align with its right edge.
+
 Application choice menus use the shared menu surface and accessible menu primitives. Single choices show a check beside the selected item. Native HTML dropdowns are rejected by the design contract.
 
 Agent attribution uses the session name and role. Unnamed sessions include a short session identifier. Replies, full responses, decisions, recipients, and connection panels share the same label.

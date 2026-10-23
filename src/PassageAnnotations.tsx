@@ -234,7 +234,8 @@ function PassageAnnotation({ identity, sourceRange, reply }: { identity: string;
         setPosition(current => current.visibility === "hidden" ? current : { ...current, visibility: "hidden" });
         return;
       }
-      const left = Math.max(viewport.left + 8, Math.min(bounds.left, viewport.right - width - 8));
+      const preferredLeft = paragraph.matches(".native-table") ? paragraphBounds.right - width : bounds.left;
+      const left = Math.max(viewport.left + 8, Math.min(preferredLeft, viewport.right - width - 8));
       const clipPath = `inset(${Math.max(0, viewport.top - top)}px 0 ${Math.max(0, top + height - viewport.bottom)}px 0)`;
       setPosition(current => current.left === left && current.top === top && current.clipPath === clipPath && current.visibility === "visible" ? current : { left, top, clipPath, visibility: "visible" });
     };

@@ -10,7 +10,7 @@ import { useDocumentSession, useSession } from "./use-session";
 import { nativeObject, nativeSchema } from "./native-schema";
 import { pageDraftSchema } from "./document-page";
 import type { PageNodeBounds } from "./document-page";
-import { LinkGesture } from "./link-gesture";
+import { LinkGesture, linkMarkView } from "./link-gesture";
 import { suggestionMarkers, openSuggestion } from "./suggestion-markers";
 
 export default function PageText({ bounds, assets }: { bounds: PageNodeBounds; assets: Record<string, string> }) {
@@ -54,6 +54,7 @@ export default function PageText({ bounds, assets }: { bounds: PageNodeBounds; a
         }), new Plugin({ props: { decorations: (local) => DecorationSet.create(local.doc, suggestionMarkers(session.getWorkingSnapshot(), model.projection, local.doc, model.node(identity).position)) } })],
       }),
       attributes: { class: "page-region-content", "aria-label": target.node.textContent ? `Edit ${target.node.textContent.slice(0, 80)}` : "New note", spellcheck: "true" },
+      markViews: { link: linkMarkView },
       nodeViews: {
         image: (node) => {
           const image = document.createElement("img");

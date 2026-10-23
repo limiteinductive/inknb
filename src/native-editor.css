@@ -53,7 +53,7 @@
   user-select: none;
   -webkit-user-select: none;
 }
-.native-content .native-table.ProseMirror-selectednode {
+.native-content .native-table.ProseMirror-selectednode > .tableWrapper {
   outline: 2px solid color-mix(in srgb, var(--accent) 70%, transparent);
   outline-offset: 3px;
   border-radius: 2px;

@@ -36,7 +36,7 @@ import { documentScroll } from "./document-scroll";
 import { asideVisible, asideExpanded } from "./aside-state";
 import { SessionContext } from "./use-session";
 import { focusAside } from "./aside-focus";
-import { LinkGesture } from "./link-gesture";
+import { LinkGesture, linkMarkView } from "./link-gesture";
 import { suggestionMarkers, openSuggestion } from "./suggestion-markers";
 import { currentSuggestions, visibleSuggestions } from "./suggestions";
 import { InlineSuggestion } from "./DocumentReview";
@@ -375,6 +375,7 @@ export class NativeEditor extends NativeDocumentModel {
           session.fail(error);
         }
       },
+      markViews: { link: linkMarkView },
       nodeViews: {
         table: (node, view, getPosition) => {
           const element = window.document.createElement("div");
@@ -1021,6 +1022,15 @@ export class NativeEditor extends NativeDocumentModel {
   }
   passageElement(anchor: Anchor): HTMLElement {
     const position = documentPosition(this.projection, anchor.from);
+    const selection = selectionForRange(
+      this.editor.state.doc,
+      position,
+      Math.max(position, documentPosition(this.projection, anchor.to, -1)),
+    );
+    if (selection instanceof NodeSelection) {
+      const element = this.editor.nodeDOM(selection.from);
+      if (element instanceof HTMLElement) return element;
+    }
     const resolved = this.editor.state.doc.resolve(position);
     for (let depth = resolved.depth; depth > 0; depth -= 1) {
       const node = this.editor.nodeDOM(resolved.before(depth));

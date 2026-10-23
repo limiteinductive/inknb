@@ -27,6 +27,9 @@ textarea {
 button {
   color: inherit;
 }
+a[href] {
+  cursor: pointer;
+}
 button,
 [role="radio"],
 summary,
@@ -1803,14 +1806,17 @@ html[data-motion="reduced"] *::after {
 .library-visible .window-inset {
   width: 12px;
 }
+.control-tooltip,
+.hover-surface {
+  border: 1px solid var(--line);
+  border-radius: var(--radius-control);
+  background: var(--material-note);
+  color: var(--ink);
+  box-shadow: var(--elevation-card);
+}
 .control-tooltip {
   max-inline-size: min(320px, calc(100vw - 24px));
   padding: 5px 8px;
-  border: 1px solid var(--line);
-  border-radius: 5px;
-  background: var(--material-note);
-  color: var(--ink);
-  box-shadow: 0 3px 12px var(--shadow);
   font-size: 11px;
   line-height: 1.45;
   overflow-wrap: anywhere;

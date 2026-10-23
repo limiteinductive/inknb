@@ -36,6 +36,7 @@ import DocumentReview, { ReviewButton } from "./DocumentReview";
 import LinkedResources from "./LinkedResources";
 import IconButton from "./IconButton";
 import PassageAnnotations from "./PassageAnnotations";
+import LinkPreview from "./LinkPreview";
 import { useContextMenus } from "./context-menu";
 import { captureAnchor } from "./domain";
 import { readWindowChrome, windowChromeSchema } from "./window-chrome";
@@ -460,12 +461,17 @@ function App() {
 
 const windowLabel = getCurrentWindow().label;
 createRoot(document.getElementById("root")!).render(
-  windowLabel === "host" ? null : windowLabel === "preview" ? (
-    <Suspense fallback={<p className="quiet-note">Opening preview…</p>}>
-      <DetachedPreview />
-    </Suspense>
-  ) : (
-    <App />
+  windowLabel === "host" ? null : (
+    <>
+      <LinkPreview />
+      {windowLabel === "preview" ? (
+        <Suspense fallback={<p className="quiet-note">Opening preview…</p>}>
+          <DetachedPreview />
+        </Suspense>
+      ) : (
+        <App />
+      )}
+    </>
   ),
 );
 

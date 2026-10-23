@@ -3,6 +3,7 @@ import { EditorState, Plugin, TextSelection, NodeSelection, Selection } from "pr
 import type { Transaction } from "prosemirror-state";
 import type { Node as DocumentNode } from "prosemirror-model";
 import { history, undo, redo, closeHistory } from "prosemirror-history";
+import { CellSelection } from "prosemirror-tables";
 import { Mapping } from "prosemirror-transform";
 import { z } from "zod";
 import {
@@ -143,12 +144,19 @@ export class NativeDocumentModel {
 
   get selection(): SourceSelection {
     const selection = this.state.selection;
-    const from = sourcePosition(this.projection, selection.from);
+    let selectionFrom = selection.from;
+    let selectionTo = selection.to;
+    if (selection instanceof CellSelection && selection.isRowSelection() && selection.isColSelection()) {
+      const depth = selection.$anchorCell.depth - 1;
+      selectionFrom = selection.$anchorCell.before(depth);
+      selectionTo = selectionFrom + selection.$anchorCell.node(depth).nodeSize;
+    }
+    const from = sourcePosition(this.projection, selectionFrom);
     return {
       from,
       to: selection.empty
         ? from
-        : Math.max(from, sourcePosition(this.projection, selection.to, -1)),
+        : Math.max(from, sourcePosition(this.projection, selectionTo, -1)),
     };
   }
 

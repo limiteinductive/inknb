@@ -727,6 +727,63 @@ fn editing_action(window: tauri::WebviewWindow, action: EditingAction) -> Result
 }
 
 #[tauri::command]
+async fn link_preview(reference: String) -> Result<String, String> {
+    let destination = tauri::Url::parse(&reference).map_err(|error| error.to_string())?;
+    if !matches!(destination.scheme(), "http" | "https")
+        || !destination.username().is_empty()
+        || destination.password().is_some()
+    {
+        return Err("This link has no web preview.".into());
+    }
+    tauri::async_runtime::spawn_blocking(move || {
+        use std::io::Read;
+        use std::process::{Command, Stdio};
+
+        let mut child = Command::new("/usr/bin/curl")
+            .args([
+                "--disable",
+                "--silent",
+                "--fail",
+                "--location",
+                "--max-redirs",
+                "3",
+                "--max-time",
+                "6",
+                "--proto",
+                "=http,https",
+                "--proto-redir",
+                "=http,https",
+                "--user-agent",
+                "InkAndButter/0.5 LinkPreview",
+                "--url",
+                &reference,
+            ])
+            .stdout(Stdio::piped())
+            .stderr(Stdio::null())
+            .spawn()
+            .map_err(|error| error.to_string())?;
+        let mut bytes = Vec::new();
+        let read = child
+            .stdout
+            .take()
+            .ok_or("The preview could not be read.")?
+            .take(262144)
+            .read_to_end(&mut bytes);
+        if bytes.len() == 262144 || read.is_err() {
+            let _ = child.kill();
+        }
+        let status = child.wait().map_err(|error| error.to_string())?;
+        read.map_err(|error| error.to_string())?;
+        if !status.success() && bytes.len() < 262144 {
+            return Err("The preview is unavailable.".into());
+        }
+        Ok(String::from_utf8_lossy(&bytes).into_owned())
+    })
+    .await
+    .map_err(|error| error.to_string())?
+}
+
+#[tauri::command]
 async fn open_reference(
     app: tauri::AppHandle,
     document_path: Option<String>,
@@ -1655,6 +1712,7 @@ fn main() {
             images::image_copy,
             images::image_export,
             open_reference,
+            link_preview,
             editing_action,
             clipboard_write,
             deliver_codex,
