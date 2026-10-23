@@ -53,6 +53,8 @@ Edit summaries follow their originating turn. Each turn has one collapsed summar
 
 Suggested changes use the note material, neutral card edge, and 16 pixel content gutter. The header places collapse on the left. The footer groups decisions and suggestion navigation. Color marks changed content. Diff blocks use a light wash without vertical rails.
 
+Table suggestions share one table projection and one compact review bar. Proposed values occupy their cells. Changed cells are keyboard focusable and select the change to review. The bar provides accept, dismiss, original comparison, navigation, and collapse through shared icon controls. Pending changes retain the document's revision and text checks. Preview tables share the manuscript's table width and horizontal scrolling.
+
 Whole-table anchors highlight the table surface. They do not underline or highlight its text separately. Object selections suppress the browser's text selection paint. Text selections within cells retain text highlighting.
 
 Each table exposes the shared comment-plus icon with a tooltip and accessible label. Selection and deletion remain in the table context menu.

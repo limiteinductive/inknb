@@ -1,4 +1,5 @@
 import { DOMSerializer } from "prosemirror-model";
+import type { Fragment } from "prosemirror-model";
 import { diffArrays, diffWordsWithSpace } from "diff";
 import type { Change } from "diff";
 import { importDocument } from "./native-document";
@@ -94,6 +95,14 @@ export function renderChange(
   format: SourceFormat,
   labels: readonly [string, string] = ["Current", "Suggested"],
 ): DocumentFragment {
+  return renderFragmentsChange(importDocument(before, format).content, importDocument(after, format).content, labels);
+}
+
+export function renderFragmentsChange(
+  before: Fragment,
+  after: Fragment,
+  labels: readonly [string, string] = ["Current", "Suggested"],
+): DocumentFragment {
   const serializer = new DOMSerializer(
     {
       ...DOMSerializer.nodesFromSchema(nativeSchema),
@@ -117,19 +126,15 @@ export function renderChange(
     },
     DOMSerializer.marksFromSchema(nativeSchema),
   );
-  const current = serializer.serializeFragment(
-    importDocument(before, format).content,
-  );
-  const suggested = serializer.serializeFragment(
-    importDocument(after, format).content,
-  );
+  const current = serializer.serializeFragment(before);
+  const suggested = serializer.serializeFragment(after);
   compareBlocks(current, suggested);
   const result = document.createDocumentFragment();
   const comparison = document.createElement("div");
   comparison.className = "change-comparison";
   for (const version of [
-    { label: labels[0], content: current, empty: !before },
-    { label: labels[1], content: suggested, empty: !after },
+    { label: labels[0], content: current, empty: !before.size || before.childCount === 1 && before.firstChild?.isTextblock && !before.firstChild.content.size },
+    { label: labels[1], content: suggested, empty: !after.size || after.childCount === 1 && after.firstChild?.isTextblock && !after.firstChild.content.size },
   ]) {
     const section = document.createElement("section");
     section.className = "change-version";

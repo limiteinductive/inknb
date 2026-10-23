@@ -128,3 +128,36 @@
 .inline-suggestion-content .change-content table {
   font-size: 0.88em;
 }
+
+.table-suggestion {
+  min-width: 0;
+}
+.table-suggestion-content .change-content .tableWrapper {
+  margin: 0;
+}
+.table-suggestion-content [data-review-proposal] {
+  cursor: pointer;
+  background: color-mix(in srgb, var(--suggestion) 8%, transparent);
+}
+.table-suggestion-content [data-review-proposal][data-selected="true"] {
+  background: color-mix(in srgb, var(--suggestion) 16%, transparent);
+  box-shadow: inset 0 -2px var(--suggestion);
+}
+.table-suggestion-content [data-review-proposal]:focus-visible {
+  background: var(--accent-wash);
+  box-shadow: inset 0 -2px var(--accent);
+}
+.table-suggestion-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  padding-block: var(--space-2);
+  border-bottom: 1px solid var(--line-soft);
+  font: var(--text-detail-size) / var(--text-detail-height) var(--interface-font);
+}
+.table-suggestion-actions > .icon-button:first-child {
+  color: var(--suggestion);
+}
+.table-suggestion-content .change-content table {
+  font-size: calc(13em / 17);
+}

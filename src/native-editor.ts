@@ -38,8 +38,10 @@ import { SessionContext } from "./use-session";
 import { focusAside } from "./aside-focus";
 import { LinkGesture } from "./link-gesture";
 import { suggestionMarkers, openSuggestion } from "./suggestion-markers";
-import { visibleSuggestions } from "./suggestions";
+import { currentSuggestions, visibleSuggestions } from "./suggestions";
 import { InlineSuggestion } from "./DocumentReview";
+import TableSuggestion from "./TableSuggestion";
+import { tableSuggestionGroups } from "./table-suggestions";
 import { clipboardImages, importImages, copyImage } from "./images";
 import { createElement } from "react";
 import { createRoot } from "react-dom/client";
@@ -54,6 +56,25 @@ import "./native-editor.css";
 interface PasteTarget {
   anchor: Anchor;
   expectedText: string;
+}
+
+function suggestionWidget(position: number, identity: string, session: WindowDocument, table: boolean): Decoration {
+  return Decoration.widget(position, () => {
+    const element = window.document.createElement("div");
+    element.className = table ? "native-table table-suggestion-host" : "inline-suggestion-host";
+    element.dataset.suggestionHost = identity;
+    element.contentEditable = "false";
+    const root = createRoot(element);
+    root.render(createElement(SessionContext, { value: session }, createElement(table ? TableSuggestion : InlineSuggestion, { identity })));
+    element.addEventListener("inknb-inline-destroy", () => queueMicrotask(() => root.unmount()), { once: true });
+    return element;
+  }, {
+    key: `${table ? "table" : "suggestion"}:${identity}`,
+    side: -1,
+    ignoreSelection: true,
+    stopEvent: () => true,
+    destroy: element => element.dispatchEvent(new Event("inknb-inline-destroy")),
+  });
 }
 
 function passageDecorations(
@@ -239,7 +260,15 @@ export class NativeEditor extends NativeDocumentModel {
             const to = documentPosition(this.projection, anchor.to, -1);
             if (to > from) ranges.push(...passageDecorations(state.doc, from, to, { class: "aside-anchor", "data-decision-anchor": decision.id }));
           }
-          for (const proposal of visibleSuggestions(current)) {
+          const visible = visibleSuggestions(current);
+          const tables = tableSuggestionGroups(this, currentSuggestions(current)).filter(table => table.proposals.some(proposal => visible.some(candidate => candidate.id === proposal.id)));
+          const tableProposals = new Set(tables.flatMap(table => table.proposals.map(proposal => proposal.id)));
+          for (const table of tables) {
+            ranges.push(Decoration.node(table.position, table.position + table.node.nodeSize, { class: "suggestion-replaced" }));
+            ranges.push(suggestionWidget(table.position + table.node.nodeSize, table.identity, session, true));
+          }
+          for (const proposal of visible) {
+            if (tableProposals.has(proposal.id)) continue;
             const from = documentPosition(this.projection, proposal.from);
             const to = documentPosition(this.projection, proposal.to, -1);
             const end = state.doc.resolve(to);
@@ -262,41 +291,7 @@ export class NativeEditor extends NativeDocumentModel {
                 return false;
               }
             });
-            ranges.push(
-              Decoration.widget(
-                position,
-                () => {
-                  const element = window.document.createElement("div");
-                  element.className = "inline-suggestion-host";
-                  element.dataset.suggestionHost = proposal.id;
-                  element.contentEditable = "false";
-                  const root = createRoot(element);
-                  root.render(
-                    createElement(
-                      SessionContext,
-                      { value: session },
-                      createElement(InlineSuggestion, {
-                        identity: proposal.id,
-                      }),
-                    ),
-                  );
-                  element.addEventListener(
-                    "inknb-inline-destroy",
-                    () => queueMicrotask(() => root.unmount()),
-                    { once: true },
-                  );
-                  return element;
-                },
-                {
-                  key: `suggestion:${proposal.id}`,
-                  side: -1,
-                  ignoreSelection: true,
-                  stopEvent: () => true,
-                  destroy: (element) =>
-                    element.dispatchEvent(new Event("inknb-inline-destroy")),
-                },
-              ),
-            );
+            ranges.push(suggestionWidget(position, proposal.id, session, false));
           }
           ranges.push(
             ...suggestionMarkers(current, this.projection, state.doc),
@@ -1019,7 +1014,7 @@ export class NativeEditor extends NativeDocumentModel {
     const preview =
       proposal &&
       this.dom.querySelector<HTMLElement>(
-        `[data-suggestion-host="${proposal.id}"]`,
+        `.table-suggestion-content[data-version="suggested"] .change-version:last-child [data-review-proposal="${proposal.id}"], .table-suggestion-content[data-version="current"] .change-version:first-child [data-review-proposal="${proposal.id}"], [data-suggestion-host="${proposal.id}"], [data-table-proposals~="${proposal.id}"]`,
       );
     if (preview) return preview.getBoundingClientRect();
     return this.editor.coordsAtPos(documentPosition(this.projection, position));
@@ -1122,7 +1117,7 @@ export class NativeEditor extends NativeDocumentModel {
     const workspace = host?.closest<HTMLElement>(".workspace");
     if (!this.focusHost || !host || !workspace) return;
     const tables = [...this.dom.querySelectorAll<HTMLTableElement>(
-      ".native-table:not(:is(td, th, li, blockquote) .native-table) > .tableWrapper > table",
+      ".native-table:not(:is(td, th, li, blockquote) .native-table) > .tableWrapper > table, .table-suggestion-content .tableWrapper > table",
     )].filter(table => table.getClientRects().length > 0);
     const tableWidth = Math.max(0, ...tables.map(table => table.getBoundingClientRect().width));
     const inset = workspace.getBoundingClientRect().width - host.getBoundingClientRect().width;

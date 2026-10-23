@@ -6,6 +6,8 @@ Direct edits require a connected agent and document edit access. Each change car
 
 Agents create comments with `annotation_create`. They attach suggestions with `edit_propose` and the returned thread identity. A human request is optional. The proposed passage can differ from the discussion passage. Suggestions require human acceptance. Legacy request permission fields remain historical metadata. `requests_list` reports the document's current access in its permission field.
 
+Table suggestions use one native table projection and one review bar. Structural comparison associates each proposal with its table. Projected source ranges identify changed cells. Preview transactions leave the document unchanged. Each acceptance uses the existing proposal revision and text checks.
+
 The aside toolbar button toggles the whole column. Each document stores its column visibility in its library entry. Hiding the column retains thread expansion states and drafts. New aside commands and passage navigation reveal the column. Selecting text or pressing Shift+Command+A creates an aside.
 
 Each table exposes the shared comment-plus icon. The action captures the whole table and opens its composer in one click. Selection and deletion remain in the table context menu.

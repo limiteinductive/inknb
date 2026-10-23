@@ -108,7 +108,7 @@ export async function inspectInterface() {
           });
         else if (
           parameters.action === "activate" &&
-          element.matches('button,summary,[role="menuitem"],[role="menuitemradio"],input[type="checkbox"]')
+          element.matches('button,summary,[role="menuitem"],[role="menuitemradio"],input[type="checkbox"],td[data-review-proposal][tabindex="0"],th[data-review-proposal][tabindex="0"]')
         )
           element.click();
         else throw new Error("This action is unavailable for this control.");
