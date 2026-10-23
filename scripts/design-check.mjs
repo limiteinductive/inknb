@@ -25,7 +25,7 @@ for (const file of files.filter((file) => file.endsWith(".tsx"))) {
       const attributes = node.attributes.filter(
         (attribute) => attribute.type === "JSXAttribute",
       );
-      if (["PanelPopover", "PanelBody"].includes(name)) {
+      if (["PanelPopover", "PanelModal", "PanelBody"].includes(name)) {
         const className = attributes.find(
           (attribute) => attribute.name.name === "className",
         );

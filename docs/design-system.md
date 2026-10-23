@@ -73,6 +73,12 @@ Double-clicking an image opens a fitted preview. The image context menu also pro
 
 Wide tables expand the document column to use available space. Prose keeps its reading width and center. The aside gutter remains separate. Tables scroll horizontally when the available space cannot fit them. Tables inside cards, lists, and quotes stay within their parent.
 
+## Writing commands
+
+The writing view has no top bar. The sidebar header contains the library toggle, Commands, and notifications. A standalone library toggle remains when the sidebar is hidden. Command+P opens a searchable palette. Arrow keys select a result. Enter runs it. Escape closes it. Unavailable actions retain their disabled state.
+
+Command panels and notifications use the shared modal panel. Popovers and modal panels share heading, body, spacing, material, and height limits. A panel fits the current viewport. The palette opens near the top of the window.
+
 ## Build enforcement
 
 `npm run design:check` parses JSX and CSS. It rejects nested panel dialogs, copied panel structure, local panel metric overrides, and raw layout or typography lengths in the shared panel and decision styles. `npm run check` and production builds run this check.

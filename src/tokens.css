@@ -55,6 +55,9 @@
   --panel-inset: var(--space-4);
   --panel-width: 360px;
   --panel-width-wide: 440px;
+  --panel-max-height: 660px;
+  --panel-top-offset: 120px;
+  --command-list-height: 360px;
   --control-small-height: 28px;
   --control-row-height: 32px;
   --menu-min-width: 208px;

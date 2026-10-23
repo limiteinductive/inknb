@@ -8,7 +8,7 @@ Agents create comments with `annotation_create`. They attach suggestions with `e
 
 Table suggestions use one native table projection and one review bar. Structural comparison associates each proposal with its table. Projected source ranges identify changed cells. Preview transactions leave the document unchanged. Each acceptance uses the existing proposal revision and text checks.
 
-The aside toolbar button toggles the whole column. Each document stores its column visibility in its library entry. Hiding the column retains thread expansion states and drafts. New aside commands and passage navigation reveal the column. Selecting text or pressing Shift+Command+A creates an aside.
+The Show asides and Hide asides commands toggle the whole column. Each document stores its column visibility in its library entry. Hiding the column retains thread expansion states and drafts. New aside commands and passage navigation reveal the column. Selecting text or pressing Shift+Command+A creates an aside.
 
 Each table exposes the shared comment-plus icon. The action captures the whole table and opens its composer in one click. Selection and deletion remain in the table context menu.
 
@@ -68,9 +68,9 @@ Writing windows exchange revisioned ProseMirror steps with the host. The host re
 
 The library searches exact document text and titles within its Space. Folders contain document references. The canonical source, conversations, revision history, and Undo remain shared across windows.
 
-The sidebar header owns its toggle and Back and Forward controls. The writing header owns those controls while the sidebar is hidden. Narrow windows show the library in a dismissible modal drawer. Navigation closes that drawer and restores writing focus.
+The sidebar header owns its toggle, Commands, and notifications. The writing view has no top bar. A standalone library toggle remains when the sidebar is hidden. Command+P opens the command palette. It filters commands by name and supports arrow keys, Enter, and Escape. Back and Forward remain available through the palette and native shortcuts. Narrow windows show the library in a dismissible modal drawer. Navigation closes that drawer and restores writing focus.
 
-The document title is static text. One plus button beside the document list creates a document. Agents manage collections as document references without moving files. The native File menu and keyboard shortcuts provide New, Open, Save, and Save As. The toolbar selects Write, Preview, or Both. The aside heading shows the conversation count, New aside, and Hide controls.
+The document title is static text. One plus button beside the document list creates a document. Agents manage collections as document references without moving files. The native File menu and keyboard shortcuts provide New, Open, Save, and Save As. The palette provides document, view, aside, review, history, agent, and linked resource commands. The aside heading shows the conversation count, New aside, and Hide controls.
 
 Double-clicking a document name edits it inline. F2 starts editing the focused name. Enter or leaving the field saves. Escape cancels. Document rows have no action menu.
 
@@ -80,11 +80,11 @@ The separator has a physical grab area around its line. Pointer capture starts o
 
 Window chrome uses a `long-term` native design. AppKit notifications track fullscreen entry, fullscreen exit, resizing, window updates, and display scale changes. Native window updates enforce the traffic-light bounds. Unchanged frames require no native mutation. The application owns and removes its notification observers.
 
-Each window owns its chrome state. The writer and detached preview use the same toolbar height and native control alignment. Chrome events target their owning window. The detached title uses the measured control inset.
+Each window owns its chrome state. The sidebar and detached preview use the same native control alignment. Chrome events target their owning window. The detached title uses the measured control inset.
 
-The toolbar reveals within a 64-pixel hover zone below the document area's top edge. The zone observes pointer movement without intercepting document input. Sandboxed frames report pointer positions through their validated message channels. Dragging a selection does not activate the hover zone.
+The detached preview toolbar reveals within a 64-pixel hover zone below the document area's top edge. The zone observes pointer movement without intercepting document input. Sandboxed frames report pointer positions through their validated message channels. Dragging a selection does not activate the hover zone.
 
-Interface geometry uses shared control, badge, and label metrics. Count badges have a fixed height and centered tabular numerals. Single-digit notification badges are circular. Longer counts keep that height and expand horizontally. Activity and History share a popover component, headings, and filters. The popover limits its height to 660 pixels and fits the available window space. Status indicators align with their first text line. Search focus uses one background wash across the field. Its input has no separate underline.
+Interface geometry uses shared control, badge, and label metrics. Count badges have a fixed height and centered tabular numerals. Single-digit notification badges are circular. Longer counts keep that height and expand horizontally. Activity, History, and command panels share panel headings, body gutters, and height limits. Notifications and command panels use dismissible modal dialogs. The detached preview retains its anchored History popover. Status indicators align with their first text line. Search focus uses one background wash across the field. Its input has no separate underline.
 
 Windowed navigation shares the traffic lights' vertical center and reserves space after their measured bounds. Fullscreen navigation uses the left toolbar inset. The windowed inset returns during fullscreen exit. The same geometry applies with the sidebar open or closed. Agent snapshots measure current native control bounds on the main thread.
 
@@ -106,7 +106,7 @@ Anchors use UTF-16 offsets compatible with CodeMirror. Each edit maps the offset
 
 Detached anchors retain historical offsets and quotes. Storage checks their range order without requiring those offsets to fit the current source.
 
-Document review uses a `long-term` queue derived from applicable proposals. The badge counts pending suggestions independently of discussion visibility. Source order determines navigation. Passage markers and the toolbar open the suggestion's aside and reveal its document location.
+Document review uses a `long-term` queue derived from applicable proposals. The badge counts pending suggestions independently of discussion visibility. Source order determines navigation. Passage markers and the Review suggestions command open the suggestion's aside and reveal its document location.
 
 An expanded aside shows its formatted suggestion inside the manuscript at the target passage. Collapsing the aside restores the source view. The preview preserves paragraph, list, and table structure. Show original switches the local preview version. The source text remains unchanged until acceptance.
 

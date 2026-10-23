@@ -2216,3 +2216,22 @@ del[data-change="removed"] {
   border-top: 1px solid var(--line-soft);
   border-radius: 0 0 var(--radius-control) var(--radius-control);
 }
+
+.writing-window-drag {
+  position: absolute;
+  inset: 0 0 auto;
+  height: var(--toolbar-height, 52px);
+  z-index: 8;
+}
+.library-reveal {
+  position: absolute;
+  top: 0;
+  left: calc(var(--window-controls-inset, 86px) + var(--space-3));
+  height: var(--toolbar-height, 52px);
+  display: flex;
+  align-items: center;
+  z-index: 9;
+}
+.library-heading .history-controls {
+  margin-inline-end: auto;
+}

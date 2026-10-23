@@ -1,7 +1,6 @@
 import AgentConnections from "./AgentConnections";
-import { DecisionsButton } from "./Decisions";
-import SpaceMenu from "./SpaceMenu";
-import ActivityCenter, { ActivityButton } from "./ActivityCenter";
+import { DecisionsPanel } from "./Decisions";
+import ActivityCenter from "./ActivityCenter";
 import { activity } from "./activity";
 import {
   lazy,
@@ -19,22 +18,21 @@ import {
   Modal,
   ModalOverlay,
 } from "react-aria-components";
-import { BookOpen, Focus, LayoutTemplate, ListTree, MessageSquarePlus } from "lucide-react";
+import { PanelLeft } from "lucide-react";
 import { invoke } from "@tauri-apps/api/core";
 import { getCurrentWindow } from "@tauri-apps/api/window";
-import AsideLayout, { AsidesButton } from "./AsideLayout";
+import AsideLayout from "./AsideLayout";
 import DocumentHistory from "./DocumentHistory";
-import DocumentToolbar from "./DocumentToolbar";
 import { NativeEditor } from "./native-editor";
 import { SessionContext, useDocumentSession, useSession } from "./use-session";
 import { appHost } from "./app-host";
 import { workspace } from "./window-workspace";
 import Library from "./Library";
-import DocumentNavigation from "./DocumentNavigation";
 import DocumentOutline from "./DocumentOutline";
-import DocumentReview, { ReviewButton } from "./DocumentReview";
+import DocumentReview from "./DocumentReview";
 import LinkedResources from "./LinkedResources";
 import IconButton from "./IconButton";
+import CommandPalette from "./CommandPalette";
 import PassageAnnotations from "./PassageAnnotations";
 import LinkPreview from "./LinkPreview";
 import ImageViewer from "./ImageViewer";
@@ -54,7 +52,7 @@ function DocumentApp({ active }: { active: boolean }) {
   );
   const session = useDocumentSession();
   const state = useSession();
-  const [historyOpen, setHistoryOpen] = useState(false);
+  const historyOpen = active && library.commandSurface === "history";
   const editorHost = useRef<HTMLDivElement>(null);
   useLayoutEffect(() => {
     if (!state.ready || !editorHost.current) return;
@@ -105,76 +103,15 @@ function DocumentApp({ active }: { active: boolean }) {
     state.metadata.documentId,
     state.profile,
   ]);
-  const title =
-    library.documents.find((entry) => entry.id === state.metadata.documentId)
-      ?.title ?? "Untitled";
   return (
     <div
       className={`app ${state.focus ? "focus-mode" : ""} placement-${state.preferences.placement}`}
     >
-      <DocumentToolbar active={active}>
-        <div className="window-inset" />
-        {!library.sidebarOpen && <DocumentNavigation />}
-        {!library.sidebarOpen && <SpaceMenu />}
-        <div className="document-name">
-          <span className="document-title">
-            {title}
-            {state.profile ? ` · ${state.profile}` : ""}
-          </span>
-          {state.dirty && (
-            <span className="unsaved-dot" aria-label="Unsaved changes" />
-          )}
-        </div>
-        <div className="header-spacer" data-tauri-drag-region />
-        <div className="toolbar">
-          {active && <ActivityButton />}
-          <AgentConnections />
-          <DecisionsButton />
-
-          {!state.focus && (
-            <>
-              <LinkedResources />
-              <ReviewButton />
-              {state.metadata.page && <IconButton
-                icon={state.pageVisible ? BookOpen : LayoutTemplate}
-                label={state.pageVisible ? "Show prose" : "Show document page"}
-                agentControl="page.toggle"
-                active={state.pageVisible}
-                onPress={() => session.update({ pageVisible: !state.pageVisible })}
-              />}
-              <IconButton
-                icon={ListTree}
-                label="Toggle document outline"
-                agentControl="outline.toggle"
-                active={state.outlineOpen ?? state.preferences.document_outline}
-                onPress={() => session.update({ outlineOpen: !(state.outlineOpen ?? state.preferences.document_outline) })}
-              />
-              <DocumentHistory
-                active={active}
-                open={historyOpen}
-                onOpenChange={setHistoryOpen}
-              />
-              <AsidesButton />
-              <IconButton
-                icon={MessageSquarePlus}
-                label="Add aside"
-                agentControl="aside.create"
-                onPress={() => {
-                  setHistoryOpen(false);
-                  session.startComment();
-                }}
-              />
-            </>
-          )}
-          <IconButton
-            icon={Focus}
-            label="Toggle focus mode"
-            agentControl="focus.toggle"
-            active={state.focus}
-            onPress={() => void session.command("focus")}
-          />
-        </div>
-      </DocumentToolbar>
+      {active && <>
+        <AgentConnections open={library.commandSurface === "agents"} onOpenChange={open => workspace.update({ commandSurface: open ? "agents" : null })} />
+        <LinkedResources open={library.commandSurface === "resources"} onOpenChange={open => workspace.update({ commandSurface: open ? "resources" : null })} />
+      </>}
+      {active && <DocumentHistory active open={historyOpen} presentation="modal" onOpenChange={open => workspace.update({ commandSurface: open ? "history" : null })} />}
       <AsideLayout
         active={active}
         historyOpen={historyOpen}
@@ -347,6 +284,10 @@ function App() {
       }
       const command = event.altKey
         ? "comment-document"
+        : key === "p" && !event.shiftKey
+          ? "commands"
+          : key === "\\"
+            ? "sidebar"
         : key === "["
           ? "back"
           : key === "]"
@@ -421,14 +362,15 @@ function App() {
         </Modal>
       </ModalOverlay>
       <div className="document-stack">
+        <div className="writing-window-drag" data-tauri-drag-region />
+        {!sidebar && <div className="library-reveal">
+          <IconButton icon={PanelLeft} label="Show library" agentControl="library.toggle" onPress={() => { workspace.active?.update({ focus: false }); workspace.update({ sidebarOpen: true }); }} />
+        </div>}
+        <CommandPalette session={workspace.active} />
+        <DecisionsPanel open={library.commandSurface === "decisions"} onOpenChange={open => workspace.update({ commandSurface: open ? "decisions" : null })} />
         <ActivityCenter />
         {!library.activeId && (
           <div className="app">
-            <DocumentToolbar>
-              <SpaceMenu />
-              <div className="header-spacer" />
-              <ActivityButton />
-            </DocumentToolbar>
             <div className="startup-state">
               <p>This space has no documents.</p>
               <Button

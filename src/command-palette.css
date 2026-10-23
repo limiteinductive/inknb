@@ -1,0 +1,50 @@
+.command-search-body {
+  flex-shrink: 0;
+  overflow: visible;
+}
+.command-results {
+  flex: 1;
+  max-height: var(--command-list-height);
+}
+.command-search {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  color: var(--muted);
+}
+.command-search input {
+  width: 100%;
+  min-width: 0;
+  padding: var(--space-2) 0;
+  border: 0;
+  outline: none;
+  box-shadow: none;
+  background: transparent;
+  color: var(--ink);
+  font: var(--text-body-size)/var(--text-body-height) var(--interface-font);
+}
+.command-option {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-4);
+  width: 100%;
+  min-height: var(--control-row-height);
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-control);
+  color: var(--ink);
+  text-align: start;
+  font: var(--text-body-size)/var(--text-body-height) var(--interface-font);
+}
+.command-option[aria-selected="true"] {
+  background: var(--hover);
+}
+.command-option[aria-disabled="true"] {
+  color: var(--muted);
+  opacity: 0.55;
+}
+.command-option kbd {
+  flex-shrink: 0;
+  color: var(--muted);
+  font: var(--text-detail-size)/var(--text-detail-height) var(--interface-font);
+}

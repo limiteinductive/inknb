@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
-import { Button, DialogTrigger } from "react-aria-components";
-import { File, FileText, Globe, Link } from "lucide-react";
+import { Button } from "react-aria-components";
+import { File, FileText, Globe } from "lucide-react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { useDocumentSession, useSession } from "./use-session";
@@ -8,12 +8,11 @@ import { workspace } from "./window-workspace";
 import { resourceStateSchema } from "./resources";
 import type { ResourceState } from "./resources";
 import { showContextMenu } from "./context-menu";
-import PanelPopover, { PanelBody, PanelEmpty } from "./PanelPopover";
+import { PanelModal, PanelBody, PanelEmpty } from "./PanelPopover";
 
-export default function LinkedResources() {
+export default function LinkedResources({ open, onOpenChange }: { open: boolean; onOpenChange: (open: boolean) => void }) {
   const session = useDocumentSession();
   const state = useSession();
-  const [open, setOpen] = useState(false);
   const [resources, setResources] = useState<ResourceState | null>(null);
   const [error, setError] = useState<string | null>(null);
   useEffect(() => {
@@ -41,15 +40,7 @@ export default function LinkedResources() {
     };
   }, [open, state.metadata.documentId]);
   return (
-    <DialogTrigger isOpen={open} onOpenChange={setOpen}>
-      <Button
-        className="icon-button"
-        aria-label="Linked resources"
-        data-inknb-control="resources.open"
-      >
-        <Link size={17} aria-hidden="true" />
-      </Button>
-      <PanelPopover className="resources-popover" title="Linked resources">
+    <PanelModal open={open} onOpenChange={onOpenChange} className="resources-popover" title="Linked resources">
         {error && (
           <p role="alert" className="error">
             {error}
@@ -69,7 +60,7 @@ export default function LinkedResources() {
                 key={resource.id}
                 className="resource-link"
                 onPress={() => {
-                  setOpen(false);
+                  onOpenChange(false);
                   const operation =
                     target.kind === "document"
                       ? workspace.request({
@@ -123,7 +114,7 @@ export default function LinkedResources() {
                   className="resource-link"
                   key={source.documentId}
                   onPress={() => {
-                    setOpen(false);
+                    onOpenChange(false);
                     void workspace
                       .request({
                         kind: "open-document",
@@ -139,7 +130,6 @@ export default function LinkedResources() {
             </>
           )}
         </PanelBody>
-      </PanelPopover>
-    </DialogTrigger>
+    </PanelModal>
   );
 }

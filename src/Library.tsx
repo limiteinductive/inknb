@@ -1,4 +1,6 @@
 import SpaceMenu from "./SpaceMenu";
+import { ActivityButton } from "./ActivityCenter";
+import IconButton from "./IconButton";
 import LibrarySelection from "./LibrarySelection";
 import { useRef, useState, useSyncExternalStore } from "react";
 import type { MouseEvent } from "react";
@@ -12,7 +14,7 @@ import {
   TextField,
   useDragAndDrop,
 } from "react-aria-components";
-import { ChevronRight, FileText, Folder, Plus, Search, X } from "lucide-react";
+import { ChevronRight, Command, FileText, Folder, Plus, Search, X } from "lucide-react";
 import { workspace } from "./window-workspace";
 import DocumentNavigation from "./DocumentNavigation";
 import type { LibraryEntry, LibraryNode } from "./workspace";
@@ -456,7 +458,9 @@ export default function Library({
         />
       )}
       <header className="library-heading" data-tauri-drag-region>
-        <DocumentNavigation onNavigate={onNavigate} />
+        <DocumentNavigation />
+        <IconButton icon={Command} label="Commands (⌘P)" agentControl="commands.open" onPress={() => void workspace.command("commands")} />
+        <ActivityButton />
       </header>
       <TextField
         className="library-search"

@@ -23,6 +23,9 @@ import type { HostRequest, HostSnapshot } from "./host-protocol";
 import type { DocumentHost } from "./session";
 import type { Library, LibraryNode } from "./workspace";
 import { WindowDocument } from "./window-document";
+import { currentSuggestions, reviewSuggestion } from "./suggestions";
+
+type CommandSurface = "commands" | "agents" | "decisions" | "resources" | "history";
 
 class WindowWorkspace implements DocumentHost {
   private state: Library & {
@@ -33,6 +36,7 @@ class WindowWorkspace implements DocumentHost {
     spaceRegistry: SpacesState | null;
     preferences: Preferences;
     profile: string | null;
+    commandSurface: CommandSurface | null;
   } = {
     version: 2,
     documents: [],
@@ -52,6 +56,7 @@ class WindowWorkspace implements DocumentHost {
     spaceRegistry: null,
     preferences: defaultPreferences,
     profile: null,
+    commandSurface: null,
   };
   readonly sessions = new Map<string, WindowDocument>();
   readonly windowId = getCurrentWindow().label.replace(/^writing-/, "");
@@ -244,7 +249,7 @@ class WindowWorkspace implements DocumentHost {
   };
 
   update(
-    patch: Partial<Library> & { ready?: boolean; error?: string | null },
+    patch: Partial<Library> & { ready?: boolean; error?: string | null; commandSurface?: CommandSurface | null },
   ): void {
     this.state = { ...this.state, ...patch };
     for (const listener of this.listeners) listener();
@@ -405,12 +410,40 @@ class WindowWorkspace implements DocumentHost {
     }
   }
   async command(command: string): Promise<void> {
+    if (command === "commands" || command === "agents" || command === "decisions" || command === "resources" || command === "history") {
+      activity.update({ open: false });
+      this.update({ commandSurface: command });
+      return;
+    }
+    const session = this.active;
+    const state = session?.getSnapshot();
+    if (session && state) {
+      if (command === "outline") {
+        session.update({ outlineOpen: !(state.outlineOpen ?? state.preferences.document_outline) });
+        return;
+      }
+      if (command === "asides") {
+        session.update({ asidesOpen: !state.asidesOpen, focus: false });
+        return;
+      }
+      if (command === "page") {
+        session.update({ pageVisible: !state.pageVisible });
+        return;
+      }
+      if (command === "review") {
+        const proposals = currentSuggestions(state);
+        const proposal = proposals.find(proposal => proposal.id === state.reviewProposalId) ?? proposals[0];
+        if (proposal) reviewSuggestion(proposal.id, session);
+        return;
+      }
+    }
     if (["text-larger", "text-smaller", "text-reset"].includes(command)) {
       const change = command === "text-larger" ? "increase" : command === "text-smaller" ? "decrease" : "reset";
       await invoke("configuration_font_size", { change });
       return;
     }
     if (command === "activity") {
+      this.update({ commandSurface: null });
       activity.update({ open: true });
       return;
     }
@@ -423,7 +456,9 @@ class WindowWorkspace implements DocumentHost {
       return;
     }
     if (command === "sidebar") {
-      this.update({ sidebarOpen: !this.state.sidebarOpen });
+      const open = !this.state.sidebarOpen || Boolean(this.active?.getSnapshot().focus);
+      if (open) this.active?.update({ focus: false });
+      this.update({ sidebarOpen: open });
       return;
     }
     if (command === "new") return this.newDocument();

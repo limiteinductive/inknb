@@ -27,10 +27,12 @@ export default function DocumentHistory({
   active,
   open,
   onOpenChange,
+  presentation = "popover",
 }: {
   active: boolean;
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  presentation?: "popover" | "modal";
 }) {
   const session = useAsideSession();
   const state = useAsideState();
@@ -198,16 +200,10 @@ export default function DocumentHistory({
     return { before, after, difference: textDifference(before, after) };
   }, [revision]);
   const difference = rendered?.difference;
-  return (
-    <DialogTrigger isOpen={open} onOpenChange={onOpenChange}>
-      <Button
-        className="icon-button"
-        aria-label="Document history"
-        data-inknb-control="history.open"
-      >
-        <History size={17} strokeWidth={1.6} aria-hidden="true" />
-      </Button>
-      <PanelPopover
+  const panel = <PanelPopover
+        presentation={presentation}
+        isOpen={open}
+        onOpenChange={onOpenChange}
         className="history-drawer"
         title="History"
         label="Document history"
@@ -230,11 +226,11 @@ export default function DocumentHistory({
           ) : null
         }
         actions={
-          <IconButton
+          presentation === "popover" ? <IconButton
             icon={X}
             label="Close history"
             onPress={() => onOpenChange(false)}
-          />
+          /> : null
         }
       >
         {error && (
@@ -421,7 +417,12 @@ export default function DocumentHistory({
             </PanelBody>
           </>
         )}
-      </PanelPopover>
-    </DialogTrigger>
-  );
+      </PanelPopover>;
+  if (presentation === "modal") return panel;
+  return <DialogTrigger isOpen={open} onOpenChange={onOpenChange}>
+    <Button className="icon-button" aria-label="Document history" data-inknb-control="history.open">
+      <History size={17} strokeWidth={1.6} aria-hidden="true" />
+    </Button>
+    {panel}
+  </DialogTrigger>;
 }

@@ -1,22 +1,14 @@
-import { Button, DialogTrigger, Switch } from "react-aria-components";
+import { Button, Switch } from "react-aria-components";
 import { invoke } from "@tauri-apps/api/core";
 import { useDocumentSession, useSession } from "./use-session";
-import PanelPopover, { PanelBody, PanelEmpty } from "./PanelPopover";
+import { PanelModal, PanelBody, PanelEmpty } from "./PanelPopover";
 import { agentAttribution } from "./domain";
 
-export default function AgentConnections() {
+export default function AgentConnections({ open, onOpenChange }: { open: boolean; onOpenChange: (open: boolean) => void }) {
   const session = useDocumentSession();
   const state = useSession();
   return (
-    <DialogTrigger>
-      <Button
-        className={`connection-status ${state.metadata.agents.length ? "connected" : ""}`}
-        aria-label={`Agent connections, ${state.metadata.agents.length}`}
-        data-inknb-control="agents.open"
-      >
-        <span className="status-dot" />
-      </Button>
-      <PanelPopover
+    <PanelModal open={open} onOpenChange={onOpenChange}
         className="agent-connection-popover"
         title="Agents"
         label="Agent connections"
@@ -105,7 +97,6 @@ export default function AgentConnections() {
             </Button>
           )}
         </PanelBody>
-      </PanelPopover>
-    </DialogTrigger>
+    </PanelModal>
   );
 }

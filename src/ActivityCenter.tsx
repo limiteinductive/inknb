@@ -7,7 +7,6 @@ import {
   Check,
   ChevronRight,
   CircleAlert,
-  X,
 } from "lucide-react";
 import { invoke } from "@tauri-apps/api/core";
 import { getCurrentWindow } from "@tauri-apps/api/window";
@@ -212,11 +211,12 @@ export default function ActivityCenter() {
         {state.unread ? `${state.unread} unread updates` : ""}
       </span>
       <PanelPopover
+        presentation="modal"
         triggerRef={activityTrigger}
         isOpen={state.open}
         onOpenChange={(open) => activity.update({ open })}
         className="activity-drawer"
-        data-inknb-control="activity.panel"
+        agentControl="activity.panel"
         title="Activity"
         size="wide"
         leading={
@@ -231,16 +231,7 @@ export default function ActivityCenter() {
             </Button>
           ) : null
         }
-        actions={
-          <Button
-            className="icon-button"
-            aria-label="Close activity"
-            data-inknb-control="activity.close"
-            onPress={() => activity.update({ open: false })}
-          >
-            <X size={17} aria-hidden="true" />
-          </Button>
-        }
+        closeControl="activity.close"
       >
         {state.error && (
           <p className="activity-error" role="alert">

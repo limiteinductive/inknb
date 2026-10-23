@@ -11,6 +11,16 @@
   overflow: hidden;
   font: var(--text-body-size)/var(--text-body-height) var(--interface-font);
 }
+.panel-overlay .panel-surface {
+  max-height: min(var(--panel-max-height), calc(100dvh - var(--space-8) * 2));
+}
+.panel-overlay[data-placement="top"] {
+  align-items: flex-start;
+  padding-block-start: min(18vh, var(--panel-top-offset));
+}
+.panel-overlay[data-placement="top"] .panel-surface {
+  max-height: min(var(--panel-max-height), calc(100dvh - min(18vh, var(--panel-top-offset)) - var(--space-8)));
+}
 .panel-surface[data-size="wide"] {
   width: min(var(--panel-width-wide), calc(100vw - var(--space-8)));
 }

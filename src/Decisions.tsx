@@ -1,11 +1,10 @@
 import { useState, useSyncExternalStore } from "react";
 import {
   Button,
-  DialogTrigger,
   TextArea,
   TextField,
 } from "react-aria-components";
-import { Check, ChevronDown, MessageCircleQuestion } from "lucide-react";
+import { Check, ChevronDown } from "lucide-react";
 import type { Decision } from "./domain";
 import { agentAttribution } from "./domain";
 import { useAsideSession, useAsideState } from "./use-session";
@@ -13,7 +12,7 @@ import { workspace } from "./window-workspace";
 import { ResponseBody } from "./AgentResponse";
 import { SessionContext } from "./use-session";
 import { invoke } from "@tauri-apps/api/core";
-import PanelPopover, { PanelBody, PanelEmpty } from "./PanelPopover";
+import { PanelModal, PanelBody, PanelEmpty } from "./PanelPopover";
 import "./decisions.css";
 
 export function DecisionCard({ decision }: { decision: Decision }) {
@@ -156,12 +155,11 @@ export function DecisionCard({ decision }: { decision: Decision }) {
   );
 }
 
-export function DecisionsButton() {
+export function DecisionsPanel({ open, onOpenChange }: { open: boolean; onOpenChange: (open: boolean) => void }) {
   const library = useSyncExternalStore(
     workspace.subscribe,
     workspace.getSnapshot,
   );
-  const [open, setOpen] = useState(false);
   const [history, setHistory] = useState(false);
   const entries = library.documents
     .flatMap((document) =>
@@ -176,18 +174,7 @@ export function DecisionsButton() {
   const pending = entries.filter(({ decision }) => decision.status === "open");
   const shown = history ? entries : pending;
   return (
-    <DialogTrigger isOpen={open} onOpenChange={setOpen}>
-      <Button
-        className="icon-button"
-        aria-label={`Decisions, ${pending.length} open`}
-        data-inknb-control="decisions.open"
-      >
-        <MessageCircleQuestion size={17} />
-        {pending.length > 0 && (
-          <span className="count-badge">{pending.length}</span>
-        )}
-      </Button>
-      <PanelPopover
+    <PanelModal open={open} onOpenChange={onOpenChange}
         className="decisions-popover"
         title="Decisions"
         label="Space decisions"
@@ -212,7 +199,7 @@ export function DecisionsButton() {
                 <Button
                   className="decision-document-link text-button"
                   onPress={() => {
-                    setOpen(false);
+                    onOpenChange(false);
                     void workspace
                       .request({
                         kind: "open-document",
@@ -236,8 +223,7 @@ export function DecisionsButton() {
             </SessionContext.Provider>
           ))}
         </PanelBody>
-      </PanelPopover>
-    </DialogTrigger>
+    </PanelModal>
   );
 }
 

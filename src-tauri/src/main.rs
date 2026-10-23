@@ -1774,6 +1774,9 @@ fn main() {
                 .item(&MenuItem::with_id(app, "resolve-asides", "Resolve All Asides", true, None::<&str>)?)
                 .build()?;
             let view = SubmenuBuilder::new(app, "View")
+                .item(&MenuItem::with_id(app, "commands", "Commands…", true, Some("CmdOrCtrl+P"))?)
+                .item(&MenuItem::with_id(app, "sidebar", "Toggle Library", true, Some("CmdOrCtrl+Backslash"))?)
+                .separator()
                 .item(&MenuItem::with_id(app, "text-larger", "Larger Text", true, Some("CmdOrCtrl+Equal"))?)
                 .item(&MenuItem::with_id(app, "text-smaller", "Smaller Text", true, Some("CmdOrCtrl+Minus"))?)
                 .item(&MenuItem::with_id(app, "text-reset", "Default Text Size", true, Some("CmdOrCtrl+Digit0"))?)
