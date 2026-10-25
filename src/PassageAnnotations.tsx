@@ -252,7 +252,7 @@ function PassageAnnotation({ identity, sourceRange, reply }: { identity: string;
     const element = comment.current;
     if (element) {
       element.style.height = "auto";
-      element.style.height = `${Math.min(160, element.scrollHeight)}px`;
+      element.style.height = `${element.scrollHeight}px`;
     }
     place();
     const observer = new ResizeObserver(place);

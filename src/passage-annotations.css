@@ -19,6 +19,11 @@
   clip-path: inset(50%);
   white-space: nowrap;
 }
+.annotation-scroll-space::after {
+  content: "";
+  display: block;
+  height: var(--annotation-scroll-space);
+}
 .passage-annotation[data-completed="true"] {
   width: auto;
   max-width: min(280px, calc(100vw - var(--space-4)));
@@ -43,7 +48,8 @@
   width: 100%;
   min-width: 0;
   min-height: 1lh;
-  max-height: var(--aside-draft-max-height);
+  max-height: min(var(--aside-draft-max-height), 25dvh);
+  overflow-y: auto;
   resize: none;
   padding: 0;
   border: 0;

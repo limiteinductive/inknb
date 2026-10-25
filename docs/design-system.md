@@ -43,6 +43,8 @@ Links use the hand pointer, including inside editable text. Whole-table annotati
 
 Annotations align above the right edge of their passage. Their opaque material and neutral edge separate them from the reading surface. Double-click or F2 edits the existing annotation. Enter sends its comment in a new aside. Shift+Enter inserts a line. Escape cancels an edit. Send and delete use the glyph variant of the shared icon control. These actions appear on hover or focus. A single click focuses the annotation. Hidden actions reserve no space.
 
+Comment fields use existing space above their passage before adding padding. Opening, resizing, and closing preserve the passage's screen position within scroll limits. Draft fields scroll at one quarter of the viewport height or the shared draft height limit.
+
 Application choice menus use the shared menu surface and accessible menu primitives. Single choices show a check beside the selected item. Native HTML dropdowns are rejected by the design contract.
 
 Agent attribution uses the session name and role. Unnamed sessions include a short session identifier. Replies, full responses, decisions, recipients, and connection panels share the same label.
