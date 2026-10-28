@@ -3744,7 +3744,7 @@ export class DocumentSession {
         ),
       });
       if (method === "edit_apply") {
-        this.proposal(proposal.id, true, defaultAgent(this.state.metadata)!.label);
+        await this.proposal(proposal.id, true, creator?.name ?? creator?.label ?? "Agent");
         this.changed({
           ...this.state.metadata,
           annotations: this.state.metadata.annotations.map(candidate => candidate.id === annotation?.id ? { ...candidate, status: "resolved", reason: parsed.explanation, ...(creator ? { resolvedBy: creator } : {}) } : candidate),

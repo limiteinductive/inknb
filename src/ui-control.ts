@@ -20,6 +20,35 @@ const targets = new Map<
   (parameters: z.infer<typeof actionSchema>) => Promise<unknown>
 >();
 
+const agentControls = new Set([
+  "library.toggle", "library.resize", "library.content", "commands.open",
+  "activity.open", "activity.panel", "activity.back", "activity.open-document",
+  "activity.close", "asides", "asides.toggle", "asides.reader", "asides.resize",
+  "review.toggle", "response.close", "response.body", "history.open",
+  "outline.expand", "outline.hide", "space.menu", "space.new-window",
+  "preview.latest", "preview.fullscreen", "preview.close", "preview.content",
+  "preview.pdf", "image.zoom", "image.close", "panel.close",
+  ...[
+    "project-search", "sidebar", "back", "forward", "activity", "decisions",
+    "asides", "review", "outline", "history", "resources", "agents", "focus",
+    "find", "page", "preview", "text-larger", "text-smaller", "text-reset",
+  ].map((command) => `command:${command}`),
+]);
+const agentControlPrefixes = [
+  "library:document:", "library:pinned:", "library:toggle:", "project.document:",
+  "thread:", "thread.passage:", "aside.passage:", "aside.copy:", "aside.actions:",
+  "conversation.collapse:", "conversation.scroll:", "composer.scroll:",
+  "proposal.review:", "proposal.original:", "proposal.collapse:",
+  "table.review.collapse:", "turn.edits:", "response:", "source:", "outline:",
+  "space.open:", "activity.item:",
+];
+
+function isAgentControl(element: HTMLElement): boolean {
+  const identity = element.dataset.inknbControl;
+  return identity !== undefined && (agentControls.has(identity) ||
+    agentControlPrefixes.some((prefix) => identity.startsWith(prefix)));
+}
+
 interface PointerObservation {
   clientX: number;
   clientY: number;
@@ -79,6 +108,7 @@ export async function inspectInterface() {
     ...document.querySelectorAll<HTMLElement>("[data-inknb-control]"),
   ]
     .filter(isVisible)
+    .filter(isAgentControl)
     .map((element) => {
       const identity = element.dataset.inknbControl!;
       const style = getComputedStyle(element);
@@ -89,6 +119,8 @@ export async function inspectInterface() {
       inspectedTargets.set(identity, async (parameters) => {
         if (
           !isVisible(element) ||
+          !isAgentControl(element) ||
+          element.dataset.inknbControl !== identity ||
           element.getAttribute("aria-disabled") === "true" ||
           element.matches(":disabled")
         )

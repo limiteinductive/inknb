@@ -1,5 +1,7 @@
 # Architecture
 
+Agent UI controls use an explicit navigation allowlist. Suggestion decisions, bulk acceptance, human message submission, and human resolution controls remain unavailable through `ui_action`. Agents use the validated document and conversation tools. Automatic closure handles a new completion or a discussion whose review blocker has cleared.
+
 Agent editing uses a `long-term` document permission model. Annotation format 6 stores `agentAccess` with a default of `read`. The writer grants `edit` in the document's agent connection control. The grant survives restart and reconnection of the same agent session. Disconnecting or connecting another session resets it to `read`. Configuration and agent UI tools cannot grant access.
 
 Direct edits require a connected agent and document edit access. Each change carries the document identity, current revision, exact range, and expected text. Request and aside identities record optional context. Multiple changes can use one request. Each applied change enters the app-owned ProseMirror Undo history. Direct changes without an aside retain their operation record with null context identities.

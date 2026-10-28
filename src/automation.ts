@@ -87,7 +87,7 @@ export function planAutomation(
               ? "Suggestion applied."
               : "Suggestion dismissed.",
           outcome: "done" as const,
-          actor: "You",
+          actor,
           createdAt: new Date().toISOString(),
           lastMessageId: thread.messages.at(-1)?.id ?? null,
         },
@@ -109,6 +109,11 @@ export function planAutomation(
       const outcome = message.continuedIn
         ? ("superseded" as const)
         : ("done" as const);
+      const before = previous.threads.find((candidate) => candidate.id === thread.id);
+      const previousMessage = before?.messages.at(-1);
+      if (before && previousMessage?.id === message.id &&
+        previousMessage.status === "complete" &&
+        !conversationBlocker(previous, before, outcome)) return thread;
       if (conversationBlocker(next, thread, outcome)) return thread;
       return {
         ...thread,
