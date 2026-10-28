@@ -1828,6 +1828,7 @@ html[data-motion="reduced"] *::after {
   outline: none;
 }
 .document-stack {
+  position: relative;
   display: grid;
   grid-template-rows: auto minmax(0, 1fr);
 }
