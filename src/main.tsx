@@ -364,7 +364,7 @@ function App() {
       <div className="document-stack">
         <div className="writing-window-drag" data-tauri-drag-region />
         {!sidebar && <div className="library-reveal">
-          <IconButton icon={PanelLeft} label="Show library" agentControl="library.toggle" onPress={() => { workspace.active?.update({ focus: false }); workspace.update({ sidebarOpen: true }); }} />
+          <IconButton icon={PanelLeft} label={"Show library (⌘\\)"} agentControl="library.toggle" onPress={() => { workspace.active?.update({ focus: false }); workspace.update({ sidebarOpen: true }); }} />
         </div>}
         <CommandPalette session={workspace.active} />
         <DecisionsPanel open={library.commandSurface === "decisions"} onOpenChange={open => workspace.update({ commandSurface: open ? "decisions" : null })} />

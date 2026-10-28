@@ -12,7 +12,7 @@ export default function DocumentNavigation() {
     <nav className="history-controls" aria-label="Document navigation">
       <IconButton
         icon={PanelLeft}
-        label={library.sidebarOpen ? "Hide library" : "Show library"}
+        label={`${library.sidebarOpen ? "Hide library" : "Show library"} (⌘\\)`}
         agentControl="library.toggle"
         active={library.sidebarOpen}
         onPress={() => void workspace.command("sidebar")}
