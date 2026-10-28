@@ -52,6 +52,7 @@ export const asideActionSchema = z.discriminatedUnion("kind", [
     restoreFocus: z.boolean().optional(),
   }),
   z.object({ kind: z.literal("resolve-all") }),
+  z.object({ kind: z.literal("accept-all") }),
   z.object({
     kind: z.literal("reanchor"),
     threadId: z.string().uuid(),

@@ -6,6 +6,8 @@ Direct edits require a connected agent and document edit access. Each change car
 
 Agents create comments with `annotation_create`. They attach suggestions with `edit_propose` and the returned thread identity. A human request is optional. The proposed passage can differ from the discussion passage. Suggestions require human acceptance. Legacy request permission fields remain historical metadata. `requests_list` reports the document's current access in its permission field.
 
+Accept all asides applies the current document's valid, non-overlapping suggestions in one Undo transaction. Existing suggestion lifecycle rules resolve the linked asides. Conflicting suggestions remain open.
+
 Table suggestions use one native table projection and one review bar. Structural comparison associates each proposal with its table. Projected source ranges identify changed cells. Preview transactions leave the document unchanged. Each acceptance uses the existing proposal revision and text checks.
 
 The Show asides and Hide asides commands toggle the whole column. Each document stores its column visibility in its library entry. Hiding the column retains thread expansion states and drafts. New aside commands and passage navigation reveal the column. Selecting text or pressing Shift+Command+A creates an aside.

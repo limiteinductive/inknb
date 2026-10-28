@@ -3,7 +3,7 @@ import { Input, TextField } from "react-aria-components";
 import { Search } from "lucide-react";
 import { PanelBody, PanelEmpty, PanelModal } from "./PanelPopover";
 import { compactLibraryWidth, workspace } from "./window-workspace";
-import { currentSuggestions } from "./suggestions";
+import { currentSuggestions, nonOverlappingSuggestions } from "./suggestions";
 import type { WindowDocument } from "./window-document";
 import { documentPosition } from "./native-source";
 import "./command-palette.css";
@@ -34,6 +34,7 @@ export default function CommandPalette({ session }: { session?: WindowDocument }
     setSelectedIndex(0);
   }, [open, searching]);
   const proposals = state ? currentSuggestions(state) : [];
+  const acceptable = state ? nonOverlappingSuggestions(state) : [];
   const commands: PaletteCommand[] = [
     { id: "project-search", label: "Search project…", shortcut: "⌘K" },
     { id: "sidebar", label: library.sidebarOpen ? "Hide library" : "Show library", shortcut: "⌘\\" },
@@ -47,6 +48,7 @@ export default function CommandPalette({ session }: { session?: WindowDocument }
       { id: "comment", label: "Add aside", shortcut: "⌘⇧A" },
       { id: "asides", label: state.asidesOpen && !state.focus ? "Hide asides" : "Show asides" },
       { id: "review", label: `Review suggestions${proposals.length ? ` (${proposals.length})` : ""}`, disabled: !proposals.length },
+      { id: "accept-asides", label: `Accept all asides${acceptable.length ? ` (${acceptable.length})` : ""}`, disabled: !acceptable.length },
       { id: "outline", label: state.outlineOpen ?? state.preferences.document_outline ? "Hide document outline" : "Show document outline" },
       { id: "history", label: "Document history" },
       { id: "resources", label: "Linked resources" },

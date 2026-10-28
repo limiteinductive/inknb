@@ -12,6 +12,7 @@ import {
 import type { HistoryChange } from "./history";
 import { documentScroll } from "./document-scroll";
 import { revealAsideComposer } from "./aside-focus";
+import { nonOverlappingSuggestions } from "./suggestions";
 import type { WritingSurface } from "./document-surface";
 import type { PageDraft } from "./document-page";
 import { invoke } from "@tauri-apps/api/core";
@@ -512,7 +513,7 @@ export class DocumentSession {
     return this.transact(async () => {
       if (
         context &&
-        ["comment", "selection-comment", "reanchor"].includes(action.kind) &&
+        ["comment", "selection-comment", "reanchor", "accept-all"].includes(action.kind) &&
         context.revision !== this.state.metadata.revision
       )
         throw Error(
@@ -644,6 +645,8 @@ export class DocumentSession {
           return;
         case "resolve-all":
           return this.resolveAll();
+        case "accept-all":
+          return this.acceptAllProposals();
         case "select":
           return this.selectThread(action.threadId);
         case "toggle":
@@ -1881,6 +1884,21 @@ export class DocumentSession {
     this.model.applyAtomic(transaction);
   }
 
+  async acceptAllProposals(): Promise<string[]> {
+    const accepted = nonOverlappingSuggestions(this.state);
+    if (!accepted.length) return [];
+    if (!this.model) throw Error("The document model is not ready.");
+    const transaction = this.model.sourceTransaction(accepted.map((proposal) => ({
+      from: proposal.from, to: proposal.to, insert: proposal.replacement,
+    })));
+    const operations = z.record(z.string(), z.literal("applied")).parse(transaction.doc.attrs.operations);
+    for (const proposal of accepted) operations[proposal.id] = "applied";
+    transaction.setDocAttribute("operations", operations);
+    this.model.applyAtomic(transaction);
+    await this.recover();
+    return accepted.map((proposal) => proposal.id);
+  }
+
   async reconcileFile(): Promise<void> {
     if (!this.state.path || !this.model || this.savedHash === null) return;
     const path = this.state.path;
@@ -2091,6 +2109,7 @@ export class DocumentSession {
       if (command === "save-as") await this.saveAs();
       if (command === "comment-document") this.startComment("document");
       if (command === "resolve-asides") await this.resolveAll();
+      if (command === "accept-asides") await this.acceptAllProposals();
       if (command === "comment") {
         if (this.state.previewSelection && this.state.previewInformation)
           this.startPreviewComment(

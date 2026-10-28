@@ -380,6 +380,9 @@ export class WindowDocument extends DocumentSession {
   override async resolveAll(): Promise<string[]> {
     return z.array(z.string().uuid()).parse(await this.action({ kind: "resolve-all" }));
   }
+  override async acceptAllProposals(): Promise<string[]> {
+    return z.array(z.string().uuid()).parse(await this.action({ kind: "accept-all" }));
+  }
   override reanchor(
     threadId: string,
     selection: Selection = this.getWorkingSnapshot().selection,

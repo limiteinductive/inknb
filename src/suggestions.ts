@@ -20,6 +20,14 @@ export function currentSuggestions(state: SessionState): Proposal[] {
     );
 }
 
+export function nonOverlappingSuggestions(state: SessionState): Proposal[] {
+  const proposals = currentSuggestions(state);
+  return proposals.filter((proposal) => !proposals.some((other) =>
+    other.id !== proposal.id && (other.from === proposal.from ||
+      (other.from < proposal.to && proposal.from < other.to)),
+  ));
+}
+
 export function earlierSuggestions(state: SessionState): Proposal[] {
   const current = new Set(
     currentSuggestions(state).map((proposal) => proposal.id),
