@@ -1,6 +1,7 @@
 use crate::storage::{atomic_write, fingerprint};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
+use std::collections::BTreeMap;
 use std::fs::{self, File};
 use std::io::Read;
 use std::path::{Path, PathBuf};
@@ -119,6 +120,9 @@ pub struct Configuration {
     pub document_outline: bool,
     pub decision_notifications: bool,
     pub outline: OutlineConfiguration,
+    pub shortcuts: BTreeMap<String, Vec<String>>,
+    #[schemars(range(min = 200, max = 5000))]
+    pub shortcut_timeout_ms: u32,
 }
 
 impl Default for Configuration {
@@ -139,6 +143,8 @@ impl Default for Configuration {
             document_outline: true,
             decision_notifications: true,
             outline: OutlineConfiguration::default(),
+            shortcuts: BTreeMap::new(),
+            shortcut_timeout_ms: 1500,
         }
     }
 }
@@ -167,6 +173,10 @@ impl Configuration {
     }
 
     pub fn validate(&self) -> Result<(), String> {
+        crate::shortcuts::resolve(&self.shortcuts)?;
+        if !(200..=5000).contains(&self.shortcut_timeout_ms) {
+            return Err("shortcut_timeout_ms must be between 200 and 5000.".into());
+        }
         if self.version != 1 {
             return Err("version must be 1.".into());
         }

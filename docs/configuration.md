@@ -101,3 +101,31 @@ Agents read `configuration_read` and write the desired `[outline]` values throug
 ## Text size shortcuts
 
 Command-plus or Command-equals enlarges document text by one pixel. Command-minus reduces it by one pixel. Command-zero resets the size to 17 pixels. The existing 14 through 28 pixel limits apply. These commands save `font_size` and apply across writing windows. Other configuration fields and comments remain intact.
+
+## Keyboard shortcuts
+
+Agents read `configuration_read.shortcuts` for every command identity, context, default binding, active binding, and display hint. The `[shortcuts]` table configures application commands, document formatting, aside composers, and annotations. There is no shortcut settings panel.
+
+```toml
+shortcut_timeout_ms = 1500
+
+[shortcuts]
+sidebar = ["Mod+Alt+L", "F6"]
+project-search = []
+resolve-asides = ["Mod+K Mod+R"]
+"editor.bold" = ["Mod+Shift+B"]
+"composer.send" = ["Mod+Enter"]
+"composer.line-break" = ["Enter", "Shift+Enter", "Alt+Enter"]
+```
+
+Each array replaces that command's defaults. An empty array disables its shortcuts. Removing the override restores defaults. A command can have several alternative bindings. Commands without default shortcuts can receive bindings.
+
+`Mod` means Command on macOS and Control elsewhere. `Cmd`, `Meta`, and `Super` mean Command. `Ctrl`, `Alt`, `Option`, and `Shift` are explicit modifiers. Letters and digits are accepted directly. Other keys use `KeyboardEvent.code` names, including `Backslash`, `Equal`, `Escape`, and function keys. The editor resolves physical keys, so Option does not change their identity. macOS reserves some system shortcuts and controls native menu key equivalents.
+
+Spaces separate strokes in a sequence. The next stroke must arrive within `shortcut_timeout_ms`, which accepts 200 through 5000 milliseconds. Escape cancels an unfinished sequence. Moving focus or changing bindings also cancels it. A failed sequence retries its last stroke as a new shortcut.
+
+Validation rejects unknown commands, invalid keys, overlapping bindings, and ambiguous sequence prefixes. Application shortcuts overlap all contexts. Editor, composer, and annotation contexts are separate. Rebind or disable conflicting commands in one atomic configuration update. Invalid edits retain the last working configuration.
+
+Bindings reload across open windows without restarting. Native menus, palette hints, and tooltips show the primary binding. All alternatives remain active. Native menus display key sequences as hints. Agents change bindings through `configuration_write` with the current fingerprint and preserve unrelated settings.
+
+Standard control navigation and macOS system actions remain platform-owned. Shortcut configuration grants no document editing permission and does not expose human submission or review actions to agent UI tools.

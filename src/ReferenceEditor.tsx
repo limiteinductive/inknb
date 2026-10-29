@@ -5,7 +5,8 @@ import type { Node as DocumentNode } from "prosemirror-model";
 import { EditorState } from "prosemirror-state";
 import { EditorView } from "prosemirror-view";
 import { history, undo, redo, closeHistory } from "prosemirror-history";
-import { keymap } from "prosemirror-keymap";
+import { ShortcutResolver } from "./shortcuts";
+import type { Preferences } from "./domain";
 import {
   annotationTransferSchema,
   annotationTransferType,
@@ -106,6 +107,7 @@ function documentFor(
 
 export default function ReferenceEditor({
   content,
+  preferences,
   references = [],
   annotations = [],
   label,
@@ -118,6 +120,7 @@ export default function ReferenceEditor({
   onPaste,
 }: {
   content: string;
+  preferences: Preferences;
   references?: PassageReference[];
   annotations?: MessageAnnotation[];
   label: string;
@@ -135,8 +138,8 @@ export default function ReferenceEditor({
 }) {
   const host = useRef<HTMLDivElement>(null);
   const editor = useRef<EditorView | null>(null);
-  const current = useRef({ onChange, onSend, onClose });
-  current.current = { onChange, onSend, onClose };
+  const current = useRef({ onChange, onSend, onClose, preferences });
+  current.current = { onChange, onSend, onClose, preferences };
   useLayoutEffect(() => {
     if (!host.current) return;
     const insertAnnotation = (value: unknown) => {
@@ -150,16 +153,15 @@ export default function ReferenceEditor({
       );
       view.focus();
     };
+    const shortcuts = new ShortcutResolver();
     const view = new EditorView(host.current, {
       state: EditorState.create({
         doc: documentFor(content, references, annotations),
-        plugins: [
-          history(),
-          keymap({ "Mod-z": undo, "Mod-Shift-z": redo, "Mod-y": redo }),
-        ],
+        plugins: [history()],
       }),
       attributes: {
         class: "reference-editor",
+        "data-shortcut-scope": "composer",
         role: "textbox",
         "aria-label": label,
         "aria-multiline": "true",
@@ -190,24 +192,11 @@ export default function ReferenceEditor({
           view.state.doc.attrs.annotations,
         );
       },
-      handleKeyDown: (view, event) => {
-        if (event.isComposing || event.keyCode === 229) return false;
-        if (event.key === "Escape") {
-          event.preventDefault();
-          current.current.onClose();
-          return true;
-        }
-        if (event.key !== "Enter") return false;
-        event.preventDefault();
-        if (event.shiftKey || event.metaKey || event.ctrlKey || event.altKey)
-          view.dispatch(
-            view.state.tr
-              .replaceSelectionWith(schema.nodes.hard_break.create())
-              .scrollIntoView(),
-          );
-        else if (!event.repeat) current.current.onSend();
-        return true;
-      },
+      handleKeyDown: (view, event) => shortcuts.handle(event, current.current.preferences, "composer", identity => {
+        if (identity === "composer.close") current.current.onClose();
+        if (identity === "composer.send") current.current.onSend();
+        if (identity === "composer.line-break") view.dispatch(view.state.tr.replaceSelectionWith(schema.nodes.hard_break.create()).scrollIntoView());
+      }),
       handleDrop: (_view, event) => {
         const encoded = event.dataTransfer?.getData(annotationTransferType);
         if (!encoded) return false;

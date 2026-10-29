@@ -1,3 +1,4 @@
+import { shortcutTooltip } from "./shortcuts";
 import SpaceMenu from "./SpaceMenu";
 import { ActivityButton } from "./ActivityCenter";
 import IconButton from "./IconButton";
@@ -416,7 +417,7 @@ export default function Library({
       )}
       <header className="library-heading" data-tauri-drag-region>
         <DocumentNavigation />
-        <IconButton icon={Command} label="Commands (⌘P)" agentControl="commands.open" onPress={() => void workspace.command("commands")} />
+        <IconButton icon={Command} label={shortcutTooltip("Commands", "commands", library.preferences)} agentControl="commands.open" onPress={() => void workspace.command("commands")} />
         <ActivityButton />
       </header>
       <div

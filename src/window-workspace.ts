@@ -463,6 +463,11 @@ class WindowWorkspace implements DocumentHost {
       this.update({ sidebarOpen: open });
       return;
     }
+    if (["cut", "copy", "paste", "select-all"].includes(command)) {
+      await invoke("editing_action", { action: command });
+      return;
+    }
+    if (command === "window-close") return this.close();
     if (command === "new") return this.newDocument();
     if (command === "open") return this.openDocument();
     if (command === "close") {

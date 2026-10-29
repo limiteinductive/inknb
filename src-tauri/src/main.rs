@@ -22,6 +22,7 @@ use tauri::{Emitter, Manager, State};
 use tokio::io::{AsyncBufReadExt, AsyncReadExt, AsyncWriteExt, BufReader};
 use tokio::sync::oneshot;
 mod activity;
+mod keyboard;
 #[cfg(target_os = "macos")]
 mod mac_notifications;
 mod images;
@@ -522,11 +523,14 @@ fn configuration_read(app: tauri::AppHandle) -> Result<ConfigurationSnapshot, St
         .configuration
         .lock()
         .map_err(|error| error.to_string())?;
-    if configuration.refresh() {
-        app.emit_to("host", "inknb-configuration", configuration.snapshot())
-            .map_err(|error| error.to_string())?;
+    let changed = configuration.refresh();
+    let snapshot = configuration.snapshot();
+    drop(configuration);
+    if changed {
+        keyboard::apply(&app, &snapshot.effective)?;
+        app.emit_to("host", "inknb-configuration", &snapshot).map_err(|error| error.to_string())?;
     }
-    Ok(configuration.snapshot())
+    Ok(snapshot)
 }
 
 #[tauri::command]
@@ -540,6 +544,8 @@ fn configuration_placement(
         .lock()
         .map_err(|error| error.to_string())?;
     let snapshot = configuration.set_placement(placement)?;
+    drop(configuration);
+    keyboard::apply(&app, &snapshot.effective)?;
     app.emit_to("host", "inknb-configuration", &snapshot)
         .map_err(|error| error.to_string())?;
     Ok(snapshot)
@@ -556,6 +562,8 @@ fn configuration_font_size(
         .lock()
         .map_err(|error| error.to_string())?;
     let snapshot = configuration.change_font_size(change)?;
+    drop(configuration);
+    keyboard::apply(&app, &snapshot.effective)?;
     app.emit_to("host", "inknb-configuration", &snapshot)
         .map_err(|error| error.to_string())?;
     Ok(snapshot)
@@ -1216,10 +1224,12 @@ async fn serve_connection(
             if request.params != json!({}) {
                 return Err("This tool takes no parameters.".into());
             }
-            let mut result = serde_json::to_value(configuration_read(app.clone())?)
-                .map_err(|error| error.to_string())?;
+            let snapshot = configuration_read(app.clone())?;
+            let shortcuts = inknb_core::shortcuts::resolve(&snapshot.effective.shortcuts)?;
+            let mut result = serde_json::to_value(snapshot).map_err(|error| error.to_string())?;
             result["schema"] = serde_json::to_value(schemars::schema_for!(Configuration))
                 .map_err(|error| error.to_string())?;
+            result["shortcuts"] = serde_json::to_value(shortcuts).map_err(|error|error.to_string())?;
             Ok(result)
         } else if method == "configuration_write" {
             #[derive(Deserialize)]
@@ -1233,7 +1243,10 @@ async fn serve_connection(
             let state = app.state::<DesktopState>();
             let mut configuration = state.configuration.lock().map_err(|error| error.to_string())?;
             let result = configuration.write(&parameters.source, &parameters.expected_fingerprint);
-            app.emit_to("host", "inknb-configuration", configuration.snapshot())
+            let snapshot = configuration.snapshot();
+            drop(configuration);
+            keyboard::apply(&app, &snapshot.effective)?;
+            app.emit_to("host", "inknb-configuration", &snapshot)
                 .map_err(|error| error.to_string())?;
             result.and_then(|snapshot| serde_json::to_value(snapshot).map_err(|error| error.to_string()))
         } else if method == "component_register" {
@@ -1728,15 +1741,15 @@ fn main() {
         .setup(move |app| {
             activity::start(app.handle())?;
             use tauri::menu::{MenuBuilder, MenuItem, PredefinedMenuItem, SubmenuBuilder};
-            let new = MenuItem::with_id(app, "new", "New", true, Some("CmdOrCtrl+N"))?;
-            let open = MenuItem::with_id(app, "open", "Open…", true, Some("CmdOrCtrl+O"))?;
-            let save = MenuItem::with_id(app, "save", "Save", true, Some("CmdOrCtrl+S"))?;
+            let new = MenuItem::with_id(app, "new", "New", true, None::<&str>)?;
+            let open = MenuItem::with_id(app, "open", "Open…", true, None::<&str>)?;
+            let save = MenuItem::with_id(app, "save", "Save", true, None::<&str>)?;
             let save_as =
-                MenuItem::with_id(app, "save-as", "Save As…", true, Some("CmdOrCtrl+Shift+S"))?;
+                MenuItem::with_id(app, "save-as", "Save As…", true, None::<&str>)?;
             let comment =
-                MenuItem::with_id(app, "comment", "Add aside", true, Some("CmdOrCtrl+Shift+A"))?;
+                MenuItem::with_id(app, "comment", "Add aside", true, None::<&str>)?;
             let focus =
-                MenuItem::with_id(app, "focus", "Focus Mode", true, Some("CmdOrCtrl+Shift+F"))?;
+                MenuItem::with_id(app, "focus", "Focus Mode", true, None::<&str>)?;
             let application = SubmenuBuilder::new(app, "ink and butter")
                 .item(&PredefinedMenuItem::about(
                     app,
@@ -1752,40 +1765,41 @@ fn main() {
                     "close",
                     "Quit ink and butter",
                     true,
-                    Some("CmdOrCtrl+Q"),
+                    None::<&str>,
                 )?)
                 .build()?;
             let file = SubmenuBuilder::new(app, "File")
                 .items(&[&new, &open, &save, &save_as])
-                .item(&PredefinedMenuItem::close_window(app, Some("Close Window"))?)
-                .item(&MenuItem::with_id(app, "preview", "Open Published Output", true, Some("CmdOrCtrl+Shift+P"))?)
+                .item(&MenuItem::with_id(app, "window-close", "Close Window", true, None::<&str>)?)
+                .item(&MenuItem::with_id(app, "preview", "Open Published Output", true, None::<&str>)?)
                 .build()?;
             let edit = SubmenuBuilder::new(app, "Edit")
-                .item(&MenuItem::with_id(app, "undo", "Undo", true, Some("CmdOrCtrl+Z"))?)
-                .item(&MenuItem::with_id(app, "redo", "Redo", true, Some("CmdOrCtrl+Shift+Z"))?)
+                .item(&MenuItem::with_id(app, "undo", "Undo", true, None::<&str>)?)
+                .item(&MenuItem::with_id(app, "redo", "Redo", true, None::<&str>)?)
                 .separator()
-                .item(&PredefinedMenuItem::cut(app, None)?)
-                .item(&PredefinedMenuItem::copy(app, None)?)
-                .item(&PredefinedMenuItem::paste(app, None)?)
-                .item(&PredefinedMenuItem::select_all(app, None)?)
+                .item(&MenuItem::with_id(app, "cut", "Cut", true, None::<&str>)?)
+                .item(&MenuItem::with_id(app, "copy", "Copy", true, None::<&str>)?)
+                .item(&MenuItem::with_id(app, "paste", "Paste", true, None::<&str>)?)
+                .item(&MenuItem::with_id(app, "select-all", "Select All", true, None::<&str>)?)
                 .separator()
-                .item(&MenuItem::with_id(app, "find", "Find…", true, Some("CmdOrCtrl+F"))?)
+                .item(&MenuItem::with_id(app, "find", "Find…", true, None::<&str>)?)
                 .item(&comment)
-                .item(&MenuItem::with_id(app, "selection-comment", "Send Selection as Aside", true, Some("CmdOrCtrl+Shift+Enter"))?)
-                .item(&MenuItem::with_id(app, "comment-document", "Add file aside", true, Some("CmdOrCtrl+Alt+A"))?)
+                .item(&MenuItem::with_id(app, "selection-comment", "Send Selection as Aside", true, None::<&str>)?)
+                .item(&MenuItem::with_id(app, "comment-document", "Add file aside", true, None::<&str>)?)
                 .item(&MenuItem::with_id(app, "comment-region", "Comment on Region…", true, None::<&str>)?)
                 .item(&MenuItem::with_id(app, "resolve-asides", "Resolve All Asides", true, None::<&str>)?)
+                .item(&MenuItem::with_id(app, "accept-asides", "Accept All Asides", true, None::<&str>)?)
                 .build()?;
             let view = SubmenuBuilder::new(app, "View")
-                .item(&MenuItem::with_id(app, "commands", "Commands…", true, Some("CmdOrCtrl+P"))?)
-                .item(&MenuItem::with_id(app, "project-search", "Search Project…", true, Some("CmdOrCtrl+K"))?)
-                .item(&MenuItem::with_id(app, "sidebar", "Toggle Library", true, Some("CmdOrCtrl+Backslash"))?)
+                .item(&MenuItem::with_id(app, "commands", "Commands…", true, None::<&str>)?)
+                .item(&MenuItem::with_id(app, "project-search", "Search Project…", true, None::<&str>)?)
+                .item(&MenuItem::with_id(app, "sidebar", "Toggle Library", true, None::<&str>)?)
                 .separator()
-                .item(&MenuItem::with_id(app, "text-larger", "Larger Text", true, Some("CmdOrCtrl+Equal"))?)
-                .item(&MenuItem::with_id(app, "text-smaller", "Smaller Text", true, Some("CmdOrCtrl+Minus"))?)
-                .item(&MenuItem::with_id(app, "text-reset", "Default Text Size", true, Some("CmdOrCtrl+Digit0"))?)
+                .item(&MenuItem::with_id(app, "text-larger", "Larger Text", true, None::<&str>)?)
+                .item(&MenuItem::with_id(app, "text-smaller", "Smaller Text", true, None::<&str>)?)
+                .item(&MenuItem::with_id(app, "text-reset", "Default Text Size", true, None::<&str>)?)
                 .separator()
-                .item(&MenuItem::with_id(app, "activity", "Activity", true, Some("CmdOrCtrl+Shift+K"))?)
+                .item(&MenuItem::with_id(app, "activity", "Activity", true, None::<&str>)?)
                 .item(&focus)
                 .separator()
                 .item(&PredefinedMenuItem::fullscreen(app, None)?)
@@ -1795,8 +1809,14 @@ fn main() {
                     .items(&[&application, &file, &edit, &view])
                     .build()?,
             )?;
+            keyboard::apply(app.handle(), &app.state::<DesktopState>().configuration.lock().map_err(|error|error.to_string())?.snapshot().effective)?;
             app.on_menu_event(|app, event| {
-                if ["comment", "comment-document", "resolve-asides", "undo", "redo", "find"].contains(&event.id().as_ref()) {
+                let editing = match event.id().as_ref() { "cut" => Some(EditingAction::Cut), "copy" => Some(EditingAction::Copy), "paste" => Some(EditingAction::Paste), "select-all" => Some(EditingAction::SelectAll), _ => None };
+                if let Some(action) = editing {
+                    if let Some(window) = app.webview_windows().into_values().find(|window|window.is_focused().unwrap_or(false)) { let _ = editing_action(window, action); }
+                    return;
+                }
+                if ["comment", "comment-document", "resolve-asides", "window-close", "undo", "redo", "find"].contains(&event.id().as_ref()) {
                     if let Some(window) = app.webview_windows().values().find(|window| window.label() == "preview" && window.is_focused().unwrap_or(false)) {
                         let _ = window.emit_to(window.label(), "inknb-preview-menu", event.id().as_ref());
                         return;

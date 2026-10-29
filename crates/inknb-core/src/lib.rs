@@ -7,3 +7,4 @@ pub mod previews;
 pub mod profile;
 pub mod protocol;
 pub mod storage;
+pub mod shortcuts;

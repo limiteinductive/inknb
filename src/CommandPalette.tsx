@@ -1,3 +1,4 @@
+import { shortcutLabel } from "./shortcuts";
 import { useEffect, useId, useState, useSyncExternalStore } from "react";
 import { Input, TextField } from "react-aria-components";
 import { Search } from "lucide-react";
@@ -38,16 +39,16 @@ export default function CommandPalette({ session }: { session?: WindowDocument }
   const acceptable = state ? nonOverlappingSuggestions(state) : [];
   const resolvable = state ? resolvableAsides(state.metadata) : [];
   const commands: PaletteCommand[] = [
-    { id: "project-search", label: "Search project…", shortcut: "⌘K" },
-    { id: "sidebar", label: library.sidebarOpen ? "Hide library" : "Show library", shortcut: "⌘\\" },
-    { id: "new", label: "New document", shortcut: "⌘N" },
-    { id: "open", label: "Open document…", shortcut: "⌘O" },
-    { id: "back", label: "Go back", shortcut: "⌘[", disabled: library.historyIndex <= 0 },
-    { id: "forward", label: "Go forward", shortcut: "⌘]", disabled: library.historyIndex >= library.history.length - 1 },
-    { id: "activity", label: "Notifications", shortcut: "⌘⇧K" },
+    { id: "project-search", label: "Search project…" },
+    { id: "sidebar", label: library.sidebarOpen ? "Hide library" : "Show library" },
+    { id: "new", label: "New document" },
+    { id: "open", label: "Open document…" },
+    { id: "back", label: "Go back", disabled: library.historyIndex <= 0 },
+    { id: "forward", label: "Go forward", disabled: library.historyIndex >= library.history.length - 1 },
+    { id: "activity", label: "Notifications" },
     { id: "decisions", label: "Decisions" },
     ...(state ? [
-      { id: "comment", label: "Add aside", shortcut: "⌘⇧A" },
+      { id: "comment", label: "Add aside" },
       { id: "asides", label: state.asidesOpen && !state.focus ? "Hide asides" : "Show asides" },
       { id: "review", label: `Review suggestions${proposals.length ? ` (${proposals.length})` : ""}`, disabled: !proposals.length },
       { id: "accept-asides", label: `Accept all asides${acceptable.length ? ` (${acceptable.length})` : ""}`, disabled: !acceptable.length },
@@ -56,17 +57,18 @@ export default function CommandPalette({ session }: { session?: WindowDocument }
       { id: "history", label: "Document history" },
       { id: "resources", label: "Linked resources" },
       { id: "agents", label: "Agent connections" },
-      { id: "focus", label: state.focus ? "Leave focus mode" : "Enter focus mode", shortcut: "⌘⇧F" },
-      { id: "find", label: "Find in document…", shortcut: "⌘F" },
-      { id: "save", label: "Save document", shortcut: "⌘S" },
-      { id: "save-as", label: "Save document as…", shortcut: "⌘⇧S" },
+      { id: "focus", label: state.focus ? "Leave focus mode" : "Enter focus mode" },
+      { id: "find", label: "Find in document…" },
+      { id: "save", label: "Save document" },
+      { id: "save-as", label: "Save document as…" },
       ...(state.metadata.page ? [{ id: "page", label: state.pageVisible ? "Show prose" : "Show document page" }] : []),
-      ...(state.metadata.preview || state.metadata.previewLastGood ? [{ id: "preview", label: "Open published output", shortcut: "⌘⇧P" }] : []),
+      ...(state.metadata.preview || state.metadata.previewLastGood ? [{ id: "preview", label: "Open published output" }] : []),
     ] : []),
-    { id: "text-larger", label: "Larger text", shortcut: "⌘+" },
-    { id: "text-smaller", label: "Smaller text", shortcut: "⌘−" },
-    { id: "text-reset", label: "Default text size", shortcut: "⌘0" },
+    { id: "text-larger", label: "Larger text" },
+    { id: "text-smaller", label: "Smaller text" },
+    { id: "text-reset", label: "Default text size" },
   ];
+  for (const command of commands) command.shortcut = shortcutLabel(command.id, library.preferences);
   const terms = query.toLocaleLowerCase().trim().split(/\s+/);
   const search = query.trim();
   const expression = search ? new RegExp(search.replace(/[.*+?^${}()|[\]\\]/gu, "\\$&"), "iu") : null;

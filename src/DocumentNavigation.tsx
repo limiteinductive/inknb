@@ -1,3 +1,4 @@
+import { shortcutTooltip } from "./shortcuts";
 import { useSyncExternalStore } from "react";
 import { PanelLeft } from "lucide-react";
 import IconButton from "./IconButton";
@@ -12,7 +13,7 @@ export default function DocumentNavigation() {
     <nav className="history-controls" aria-label="Document navigation">
       <IconButton
         icon={PanelLeft}
-        label={`${library.sidebarOpen ? "Hide library" : "Show library"} (⌘\\)`}
+        label={shortcutTooltip(library.sidebarOpen ? "Hide library" : "Show library", "sidebar", library.preferences)}
         agentControl="library.toggle"
         active={library.sidebarOpen}
         onPress={() => void workspace.command("sidebar")}

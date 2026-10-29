@@ -1,3 +1,4 @@
+import { ShortcutResolver } from "./shortcuts";
 import { ActivityButton } from "./ActivityCenter";
 import { activity } from "./activity";
 import {
@@ -30,7 +31,7 @@ import { useContextMenus } from "./context-menu";
 export default function DetachedPreview() {
   const [snapshot, setSnapshot] = useState<PreviewWindowSnapshot | null>(null);
   const [error, setError] = useState<string | null>(null);
-  useContextMenus(undefined, (error) => setError(String(error)));
+  useContextMenus(undefined, (error) => setError(String(error)), undefined, snapshot?.state.preferences);
   useEffect(() => {
     if (error) activity.report(documentId, "error", error);
   }, [error]);
@@ -95,6 +96,7 @@ export default function DetachedPreview() {
     const menu = getCurrentWindow().listen<string>(
       "inknb-preview-menu",
       (event) => {
+        if (event.payload === "window-close") void invoke("preview_window_action", { documentId: snapshotRef.current?.state.metadata.documentId, action: { kind: "close" } }).catch(error => setError(String(error)));
         if (event.payload === "undo" || event.payload === "redo") {
           const reply = document.activeElement?.closest(".reference-editor");
           if (reply) reply.dispatchEvent(new CustomEvent("inknb-editor-command", { detail: event.payload }));
@@ -120,14 +122,23 @@ export default function DetachedPreview() {
         }
       },
     );
+    const shortcuts = new ShortcutResolver();
     const shortcut = (event: KeyboardEvent) => {
-      if (!(event.metaKey || event.ctrlKey) || event.key.toLowerCase() !== "w")
-        return;
-      event.preventDefault();
-      void invoke("preview_window_action", {
-        documentId: snapshotRef.current?.state.metadata.documentId,
-        action: { kind: "close" },
-      }).catch((error) => setError(String(error)));
+      const preferences = snapshotRef.current?.state.preferences;
+      if (!preferences) return;
+      shortcuts.handle(event, preferences, "application", command => {
+        if (["undo", "redo", "cut", "copy", "paste", "select-all"].includes(command)) {
+          const reply = document.activeElement?.closest(".reference-editor");
+          if (reply && ["undo", "redo"].includes(command)) reply.dispatchEvent(new CustomEvent("inknb-editor-command", { detail: command }));
+          else void invoke("editing_action", { action: command }).catch(error => setError(String(error)));
+          return;
+        }
+        if (command === "window-close") {
+          void invoke("preview_window_action", { documentId: snapshotRef.current?.state.metadata.documentId, action: { kind: "close" } }).catch(error => setError(String(error)));
+          return;
+        }
+        return false;
+      });
     };
     window.addEventListener("keydown", shortcut);
     return () => {

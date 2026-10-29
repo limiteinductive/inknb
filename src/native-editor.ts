@@ -1,10 +1,11 @@
+import { ShortcutResolver } from "./shortcuts";
 import { Plugin, TextSelection, Selection, NodeSelection } from "prosemirror-state";
-import type { Transaction } from "prosemirror-state";
+import type { Command, Transaction } from "prosemirror-state";
 import { EditorView, Decoration, DecorationSet } from "prosemirror-view";
 import type { DecorationAttrs } from "prosemirror-view";
 import { Fragment, Slice } from "prosemirror-model";
 import type { Node as DocumentNode } from "prosemirror-model";
-import { baseKeymap, toggleMark, setBlockType } from "prosemirror-commands";
+import { baseKeymap, toggleMark, setBlockType, chainCommands } from "prosemirror-commands";
 import { keymap } from "prosemirror-keymap";
 import { gapCursor } from "prosemirror-gapcursor";
 import {
@@ -326,41 +327,23 @@ export class NativeEditor extends NativeDocumentModel {
     });
     MathfieldElement.soundsDirectory = null;
     MathfieldElement.fontsDirectory = null;
+    const shortcuts = new ShortcutResolver();
     this.editor = new EditorView(host, {
+      handleKeyDown: (view, event) => shortcuts.handle(event, session.getSnapshot().preferences, "editor", identity => {
+        if (identity.startsWith("editor.heading-")) return setBlockType(nativeSchema.nodes.heading, { level: Number(identity.slice(-1)) })(view.state, view.dispatch, view);
+        const commands: Record<string, Command> = {
+          "editor.bold": toggleMark(nativeSchema.marks.strong),
+          "editor.italic": toggleMark(nativeSchema.marks.em),
+          "editor.paragraph": setBlockType(nativeSchema.nodes.paragraph),
+          "editor.new-paragraph": chainCommands(splitListItem(nativeSchema.nodes.list_item), baseKeymap.Enter),
+          "editor.indent": chainCommands(goToNextCell(1), sinkListItem(nativeSchema.nodes.list_item)),
+          "editor.outdent": chainCommands(goToNextCell(-1), liftListItem(nativeSchema.nodes.list_item)),
+        };
+        return commands[identity]?.(view.state, view.dispatch, view) ?? false;
+      }),
       state: this.state.reconfigure({
         plugins: [
           ...this.state.plugins,
-          keymap({
-            "Mod-f": () => {
-              this.openFind();
-              return true;
-            },
-            "Mod-z": () => {
-              this.undo();
-              return true;
-            },
-            "Mod-Shift-z": () => {
-              this.redo();
-              return true;
-            },
-            "Mod-b": toggleMark(nativeSchema.marks.strong),
-            "Mod-i": toggleMark(nativeSchema.marks.em),
-            "Mod-Shift-a": () => {
-              session.startComment();
-              return true;
-            },
-            "Mod-Alt-0": setBlockType(nativeSchema.nodes.paragraph),
-            "Mod-Alt-1": setBlockType(nativeSchema.nodes.heading, { level: 1 }),
-            "Mod-Alt-2": setBlockType(nativeSchema.nodes.heading, { level: 2 }),
-            "Mod-Alt-3": setBlockType(nativeSchema.nodes.heading, { level: 3 }),
-            Enter: splitListItem(nativeSchema.nodes.list_item),
-            Tab: (state, dispatch) =>
-              goToNextCell(1)(state, dispatch) ||
-              sinkListItem(nativeSchema.nodes.list_item)(state, dispatch),
-            "Shift-Tab": (state, dispatch) =>
-              goToNextCell(-1)(state, dispatch) ||
-              liftListItem(nativeSchema.nodes.list_item)(state, dispatch),
-          }),
           keymap(baseKeymap),
           gapCursor(),
           tableEditing({ allowTableNodeSelection: true }),
@@ -369,6 +352,7 @@ export class NativeEditor extends NativeDocumentModel {
       }),
       attributes: (state) => ({
         class: "native-content",
+        "data-shortcut-scope": "editor",
         "aria-label": "Document",
         spellcheck: "true",
         "data-inknb-control": "manuscript",
@@ -716,13 +700,6 @@ export class NativeEditor extends NativeDocumentModel {
             value: field.value,
           }),
         );
-    });
-    field.addEventListener("keydown", (event) => {
-      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "z") {
-        event.preventDefault();
-        if (event.shiftKey) this.redo();
-        else this.undo();
-      }
     });
     field.addEventListener("move-out", (event) => {
       const position = getPosition();

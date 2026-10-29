@@ -1,3 +1,6 @@
+import type { Preferences } from "./domain";
+import { shortcutLabel } from "./shortcuts";
+import { workspace } from "./window-workspace";
 import { useEffect, useRef } from "react";
 import { createRoot } from "react-dom/client";
 import { flushSync } from "react-dom";
@@ -9,6 +12,7 @@ interface ContextMenuOptions {
   left: number;
   top: number;
   editable?: boolean;
+  preferences?: Preferences;
   copy: boolean;
   actions?: { text: string; action: () => void | Promise<void> }[];
   aside?: () => void;
@@ -72,15 +76,16 @@ export async function showContextMenu(options: ContextMenuOptions) {
   const field = target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement ? target : null;
   const fieldSelection = field && field.selectionStart !== null && field.selectionEnd !== null
     ? { from: field.selectionStart, to: field.selectionEnd, direction: field.selectionDirection ?? "none" } : null;
+  const preferences = options.preferences ?? workspace.getSnapshot().preferences;
   const items: ContextEntry[] = (options.actions ?? []).map((action, index) => ({ kind: "action", id: `action:${index}`, label: action.text, action: action.action }));
   if (options.editable)
     items.push(
-      { kind: "action", id: "undo", label: "Undo", shortcut: "⌘Z", action: options.native?.undo ?? (() => invoke<void>("editing_action", { action: "undo" })) },
-      { kind: "action", id: "redo", label: "Redo", shortcut: "⇧⌘Z", action: options.native?.redo ?? (() => invoke<void>("editing_action", { action: "redo" })) },
+      { kind: "action", id: "undo", label: "Undo", shortcut: shortcutLabel("undo", preferences), action: options.native?.undo ?? (() => invoke<void>("editing_action", { action: "undo" })) },
+      { kind: "action", id: "redo", label: "Redo", shortcut: shortcutLabel("redo", preferences), action: options.native?.redo ?? (() => invoke<void>("editing_action", { action: "redo" })) },
       { kind: "separator", id: "editing" },
-      ...([{ id: "cut", label: "Cut", shortcut: "⌘X" }, { id: "copy", label: "Copy", shortcut: "⌘C" }, { id: "paste", label: "Paste", shortcut: "⌘V" }, { id: "select-all", label: "Select all", shortcut: "⌘A" }].map((item): ContextEntry => ({ kind: "action", ...item, action: () => invoke<void>("editing_action", { action: item.id }) }))),
+      ...([{ id: "cut", label: "Cut" }, { id: "copy", label: "Copy" }, { id: "paste", label: "Paste" }, { id: "select-all", label: "Select all" }].map((item): ContextEntry => ({ kind: "action", ...item, shortcut: shortcutLabel(item.id, preferences), action: () => invoke<void>("editing_action", { action: item.id }) }))),
     );
-  else if (options.copy) items.push({ kind: "action", id: "copy", label: "Copy", shortcut: "⌘C", action: () => invoke<void>("editing_action", { action: "copy" }) });
+  else if (options.copy) items.push({ kind: "action", id: "copy", label: "Copy", shortcut: shortcutLabel("copy", preferences), action: () => invoke<void>("editing_action", { action: "copy" }) });
   if (items.length && (options.aside || options.region))
     items.push({ kind: "separator", id: "aside-separator" });
   if (options.aside) items.push({ kind: "action", id: "aside", label: "Add aside", action: options.aside });
@@ -122,9 +127,10 @@ export function useContextMenus(
   aside: (() => (() => void) | undefined) | undefined,
   onError: (error: unknown) => void,
   native?: () => ContextMenuOptions["native"],
+  preferences?: Preferences,
 ) {
-  const callbacks = useRef({ aside, onError, native });
-  callbacks.current = { aside, onError, native };
+  const callbacks = useRef({ aside, onError, native, preferences });
+  callbacks.current = { aside, onError, native, preferences };
   useEffect(() => {
     const contextMenu = (event: MouseEvent) => {
       event.preventDefault();
@@ -156,6 +162,7 @@ export function useContextMenus(
       const image = native?.image(target);
       const table = image ? undefined : native?.table(target);
       void showContextMenu({
+        preferences: callbacks.current.preferences,
         left: keyboard ? bounds.left : event.clientX,
         top: keyboard ? bounds.bottom : event.clientY,
         editable: !image && Boolean(editable),

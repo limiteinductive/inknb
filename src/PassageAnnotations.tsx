@@ -1,3 +1,4 @@
+import { ShortcutResolver, shortcutTooltip } from "./shortcuts";
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { RefObject } from "react";
 import { createPortal } from "react-dom";
@@ -167,6 +168,7 @@ function PassageAnnotation({ identity, sourceRange, reply }: { identity: string;
   const comment = useRef<HTMLTextAreaElement>(null);
   const grip = useRef<HTMLButtonElement>(null);
   const reserved = useRef<HTMLElement | null>(null);
+  const shortcuts = useRef(new ShortcutResolver());
   const clickTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const work = state.metadata.annotations.find(annotation => identity === `annotation:${annotation.id}`);
   const draft = useMemo(() => state.drafts[identity] ?? (work ? { content: work.comment, images: [], annotation: { source: work.source, completed: true } } : null), [state.drafts[identity], work]);
@@ -298,39 +300,27 @@ function PassageAnnotation({ identity, sourceRange, reply }: { identity: string;
         <div
           ref={popup}
           className="passage-annotation"
+          data-shortcut-scope="annotation"
           data-completed={annotation.completed}
           style={position}
           role="dialog"
           aria-label="Annotate passage"
           onKeyDown={(event) => {
-            if (
-              event.nativeEvent.isComposing ||
-              event.nativeEvent.keyCode === 229
-            )
-              return;
-            if (event.key === "Escape") {
-              event.stopPropagation();
-              if (work && !annotation.completed) {
-                const drafts = { ...session.getSnapshot().drafts };
-                delete drafts[identity];
-                session.update({ drafts });
-                requestAnimationFrame(() => grip.current?.focus({ preventScroll: true }));
-                return;
+            shortcuts.current.handle(event.nativeEvent, session.getSnapshot().preferences, "annotation", command => {
+              if (command === "annotation.close") {
+                if (work && !annotation.completed) {
+                  const drafts = { ...session.getSnapshot().drafts };
+                  delete drafts[identity];
+                  session.update({ drafts });
+                  requestAnimationFrame(() => grip.current?.focus({ preventScroll: true }));
+                } else dismiss();
               }
-              dismiss();
-              return;
-            }
-            if (event.key === "F2" && annotation.completed) {
-              event.preventDefault();
-              event.stopPropagation();
-              edit();
-              return;
-            }
-            if (event.key !== "Enter" || event.shiftKey || event.altKey) return;
-            if (event.target !== comment.current && !event.metaKey && !event.ctrlKey) return;
-            event.preventDefault();
-            event.stopPropagation();
-            if (!event.repeat) void send();
+              if (command === "annotation.edit" && annotation.completed) edit();
+              if (command === "annotation.send") {
+                if (event.key === "Enter" && event.target !== comment.current && !event.metaKey && !event.ctrlKey) return false;
+                void send();
+              }
+            });
           }}
         >
           <div className="passage-annotation-row">
@@ -341,9 +331,10 @@ function PassageAnnotation({ identity, sourceRange, reply }: { identity: string;
                 className="annotation-token"
                 data-inknb-control={`annotation.token:${work?.id ?? identity}`}
                 draggable={!sending}
+                title={shortcutTooltip("Edit annotation", "annotation.edit", state.preferences)}
                 aria-label={
                   annotation.completed
-                    ? `Annotation: ${draft.content || annotation.source.quote}. Double-click or press F2 to edit. Click to add to your active reply, or drag into a reply.`
+                    ? `Annotation: ${draft.content || annotation.source.quote}. Double-click to edit. Click to add to your active reply, or drag into a reply.`
                     : "Drag annotation into a reply or choose a destination"
                 }
                 onClick={(event) => {
@@ -386,8 +377,8 @@ function PassageAnnotation({ identity, sourceRange, reply }: { identity: string;
                 rows={1}
                 aria-label="Comment on selected passage"
                 data-inknb-control={`annotation.comment:${identity}`}
-                aria-keyshortcuts="Enter Meta+Enter Shift+Enter"
-                aria-description="Enter sends the annotation in a new aside. Shift Enter adds a line."
+                title={shortcutTooltip("Send annotation", "annotation.send", state.preferences)}
+                aria-description={shortcutTooltip("Send in a new aside", "annotation.send", state.preferences)}
                 placeholder="Comment…"
                 disabled={sending}
                 onChange={(event) => {

@@ -1763,6 +1763,7 @@ name = "inknb-core"
 version = "0.5.1"
 dependencies = [
  "dirs 6.0.0",
+ "keyboard-types",
  "rusqlite",
  "schemars 1.2.3",
  "serde",

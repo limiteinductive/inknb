@@ -1,9 +1,10 @@
+import { ShortcutResolver } from "./shortcuts";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { EditorState, Plugin, TextSelection } from "prosemirror-state";
 import { EditorView, DecorationSet } from "prosemirror-view";
 import { Fragment, Slice } from "prosemirror-model";
 import { StepMap } from "prosemirror-transform";
-import { baseKeymap, toggleMark } from "prosemirror-commands";
+import { baseKeymap, toggleMark, setBlockType } from "prosemirror-commands";
 import { keymap } from "prosemirror-keymap";
 import { Button } from "react-aria-components";
 import { useDocumentSession, useSession } from "./use-session";
@@ -33,27 +34,23 @@ export default function PageText({ bounds, assets }: { bounds: PageNodeBounds; a
     initial.check();
     const links = new LinkGesture(() => session.getWorkingSnapshot().path, (reference) => session.openAside(reference), (error) => session.fail(error));
     let receiving = false;
+    const shortcuts = new ShortcutResolver();
     const view = new EditorView(host.current, {
+      handleKeyDown: (view, event) => shortcuts.handle(event, session.getSnapshot().preferences, "editor", identity => {
+        if (identity === "editor.bold") return toggleMark(nativeSchema.marks.strong)(view.state, view.dispatch, view);
+        if (identity === "editor.italic") return toggleMark(nativeSchema.marks.em)(view.state, view.dispatch, view);
+        if (identity === "editor.paragraph" || identity.startsWith("editor.heading-")) return setBlockType(identity === "editor.paragraph" ? nativeSchema.nodes.paragraph : nativeSchema.nodes.heading, identity === "editor.paragraph" ? undefined : { level: Number(identity.slice(-1)) })(view.state, view.dispatch, view);
+        if (identity !== "editor.new-paragraph") return false;
+        const transaction = view.state.selection.$from.parent.type.spec.code ? view.state.tr.insertText("\n") : view.state.tr.replaceSelectionWith(nativeSchema.nodes.hard_break.create());
+        view.dispatch(transaction);
+        return true;
+      }),
       state: EditorState.create({
         schema: nativeSchema,
         doc: initial,
-        plugins: [keymap({
-          ...baseKeymap,
-          "Mod-z": () => { void session.undoNative().catch((error) => session.fail(error)); return true; },
-          "Mod-Shift-z": () => { void session.redoNative().catch((error) => session.fail(error)); return true; },
-          "Mod-b": toggleMark(nativeSchema.marks.strong),
-          "Mod-i": toggleMark(nativeSchema.marks.em),
-          "Mod-Shift-a": () => { session.startComment(); return true; },
-          Enter: (state, dispatch) => {
-            const transaction = state.selection.$from.parent.type.spec.code
-              ? state.tr.insertText("\n")
-              : state.tr.replaceSelectionWith(nativeSchema.nodes.hard_break.create());
-            dispatch?.(transaction);
-            return true;
-          },
-        }), new Plugin({ props: { decorations: (local) => DecorationSet.create(local.doc, suggestionMarkers(session.getWorkingSnapshot(), model.projection, local.doc, model.node(identity).position)) } })],
+        plugins: [keymap(baseKeymap), new Plugin({ props: { decorations: (local) => DecorationSet.create(local.doc, suggestionMarkers(session.getWorkingSnapshot(), model.projection, local.doc, model.node(identity).position)) } })],
       }),
-      attributes: { class: "page-region-content", "aria-label": target.node.textContent ? `Edit ${target.node.textContent.slice(0, 80)}` : "New note", spellcheck: "true" },
+      attributes: { class: "page-region-content", "data-shortcut-scope": "editor", "aria-label": target.node.textContent ? `Edit ${target.node.textContent.slice(0, 80)}` : "New note", spellcheck: "true" },
       markViews: { link: linkMarkView },
       nodeViews: {
         image: (node) => {

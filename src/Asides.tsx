@@ -242,6 +242,7 @@ function Composer({
       >
         {annotations.length > 0 && <AnnotationContext annotations={annotations} onRemove={id => textarea.current?.dispatchEvent(new CustomEvent("inknb-remove-annotation", { detail: id }))} />}
         <ReferenceEditor
+          preferences={state.preferences}
           annotations={annotations}
           content={content}
           references={state.drafts[draftKey]?.references}

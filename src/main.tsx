@@ -1,3 +1,4 @@
+import { ShortcutResolver, shortcutTooltip } from "./shortcuts";
 import AgentConnections from "./AgentConnections";
 import { DecisionsPanel } from "./Decisions";
 import ActivityCenter from "./ActivityCenter";
@@ -255,6 +256,7 @@ function App() {
         );
       }),
     ];
+    const shortcuts = new ShortcutResolver();
     const shortcut = (event: KeyboardEvent) => {
       if (event.key === "Escape" && activity.getSnapshot().open) {
         event.preventDefault();
@@ -262,54 +264,9 @@ function App() {
         activity.update({ open: false });
         return;
       }
-      if (
-        event.defaultPrevented ||
-        !(event.metaKey || event.ctrlKey) ||
-        (event.altKey && (event.code !== "KeyA" || event.shiftKey))
-      )
-        return;
-      const key = event.key.toLowerCase();
-      if (key === "enter" && event.shiftKey && !event.altKey) {
-        event.preventDefault();
-        event.stopPropagation();
-        if (!event.repeat) void workspace.command("selection-comment").catch((error) => workspace.fail(error));
-        return;
-      }
-      if (["+", "=", "-", "0"].includes(key)) {
-        event.preventDefault();
-        event.stopPropagation();
-        const command = key === "0" ? "text-reset" : key === "-" ? "text-smaller" : "text-larger";
-        void workspace.command(command).catch((error) => workspace.fail(error));
-        return;
-      }
-      const command = event.altKey
-        ? "comment-document"
-        : key === "p" && !event.shiftKey
-          ? "commands"
-          : key === "\\"
-            ? "sidebar"
-        : key === "["
-          ? "back"
-          : key === "]"
-            ? "forward"
-            : key === "s"
-              ? event.shiftKey
-                ? "save-as"
-                : "save"
-              : key === "o"
-                ? "open"
-                : key === "n"
-                  ? "new"
-                  : key === "a" && event.shiftKey
-                    ? "comment"
-                    : key === "k"
-                      ? event.shiftKey ? "activity" : "project-search"
-                      : key === "f" && event.shiftKey
-                        ? "focus"
-                        : null;
-      if (!command) return;
-      event.preventDefault();
-      void workspace.command(command).catch((error) => workspace.fail(error));
+      shortcuts.handle(event, workspace.getSnapshot().preferences, "application", command => {
+        void workspace.command(command).catch(error => workspace.fail(error));
+      });
     };
     window.addEventListener("keydown", shortcut, true);
     return () => {
@@ -364,7 +321,7 @@ function App() {
       <div className="document-stack">
         <div className="writing-window-drag" data-tauri-drag-region />
         {!sidebar && <div className="library-reveal">
-          <IconButton icon={PanelLeft} label={"Show library (⌘\\)"} agentControl="library.toggle" onPress={() => { workspace.active?.update({ focus: false }); workspace.update({ sidebarOpen: true }); }} />
+          <IconButton icon={PanelLeft} label={shortcutTooltip("Show library", "sidebar", library.preferences)} agentControl="library.toggle" onPress={() => { workspace.active?.update({ focus: false }); workspace.update({ sidebarOpen: true }); }} />
         </div>}
         <CommandPalette session={workspace.active} />
         <DecisionsPanel open={library.commandSurface === "decisions"} onOpenChange={open => workspace.update({ commandSurface: open ? "decisions" : null })} />

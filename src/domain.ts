@@ -375,6 +375,8 @@ export const preferencesSchema = z.object({
   document_outline: z.boolean().default(true),
   decision_notifications: z.boolean().default(true),
   outline: outlineSchema.prefault({}),
+  shortcuts: z.record(z.string(), z.array(z.string())).default({}),
+  shortcut_timeout_ms: z.number().int().min(200).max(5000).default(1500),
 });
 
 export const configurationSchema = z.object({
@@ -478,6 +480,8 @@ export const defaultPreferences: Preferences = {
   document_outline: true,
   decision_notifications: true,
   outline: outlineSchema.parse({}),
+  shortcuts: {},
+  shortcut_timeout_ms: 1500,
 };
 
 export function createMetadata(): Metadata {
