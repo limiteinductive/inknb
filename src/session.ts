@@ -2600,6 +2600,12 @@ export class DocumentSession {
       this.model.applyAtomic(this.model.moveTransaction(parsed.identity, parsed.parentIdentity, parsed.beforeIdentity).setMeta("historyActor", (this.agent()?.name ?? this.agent()?.label ?? "Agent")));
       return { documentId: parsed.documentId, revision: this.state.metadata.revision, moved: true };
     }
+    if (method === "document_delete") {
+      const parsed = z.object({ documentId: z.string().uuid(), revision: z.number().int().nonnegative(), textHash: z.string().regex(/^[a-f0-9]{64}$/) }).strict().parse(parameters);
+      if (!this.agent() || this.agentAccess !== "edit") throw Error("Connect an agent with document edit permission before deleting a document.");
+      if (parsed.documentId !== this.state.metadata.documentId || parsed.revision !== this.state.metadata.revision || parsed.textHash !== await textFingerprint(this.state.text)) throw Error("The document changed. Read document_read again before deleting it.");
+      return { documentId: parsed.documentId };
+    }
     if (method === "document_read") {
       z.object({}).strict().parse(parameters);
       const document = this.model.source;

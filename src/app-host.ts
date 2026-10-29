@@ -56,9 +56,9 @@ class AppHost {
           {
             id: spaceId,
             title: "Writing",
-            documentIds: library.documents.map((entry) => entry.id),
+            documentIds: library.documents.filter(entry => !entry.trash).map((entry) => entry.id),
             pinnedIds: library.documents
-              .filter((entry) => entry.pinned)
+              .filter((entry) => entry.pinned && !entry.trash)
               .map((entry) => entry.id),
             homeId: library.activeId,
           },
@@ -111,7 +111,7 @@ class AppHost {
         .documents.map((entry) => entry.id),
     );
     const recovered = library.documents.filter(
-      (entry) => !assigned.has(entry.id) && !storedIdentities.has(entry.id),
+      (entry) => !entry.trash && !assigned.has(entry.id) && !storedIdentities.has(entry.id),
     );
     if (recovered.length) {
       const space = this.spaces.space(this.spaces.getSnapshot().defaultSpaceId);
@@ -166,6 +166,7 @@ class AppHost {
           "page_open",
           "window_resize",
           "window_flush",
+          "document_delete",
           "aside_open",
         ].includes(event.payload.method);
         const operation = interactive
@@ -267,7 +268,7 @@ class AppHost {
     if (bootstrap.requestedPath) await this.openPath(bootstrap.requestedPath);
     setInterval(() => {
       for (const session of this.documents.sessions.values())
-        void session.checkFiles();
+        if (!this.documents.getSnapshot().documents.find(entry => entry.id === session.getSnapshot().metadata.documentId)?.trash) void session.checkFiles();
     }, 1800);
   }
 
@@ -436,11 +437,11 @@ class AppHost {
     if (request.kind === "spaces")
       return {
         spaces: this.spaces.getSnapshot(),
-        documents: this.documents.getSnapshot().documents,
+        documents: this.documents.getSnapshot().documents.filter(entry => !entry.trash),
       };
     if (request.kind === "create-space" || request.kind === "update-space") {
       for (const identity of request.documentIds)
-        if (!this.documents.sessions.has(identity))
+        if (!this.documents.getSnapshot().documents.some(entry => entry.id === identity && !entry.trash))
           throw Error("This document is unavailable.");
       const space =
         request.kind === "create-space"
@@ -500,6 +501,7 @@ class AppHost {
       throw Error("This document is outside the window's space.");
     const session = this.documents.sessions.get(request.documentId);
     if (!session?.model) throw Error("The document model is unavailable.");
+    if (request.kind !== "steps" && this.documents.getSnapshot().documents.find(entry => entry.id === request.documentId)?.trash) throw Error("This document is in Trash. Use document_restore first.");
     if (request.kind === "resource") return this.resources(request.documentId, request.action);
     let result: unknown = null;
     if (request.kind === "document") {
@@ -585,12 +587,13 @@ class AppHost {
   private async resources(documentId: string, action: ResourceAction): Promise<ResourceState> {
     const session = this.documents.sessions.get(documentId);
     if (!session) throw Error("This document is outside the library.");
+    if (this.documents.getSnapshot().documents.find(entry => entry.id === documentId)?.trash) throw Error("This document is in Trash. Use document_restore first.");
     if (action.kind !== "read") {
       await session.transact(async () => {
         const metadata = session.getWorkingSnapshot().metadata;
         let resources = metadata.resources.filter((resource) => resource.id !== action.id);
         if (action.kind === "attach") {
-          if (action.target.kind === "document" && !this.documents.sessions.has(action.target.documentId))
+          if (action.target.kind === "document" && !this.documents.getSnapshot().documents.some(entry => action.target.kind === "document" && entry.id === action.target.documentId && !entry.trash))
             throw Error("The linked document is outside the library.");
           const resource = linkedResourceSchema.parse(action);
           const previous = metadata.resources.find((candidate) => candidate.id === action.id);
@@ -611,7 +614,7 @@ class AppHost {
         : target.kind === "file" ? target.path.split("/").at(-1)! : new URL(target.url).hostname);
       return { ...resource, title };
     });
-    const backlinks = [...this.documents.sessions].flatMap(([identity, source]) =>
+    const backlinks = [...this.documents.sessions].filter(([identity]) => !this.documents.getSnapshot().documents.find(entry => entry.id === identity)?.trash).flatMap(([identity, source]) =>
       source.getSnapshot().metadata.resources.some((resource) => resource.target.kind === "document" && resource.target.documentId === documentId)
         ? [{ documentId: identity, title: this.documents.documentTitle(identity) }] : [],
     );
@@ -661,6 +664,62 @@ class AppHost {
       this.spaces.getSnapshot().lastWindowId ??
       this.spaces.getSnapshot().windows[0]?.id;
     if (!windowId) throw Error("Open a space window first.");
+    if (method === "document_trash_list") {
+      z.object({}).strict().parse(source);
+      return { documents: this.documents.getSnapshot().documents.filter(entry => entry.trash).map(entry => ({ documentId: entry.id, title: entry.title, path: entry.path, deletionId: entry.trash!.deletionId, deletedAt: entry.trash!.deletedAt })) };
+    }
+    if (method === "document_delete") {
+      const parsed = z.object({ documentId: z.string().uuid(), revision: z.number().int().nonnegative(), textHash: z.string().regex(/^[a-f0-9]{64}$/) }).strict().parse(source);
+      const entry = this.documents.getSnapshot().documents.find(entry => entry.id === parsed.documentId);
+      const session = this.documents.sessions.get(parsed.documentId);
+      if (!entry || !session) throw Error("This document is outside the library.");
+      if (entry.trash) {
+        if (entry.trash.revision !== parsed.revision || entry.trash.textHash !== parsed.textHash) throw Error("This document is already in Trash. Read document_trash_list.");
+        return { documentId: entry.id, deletionId: entry.trash.deletionId, deletedAt: entry.trash.deletedAt };
+      }
+      await session.control("document_delete", parsed, agentId);
+      for (const window of this.spaces.getSnapshot().windows.filter(window => window.open && window.documents[parsed.documentId]))
+        await invoke("space_window_control", { identity: window.id, method: "window_flush", parameters: {} });
+      const operation = this.operations.catch(() => undefined).then(async () => {
+        await session.control("document_delete", parsed, agentId);
+        const current = this.documents.getSnapshot();
+        const existing = current.documents.find(entry => entry.id === parsed.documentId)!;
+        if (existing.trash) return { documentId: existing.id, deletionId: existing.trash.deletionId, deletedAt: existing.trash.deletedAt };
+        const trash = {
+          deletionId: crypto.randomUUID(), deletedAt: new Date().toISOString(), revision: parsed.revision, textHash: parsed.textHash,
+          memberships: this.spaces.getSnapshot().spaces.filter(space => space.documentIds.includes(entry.id)).map(space => ({ spaceId: space.id, pinned: space.pinnedIds.includes(entry.id) })),
+        };
+        if (session.getSnapshot().previewHost === "detached") await this.documents.closePreview();
+        for (const space of this.spaces.getSnapshot().spaces.filter(space => space.documentIds.includes(entry.id))) {
+          const documentIds = space.documentIds.filter(identity => identity !== entry.id);
+          this.spaces.update(space.id, { ...space, documentIds, homeId: space.homeId === entry.id ? documentIds[0] ?? null : space.homeId });
+        }
+        this.documents.update({ documents: current.documents.map(candidate => candidate.id === entry.id ? { ...candidate, trash } : candidate), activeId: current.activeId === entry.id ? current.documents.find(candidate => candidate.id !== entry.id && !candidate.trash)?.id ?? null : current.activeId });
+        await this.persist();
+        await invoke("host_changed");
+        return { documentId: entry.id, deletionId: trash.deletionId, deletedAt: trash.deletedAt };
+      });
+      this.operations = operation;
+      return operation;
+    }
+    if (method === "document_restore") {
+      const parsed = z.object({ documentId: z.string().uuid(), deletionId: z.string().uuid() }).strict().parse(source);
+      const current = this.documents.getSnapshot();
+      const entry = current.documents.find(entry => entry.id === parsed.documentId);
+      if (!entry?.trash || entry.trash.deletionId !== parsed.deletionId) throw Error("The Trash entry changed. Read document_trash_list before restoring it.");
+      if (!this.documents.sessions.get(entry.id)?.getSnapshot().ready) throw Error("The document source is unavailable. Keep it in Trash until its source is recovered.");
+      const memberships = entry.trash.memberships.filter(membership => this.spaces.getSnapshot().spaces.some(space => space.id === membership.spaceId));
+      if (!memberships.length) memberships.push({ spaceId: this.spaces.getSnapshot().defaultSpaceId, pinned: false });
+      for (const membership of memberships) {
+        const space = this.spaces.space(membership.spaceId);
+        this.spaces.update(space.id, { ...space, documentIds: [...space.documentIds, entry.id], homeId: space.homeId ?? entry.id });
+        if (membership.pinned) this.spaces.pin(space.id, entry.id, true);
+      }
+      this.documents.update({ documents: current.documents.map(candidate => candidate.id === entry.id ? { ...candidate, trash: undefined } : candidate) });
+      await this.persist();
+      await invoke("host_changed");
+      return { documentId: entry.id, restored: true };
+    }
     if (method === "decisions_list" && !source.documentId) {
       z.object({}).strict().parse(source);
       const space = this.spaces.getSnapshot().spaces.find((space) => space.id === (requestedSpace ?? this.spaces.window(windowId).spaceId));
@@ -673,7 +732,7 @@ class AppHost {
     if (method === "requests_list" && source.allConnected === true) {
       z.object({ allConnected: z.literal(true) }).strict().parse(source);
       if (!agentId) throw Error("Identify the connected caller first.");
-      return [...this.documents.sessions.values()].flatMap((session) => {
+      return [...this.documents.sessions.values()].filter(session => !this.documents.getSnapshot().documents.find(entry => entry.id === session.getSnapshot().metadata.documentId)?.trash).flatMap((session) => {
         const metadata = session.getSnapshot().metadata;
         return metadata.requests.filter((request) => request.state !== "answered" && request.binding && `${request.binding.provider}:${request.binding.sessionId}` === agentId).map((request) => ({ ...request, documentId: metadata.documentId, thread: metadata.threads.find((thread) => thread.id === request.threadId), annotation: metadata.annotations.find(annotation => request.trigger.kind === "annotation" && annotation.id === request.trigger.annotationId), permission: session.agentAccess }));
       });
@@ -681,7 +740,7 @@ class AppHost {
     if (method === "spaces_read")
       return {
         spaces: this.spaces.getSnapshot(),
-        documents: this.documents.getSnapshot().documents,
+        documents: this.documents.getSnapshot().documents.filter(entry => !entry.trash),
       };
     if (["resources_read", "resource_attach", "resource_remove"].includes(method)) {
       const parsed = z.object({ documentId: z.string().uuid() }).passthrough().parse(source);
@@ -727,6 +786,7 @@ class AppHost {
       (method === "library_list" && requestedWindow)
     ) {
       const documentId = z.string().uuid().nullish().parse(source.documentId);
+      if (documentId && this.documents.getSnapshot().documents.find(entry => entry.id === documentId)?.trash) throw Error("This document is in Trash. Use document_restore first.");
       if (
         documentId &&
         !this.spaces

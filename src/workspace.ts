@@ -27,7 +27,15 @@ const nodeSchema = z.object({
   order: z.number().int().nonnegative().default(0),
   priority: z.number().finite().default(0),
 });
+const documentTrashSchema = z.object({
+  deletionId: z.string().uuid(),
+  deletedAt: z.string().datetime(),
+  revision: z.number().int().nonnegative(),
+  textHash: z.string().regex(/^[a-f0-9]{64}$/),
+  memberships: z.array(z.object({ spaceId: z.string().uuid(), pinned: z.boolean() })),
+});
 const entrySchema = nodeSchema.extend({
+  trash: documentTrashSchema.optional(),
   pinned: z.boolean().default(false),
   path: z.string().nullable(),
   open: z.boolean(),
@@ -64,6 +72,7 @@ const librarySchema = z.object({
   historyIndex: z.number().int().default(-1),
 });
 const storedDocumentSchema = nodeSchema.extend({
+  trash: documentTrashSchema.optional(),
   path: z.string().nullable(),
   threadReads: z.record(z.string().uuid(), z.string()).nullable(),
 });
@@ -104,6 +113,7 @@ export class DocumentLibrary implements DocumentHost {
       ?.getSnapshot()
       .metadata.threads.find((thread) => thread.id === reference.threadId);
     if (!thread) throw Error("This aside is not in the writing library.");
+    if (this.state.documents.find(entry => entry.id === reference.documentId)?.trash) throw Error("This document is in Trash. Use document_restore first.");
     const references = asideConnections(
       [...this.sessions.values()].map(
         (session) => session.getSnapshot().metadata,
@@ -136,7 +146,7 @@ export class DocumentLibrary implements DocumentHost {
     return () => this.listeners.delete(listener);
   };
   get active(): DocumentSession | undefined {
-    return this.state.activeId
+    return this.state.activeId && !this.state.documents.find(entry => entry.id === this.state.activeId)?.trash
       ? this.sessions.get(this.state.activeId)
       : undefined;
   }
@@ -415,9 +425,9 @@ export class DocumentLibrary implements DocumentHost {
       }
       if (!this.sessions.size) await this.newDocument();
       const activeId =
-        this.state.activeId && this.sessions.has(this.state.activeId)
+        this.state.activeId && this.sessions.has(this.state.activeId) && !this.state.documents.find(entry => entry.id === this.state.activeId)?.trash
           ? this.state.activeId
-          : this.sessions.keys().next().value!;
+          : this.state.documents.find(entry => !entry.trash && this.sessions.has(entry.id))?.id ?? null;
       this.update({
         activeId,
         documents: this.state.documents.map((entry) =>
@@ -498,7 +508,7 @@ export class DocumentLibrary implements DocumentHost {
     }
     session.update({ threadReads });
     this.sessions.set(entry.id, session);
-    void invoke("activity_seed", {
+    if (!entry.trash) void invoke("activity_seed", {
       documentId: entry.id,
       metadata: state.metadata,
       unreadThreads: state.metadata.threads
@@ -655,6 +665,7 @@ export class DocumentLibrary implements DocumentHost {
   activate(identity: string): void {
     if (!this.sessions.has(identity))
       throw Error("This document is unavailable.");
+    if (this.state.documents.find(entry => entry.id === identity)?.trash) throw Error("This document is in Trash. Use document_restore first.");
     this.update({ activeId: identity });
   }
   beforeNavigation(): void {}
@@ -901,9 +912,11 @@ export class DocumentLibrary implements DocumentHost {
     await invoke("request_quit");
   }
   async control(method: string, parameters: unknown, agentId?: string): Promise<unknown> {
+    const targets = z.object({ documentId: z.string().uuid().optional(), itemId: z.string().uuid().optional(), targetId: z.string().uuid().optional() }).passthrough().parse(parameters);
+    if (this.state.documents.some(entry => entry.trash && [targets.documentId, targets.itemId, targets.targetId].includes(entry.id))) throw Error("This document is in Trash. Use document_restore first.");
     if (method === "library_list") {
       z.object({}).strict().parse(parameters);
-      return librarySchema.parse(this.state);
+      return librarySchema.parse({ ...this.state, documents: this.state.documents.filter(entry => !entry.trash) });
     }
     if (method === "library_reorder") {
       const parsed = z
@@ -916,7 +929,7 @@ export class DocumentLibrary implements DocumentHost {
         .parse(parameters);
       this.reorder(parsed.documentId, parsed.targetId, parsed.position);
       await this.persist();
-      return librarySchema.parse(this.state);
+      return librarySchema.parse({ ...this.state, documents: this.state.documents.filter(entry => !entry.trash) });
     }
     if (method === "library_organize") {
       const parsed = z
@@ -929,7 +942,7 @@ export class DocumentLibrary implements DocumentHost {
         .parse(parameters);
       this.organize(parsed.itemId, parsed.parentId, parsed.beforeId);
       await this.persist();
-      return librarySchema.parse(this.state);
+      return librarySchema.parse({ ...this.state, documents: this.state.documents.filter(entry => !entry.trash) });
     }
     if (method === "collection_update") {
       const parsed = z
@@ -1123,6 +1136,7 @@ export class DocumentLibrary implements DocumentHost {
           ),
       );
     if (!session) throw Error("This document is unavailable.");
+    if (this.state.documents.find(entry => entry.id === session.getSnapshot().metadata.documentId)?.trash) throw Error("This document is in Trash. Use document_restore first.");
     if (
       (method === "editor_select" ||
         method === "ui_action" ||
