@@ -4,6 +4,7 @@ import { Search } from "lucide-react";
 import { PanelBody, PanelEmpty, PanelModal } from "./PanelPopover";
 import { compactLibraryWidth, workspace } from "./window-workspace";
 import { currentSuggestions, nonOverlappingSuggestions } from "./suggestions";
+import { resolvableAsides } from "./aside-state";
 import type { WindowDocument } from "./window-document";
 import { documentPosition } from "./native-source";
 import "./command-palette.css";
@@ -35,6 +36,7 @@ export default function CommandPalette({ session }: { session?: WindowDocument }
   }, [open, searching]);
   const proposals = state ? currentSuggestions(state) : [];
   const acceptable = state ? nonOverlappingSuggestions(state) : [];
+  const resolvable = state ? resolvableAsides(state.metadata) : [];
   const commands: PaletteCommand[] = [
     { id: "project-search", label: "Search project…", shortcut: "⌘K" },
     { id: "sidebar", label: library.sidebarOpen ? "Hide library" : "Show library", shortcut: "⌘\\" },
@@ -49,6 +51,7 @@ export default function CommandPalette({ session }: { session?: WindowDocument }
       { id: "asides", label: state.asidesOpen && !state.focus ? "Hide asides" : "Show asides" },
       { id: "review", label: `Review suggestions${proposals.length ? ` (${proposals.length})` : ""}`, disabled: !proposals.length },
       { id: "accept-asides", label: `Accept all asides${acceptable.length ? ` (${acceptable.length})` : ""}`, disabled: !acceptable.length },
+      { id: "resolve-asides", label: `Resolve all asides${resolvable.length ? ` (${resolvable.length})` : ""}`, disabled: !resolvable.length },
       { id: "outline", label: state.outlineOpen ?? state.preferences.document_outline ? "Hide document outline" : "Show document outline" },
       { id: "history", label: "Document history" },
       { id: "resources", label: "Linked resources" },

@@ -299,7 +299,7 @@ The macOS notifications switch controls native alerts. The decision_notification
 
 The interface design system is `long-term`. Design tokens own the spacing scale and interface type roles. PanelPopover owns each toolbar panel's dialog and heading. PanelBody owns content gutters and scrolling. PanelEmpty owns empty messages. Features supply content and actions. The design contract check runs during type checks and production builds. `docs/design-system.md` defines component ownership and visual release criteria.
 
-Bulk aside resolution is `long-term`. One document operation resolves all open discussions that have no pending or outdated edit proposal. It preserves prose, drafts, suggestions, and decisions. Resolved threads close in every writing window. The Edit menu and each aside's actions menu expose the operation.
+Bulk aside resolution is `long-term`. One document operation resolves all open discussions that have no pending or outdated edit proposal. It preserves prose, drafts, suggestions, and decisions. Resolved threads close in every writing window. The command palette, Edit menu, and each aside's actions menu expose the operation. The palette shows the number of eligible discussions and disables the command when none remain.
 
 Human aside messages show compact delivery receipts. Saved requests have no recipient. Queued requests await transport or agent pickup. Sent requests have a delivery acknowledgement. Replied requests have an agent response. Failures retain a visible warning and expandable details.
 
