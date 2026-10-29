@@ -1,13 +1,7 @@
 import { documentScrollToDecision } from "./Decisions";
 import { useEffect, useMemo, useState, useSyncExternalStore } from "react";
 import { Button, Switch, Tooltip, TooltipTrigger } from "react-aria-components";
-import {
-  ArrowLeft,
-  Bell,
-  Check,
-  ChevronRight,
-  CircleAlert,
-} from "lucide-react";
+import { ArrowLeft, Bell, ChevronRight, CircleAlert } from "lucide-react";
 import { invoke } from "@tauri-apps/api/core";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { listen } from "@tauri-apps/api/event";
@@ -37,7 +31,7 @@ export function ActivityButton({ remote = false }: { remote?: boolean }) {
     };
   }, [remote]);
   const critical = state.pending.find((item) => item.attention);
-  const label = `Activity${state.unread ? `, ${state.unread} unread` : ""}${critical ? ", needs attention" : ""}`;
+  const label = `Notifications${state.unread ? `, ${state.unread} unread` : ""}${critical ? ", needs attention" : ""}`;
   return (
     <TooltipTrigger delay={500}>
       <Button
@@ -53,19 +47,26 @@ export function ActivityButton({ remote = false }: { remote?: boolean }) {
             ? void invoke("activity_show").catch((error) =>
                 activity.report(null, "error", error),
               )
-            : activity.update({ open: !state.open, targetKey: critical?.key ?? null })
+            : activity.update({
+                open: !state.open,
+                targetKey: critical?.key ?? null,
+              })
         }
       >
-        {critical
-          ? <CircleAlert size={17} strokeWidth={1.6} aria-hidden="true" />
-          : <Bell size={17} strokeWidth={1.6} aria-hidden="true" />}
+        {critical ? (
+          <CircleAlert size={17} strokeWidth={1.6} aria-hidden="true" />
+        ) : (
+          <Bell size={17} strokeWidth={1.6} aria-hidden="true" />
+        )}
         {state.unread > 0 && (
           <span className="activity-count count-badge" aria-hidden="true">
             {state.unread > 99 ? "99+" : state.unread}
           </span>
         )}
       </Button>
-      <Tooltip className="control-tooltip" offset={7}>{label}</Tooltip>
+      <Tooltip className="control-tooltip" offset={7}>
+        {label}
+      </Tooltip>
     </TooltipTrigger>
   );
 }
@@ -76,7 +77,6 @@ export default function ActivityCenter() {
     workspace.subscribe,
     workspace.getSnapshot,
   );
-  const [filter, setFilter] = useState("attention");
   const [selected, setSelected] = useState<ActivityItem | null>(null);
   const [discussionOpen, setDiscussionOpen] = useState(false);
   const [busy, setBusy] = useState<string | null>(null);
@@ -118,13 +118,13 @@ export default function ActivityCenter() {
     if (!state.open) setSelected(null);
   }, [state.open]);
   useEffect(() => setDiscussionOpen(false), [selected?.key]);
-  const items = filter === "recent" ? state.items : state.pending;
+  const items = state.pending;
   const session = selected?.documentId
     ? workspace.sessions.get(selected.documentId)
     : undefined;
   const documentState = session?.getSnapshot();
   const thread = documentState?.metadata.threads.find(
-    (thread) => thread.id === selected?.threadId,
+    (thread) => thread.id === (selected?.contextThreadId ?? selected?.threadId),
   );
   const proposal =
     documentState?.metadata.proposals.find(
@@ -136,9 +136,11 @@ export default function ActivityCenter() {
           .filter((proposal) => proposal.threadId === thread.id)
           .at(-1)
       : undefined);
-  const completed = proposal
-    ? proposal.status !== "pending"
-    : thread?.resolved && selected?.kind !== "reply";
+  const completed = selected?.contextThreadId
+    ? thread?.resolved
+    : proposal
+      ? proposal.status !== "pending"
+      : thread?.resolved && selected?.kind !== "reply";
   const resultLabel = proposal
     ? {
         pending: "Suggestion ready",
@@ -200,11 +202,11 @@ export default function ActivityCenter() {
     state.items.find((item) => item.key === selected?.key) ??
     selected;
   useEffect(() => {
-    if (state.open && session && selected?.threadId && !completed) {
+    if (state.open && session && thread && !completed) {
       workspace.activate(session.getSnapshot().metadata.documentId);
-      session.selectThread(selected.threadId);
+      session.selectThread(thread.id);
     }
-  }, [state.open, session, selected?.threadId, completed]);
+  }, [state.open, session, thread?.id, completed]);
   return (
     <>
       <span className="sr-only" role="status" aria-live="polite">
@@ -217,19 +219,40 @@ export default function ActivityCenter() {
         onOpenChange={(open) => activity.update({ open })}
         className="activity-drawer"
         agentControl="activity.panel"
-        title="Activity"
+        title="Notifications"
         size="wide"
         leading={
           selected ? (
             <Button
               className="icon-button"
-              aria-label="Back to activity"
+              aria-label="Back to notifications"
               data-inknb-control="activity.back"
               onPress={() => setSelected(null)}
             >
               <ArrowLeft size={17} aria-hidden="true" />
             </Button>
           ) : null
+        }
+        actions={
+          !selected && state.pending.length > 0 ? (
+            <Button
+              className="activity-dismiss-all"
+              data-inknb-control="activity.dismiss-all"
+              isDisabled={
+                busy !== null ||
+                (state.pending.length === 0 && state.unread === 0)
+              }
+              onPress={() => {
+                setBusy("dismiss-all");
+                void activity
+                  .dismissAll()
+                  .catch((error) => activity.update({ error: String(error) }))
+                  .finally(() => setBusy(null));
+              }}
+            >
+              {busy === "dismiss-all" ? "Dismissing…" : "Dismiss all"}
+            </Button>
+          ) : undefined
         }
         closeControl="activity.close"
       >
@@ -432,48 +455,9 @@ export default function ActivityCenter() {
           </PanelBody>
         ) : (
           <>
-            <div
-              className="activity-filters panel-filters"
-              role="group"
-              aria-label="Activity filter"
-            >
-              <Button
-                aria-pressed={filter === "attention"}
-                onPress={() => setFilter("attention")}
-              >
-                For you
-              </Button>
-              <Button
-                aria-pressed={filter === "recent"}
-                onPress={() => setFilter("recent")}
-              >
-                Recent
-              </Button>
-              <Button
-                className="activity-dismiss-all"
-                data-inknb-control="activity.dismiss-all"
-                isDisabled={
-                  busy !== null ||
-                  (state.pending.length === 0 && state.unread === 0)
-                }
-                onPress={() => {
-                  setBusy("dismiss-all");
-                  void activity
-                    .dismissAll()
-                    .catch((error) => activity.update({ error: String(error) }))
-                    .finally(() => setBusy(null));
-                }}
-              >
-                {busy === "dismiss-all" ? "Dismissing…" : "Dismiss all"}
-              </Button>
-            </div>
             <PanelBody className="activity-list" layout="list">
               {items.length === 0 && (
-                <PanelEmpty>
-                  {filter === "attention"
-                    ? "You’re up to date."
-                    : "Updates will appear here."}
-                </PanelEmpty>
+                <PanelEmpty>You’re up to date.</PanelEmpty>
               )}
               {items.map((item) => (
                 <Button
@@ -491,11 +475,7 @@ export default function ActivityCenter() {
                   }}
                 >
                   <span className="activity-item-state">
-                    {item.resolved ? (
-                      <Check size={14} aria-hidden="true" />
-                    ) : !item.read ? (
-                      <span className="activity-unread" />
-                    ) : null}
+                    {!item.read ? <span className="activity-unread" /> : null}
                   </span>
                   <span className="activity-item-text">
                     <strong>{item.title}</strong>
@@ -504,6 +484,11 @@ export default function ActivityCenter() {
                         ? workspace.documentTitle(item.documentId)
                         : "ink and butter"}
                     </span>
+                    {item.detail && (
+                      <span className="activity-item-preview">
+                        {item.detail}
+                      </span>
+                    )}
                     <time dateTime={item.occurredAt}>
                       {new Date(item.occurredAt).toLocaleString(undefined, {
                         month: "short",
@@ -516,38 +501,28 @@ export default function ActivityCenter() {
                   <ChevronRight size={14} aria-hidden="true" />
                 </Button>
               ))}
-              {filter === "recent" && state.hasMore && (
-                <Button
-                  className="text-button activity-more"
-                  onPress={() =>
-                    void activity
-                      .more()
-                      .catch((error) =>
-                        activity.update({ error: String(error) }),
-                      )
-                  }
-                >
-                  Older activity
-                </Button>
-              )}
             </PanelBody>
             <footer className="activity-footer">
               <Switch
                 className="activity-alert-setting"
                 isSelected={state.backgroundNotifications}
+                isDisabled={busy === "notifications"}
                 onChange={(enabled) => {
+                  setBusy("notifications");
                   void invoke("activity_background", { enabled })
                     .then(() => activity.refresh())
-                    .catch((error) =>
-                      activity.update({ error: String(error) }),
-                    );
+                    .catch((error) => activity.update({ error: String(error) }))
+                    .finally(() => setBusy(null));
                 }}
               >
                 <span className="switch-track">
                   <span />
                 </span>
-                Background alerts
+                macOS notifications
               </Switch>
+              <span className="activity-alert-hint">
+                Only when the app is in the background.
+              </span>
             </footer>
           </>
         )}

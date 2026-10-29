@@ -84,6 +84,32 @@ impl EventStore {
              CREATE TABLE IF NOT EXISTS activity_dismissals (identity TEXT PRIMARY KEY,cursor INTEGER NOT NULL);
              CREATE TABLE IF NOT EXISTS activity_preferences (identity INTEGER PRIMARY KEY CHECK(identity=1),enabled INTEGER NOT NULL);
              INSERT OR IGNORE INTO activity_preferences(identity,enabled) VALUES(1,0);
+             CREATE VIEW IF NOT EXISTS notification_inbox AS
+             WITH candidates AS (
+                SELECT *,
+                  CASE WHEN json_extract(content,'$.kind') IN ('reply','question','suggestion')
+                    THEN COALESCE(document || ':' || COALESCE(json_extract(content,'$.contextThreadId'),json_extract(content,'$.threadId')),identity)
+                    ELSE identity END AS discussion
+                FROM activities
+                WHERE resolved=0
+                  AND NOT EXISTS(SELECT 1 FROM activity_dismissals WHERE identity=activities.identity AND cursor>=activities.cursor)
+                  AND (json_extract(content,'$.kind') IN ('question','reply','suggestion','decision','source','anchor')
+                    OR json_extract(content,'$.attention')=1)
+             ), ranked AS (
+                SELECT *,
+                  ROW_NUMBER() OVER (PARTITION BY discussion ORDER BY
+                    CASE json_extract(content,'$.kind') WHEN 'question' THEN 0 WHEN 'suggestion' THEN 1 ELSE 2 END,cursor DESC,identity) AS position,
+                  SUM(json_extract(content,'$.kind')='suggestion') OVER (PARTITION BY discussion) AS suggestions,
+                  MIN(read) OVER (PARTITION BY discussion) AS discussion_read,
+                  MAX(cursor) OVER (PARTITION BY discussion) AS discussion_cursor,
+                  MAX(CASE WHEN read=0 AND notified<cursor THEN cursor ELSE 0 END) OVER (PARTITION BY discussion) AS notification_cursor
+                FROM candidates
+             )
+             SELECT identity,document,discussion_cursor AS cursor,discussion_read AS read,resolved,notification_cursor,
+               json_set(content,'$.cursor',discussion_cursor,'$.title',CASE
+                 WHEN json_extract(content,'$.kind')='suggestion' AND suggestions>1 THEN suggestions || ' suggestions ready'
+                 ELSE json_extract(content,'$.title') END) AS content
+             FROM ranked WHERE position=1;
              CREATE TABLE IF NOT EXISTS consumers (name TEXT PRIMARY KEY, cursor INTEGER NOT NULL);
              CREATE TABLE IF NOT EXISTS deliveries (identity TEXT PRIMARY KEY, state TEXT NOT NULL, error TEXT);"
         ).map_err(|error| error.to_string())?;
@@ -188,6 +214,8 @@ impl EventStore {
             let (kind, target, title, detail) = match event.kind.as_str() {
                 "conversation.updated"
                     if payload["message"]["author"] == "agent"
+                        && (payload["message"]["awaitingHuman"] == true
+                            || payload["message"]["status"] != "working")
                         && (payload["resolved"] != true || payload["completion"] == true) =>
                 {
                     (
@@ -247,7 +275,7 @@ impl EventStore {
                             _ => "Suggestion ready",
                         }
                         .into(),
-                        String::new(),
+                        payload["explanation"].as_str().unwrap_or_default().into(),
                     )
                 }
                 "request.created" | "request.updated" => {
@@ -385,6 +413,7 @@ impl EventStore {
                 document_id: (!event.document_id.is_nil()).then_some(event.document_id),
                 thread_id,
                 request_id,
+                context_thread_id: payload["contextThreadId"].as_str().map(Uuid::parse_str).transpose().map_err(|error|error.to_string())?,
                 decision_id: payload["decisionId"]
                     .as_str()
                     .map(Uuid::parse_str)

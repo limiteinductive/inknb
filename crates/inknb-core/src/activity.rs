@@ -12,6 +12,8 @@ pub struct ActivityItem {
     pub thread_id: Option<Uuid>,
     pub request_id: Option<Uuid>,
     #[serde(default)]
+    pub context_thread_id: Option<Uuid>,
+    #[serde(default)]
     pub decision_id: Option<Uuid>,
     #[serde(default)]
     pub message_id: Option<Uuid>,
@@ -57,7 +59,7 @@ impl EventStore {
             .map(serde_json::to_string)
             .transpose()
             .map_err(|error| error.to_string())?;
-        let mut statement = self.connection.prepare("SELECT content,read OR EXISTS(SELECT 1 FROM activity_dismissals WHERE identity=activities.identity AND cursor>=activities.cursor),resolved FROM activities WHERE (?1 IS NULL OR cursor<?1 OR (cursor=?1 AND identity>?2)) AND (?3 IS NULL OR document IS NULL OR document IN (SELECT value FROM json_each(?3))) ORDER BY cursor DESC,identity LIMIT 101").map_err(|error| error.to_string())?;
+        let mut statement = self.connection.prepare("SELECT content,read,resolved FROM notification_inbox WHERE (?1 IS NULL OR cursor<?1 OR (cursor=?1 AND identity>?2)) AND (?3 IS NULL OR document IS NULL OR document IN (SELECT value FROM json_each(?3))) ORDER BY cursor DESC,identity LIMIT 101").map_err(|error| error.to_string())?;
         let rows = statement
             .query_map(
                 params![query.before_cursor, query.before_key, scope],
@@ -82,7 +84,7 @@ impl EventStore {
         let has_more = items.len() > 100;
         items.truncate(100);
         let mut pending = Vec::new();
-        let mut statement = self.connection.prepare("SELECT content,read FROM activities WHERE (?1 IS NULL OR document IS NULL OR document IN (SELECT value FROM json_each(?1))) AND resolved=0 AND NOT EXISTS(SELECT 1 FROM activity_dismissals WHERE identity=activities.identity AND cursor>=activities.cursor) ORDER BY cursor DESC,identity").map_err(|error|error.to_string())?;
+        let mut statement = self.connection.prepare("SELECT content,read FROM notification_inbox WHERE (?1 IS NULL OR document IS NULL OR document IN (SELECT value FROM json_each(?1))) ORDER BY cursor DESC,identity").map_err(|error|error.to_string())?;
         let rows = statement
             .query_map(params![scope], |row| {
                 Ok((row.get::<_, String>(0)?, row.get::<_, bool>(1)?))
@@ -96,15 +98,8 @@ impl EventStore {
             item.resolved = false;
             pending.push(item);
         }
-        let unread = self
-            .connection
-            .query_row(
-                "SELECT COUNT(*) FROM activities WHERE (?1 IS NULL OR document IS NULL OR document IN (SELECT value FROM json_each(?1))) AND read=0 AND resolved=0 AND NOT EXISTS(SELECT 1 FROM activity_dismissals WHERE identity=activities.identity AND cursor>=activities.cursor)",
-                params![scope],
-                |row| row.get(0),
-            )
-            .map_err(|error| error.to_string())?;
-        let attention = self.connection.query_row("SELECT COUNT(*) FROM activities WHERE (?1 IS NULL OR document IS NULL OR document IN (SELECT value FROM json_each(?1))) AND resolved=0 AND json_extract(content,'$.attention')=1 AND NOT EXISTS(SELECT 1 FROM activity_dismissals WHERE identity=activities.identity AND cursor>=activities.cursor)", params![scope], |row| row.get(0)).map_err(|error| error.to_string())?;
+        let unread = pending.iter().filter(|item| !item.read).count() as u64;
+        let attention = pending.iter().filter(|item| item.attention).count() as u64;
         let through_cursor = self
             .connection
             .query_row("SELECT COALESCE(MAX(cursor),0) FROM events", [], |row| {
@@ -131,7 +126,7 @@ impl EventStore {
     }
 
     pub fn acknowledge_activity(&self, key: &str, cursor: u64) -> Result<(), String> {
-        self.connection.execute("UPDATE activities SET read=1,resolved=CASE WHEN json_extract(content,'$.kind') IN ('reply','change') THEN 1 ELSE resolved END WHERE identity=?1 AND cursor<=?2", params![key,cursor]).map_err(|error| error.to_string())?;
+        self.connection.execute("UPDATE activities SET read=1,resolved=CASE WHEN json_extract(content,'$.kind')='reply' THEN 1 ELSE resolved END WHERE cursor<=?2 AND (identity=?1 OR (document,COALESCE(json_extract(content,'$.contextThreadId'),json_extract(content,'$.threadId'))) IN (SELECT document,COALESCE(json_extract(content,'$.contextThreadId'),json_extract(content,'$.threadId')) FROM activities WHERE identity=?1 AND json_extract(content,'$.kind') IN ('reply','question','suggestion')))", params![key,cursor]).map_err(|error| error.to_string())?;
         Ok(())
     }
 
@@ -244,7 +239,13 @@ impl EventStore {
                     .find(|message| message["author"] == "agent")
             });
             if let Some(message) = latest.filter(|message| {
+                message["status"] == "working" && message["awaitingHuman"] != true
+            }) {
+                self.connection.execute("UPDATE activities SET resolved=1 WHERE identity=?1 AND json_extract(content,'$.messageId')=?2", params![format!("{document_id}:reply:{thread_id}"),message["id"].as_str()]).map_err(|error|error.to_string())?;
+            }
+            if let Some(message) = latest.filter(|message| {
                 thread["resolved"] != true
+                    && (message["awaitingHuman"] == true || message["status"] != "working")
                     && (unread_threads.contains(&thread_id)
                         || (message["awaitingHuman"] == true
                             && thread["messages"]
@@ -259,6 +260,7 @@ impl EventStore {
                     thread_id: Some(thread_id),
                     decision_id: None,
                     request_id: None,
+                    context_thread_id: None,
                     message_id: message["id"]
                         .as_str()
                         .map(Uuid::parse_str)
@@ -309,6 +311,22 @@ impl EventStore {
                 .map(Uuid::parse_str)
                 .transpose()
                 .map_err(|error| error.to_string())?;
+            let context_thread_id = metadata["threads"]
+                .as_array()
+                .into_iter()
+                .flatten()
+                .find(|thread| thread["id"].as_str() == proposal["threadId"].as_str())
+                .and_then(|thread| thread["links"].as_array())
+                .into_iter()
+                .flatten()
+                .find(|link| {
+                    link["relation"] == "suggestion_for"
+                        && link["documentId"].as_str() == Some(&document_id.to_string())
+                })
+                .and_then(|link| link["threadId"].as_str())
+                .map(Uuid::parse_str)
+                .transpose()
+                .map_err(|error| error.to_string())?;
             let key = format!("{document_id}:suggestion:{identity}");
             let item = ActivityItem {
                 key,
@@ -316,6 +334,7 @@ impl EventStore {
                 thread_id,
                 decision_id: None,
                 request_id: None,
+                context_thread_id,
                 message_id: None,
                 kind: "suggestion".into(),
                 attention: false,
@@ -332,6 +351,7 @@ impl EventStore {
                 resolved: false,
             };
             self.connection.execute("INSERT OR IGNORE INTO activities(identity,document,cursor,content,read,resolved) VALUES(?1,?2,?3,?4,?5,0)",params![item.key,document_id.to_string(),cursor,serde_json::to_string(&item).map_err(|error| error.to_string())?,item.read]).map_err(|error| error.to_string())?;
+            self.connection.execute("UPDATE activities SET content=json_set(content,'$.contextThreadId',?2) WHERE identity=?1", params![item.key,context_thread_id.map(|identity|identity.to_string())]).map_err(|error|error.to_string())?;
         }
         Ok(())
     }
@@ -363,14 +383,12 @@ impl EventStore {
                 |row| row.get(0),
             )
             .map_err(|error| error.to_string())?;
-        if !enabled && !decisions_enabled {
+        if !enabled {
             return Ok(Vec::new());
         }
-        let mut statement=self.connection.prepare("SELECT content FROM activities WHERE (?1 OR (?2 AND json_extract(content,'$.kind')='decision')) AND read=0 AND resolved=0 AND notified<cursor AND NOT EXISTS(SELECT 1 FROM activity_dismissals WHERE identity=activities.identity AND cursor>=activities.cursor) ORDER BY cursor").map_err(|error|error.to_string())?;
+        let mut statement=self.connection.prepare("SELECT content FROM notification_inbox WHERE (?1 OR json_extract(content,'$.kind')!='decision') AND read=0 AND notification_cursor>0 ORDER BY cursor").map_err(|error|error.to_string())?;
         let rows = statement
-            .query_map(params![enabled, decisions_enabled], |row| {
-                row.get::<_, String>(0)
-            })
+            .query_map(params![decisions_enabled], |row| row.get::<_, String>(0))
             .map_err(|error| error.to_string())?;
         rows.map(|row| {
             serde_json::from_str(&row.map_err(|error| error.to_string())?)
@@ -382,7 +400,7 @@ impl EventStore {
     pub fn notified_activity(&self, key: &str, cursor: u64) -> Result<(), String> {
         self.connection
             .execute(
-                "UPDATE activities SET notified=MAX(notified,?2) WHERE identity=?1",
+                "UPDATE activities SET notified=MAX(notified,?2) WHERE cursor<=?2 AND (identity=?1 OR (document,COALESCE(json_extract(content,'$.contextThreadId'),json_extract(content,'$.threadId'))) IN (SELECT document,COALESCE(json_extract(content,'$.contextThreadId'),json_extract(content,'$.threadId')) FROM activities WHERE identity=?1 AND json_extract(content,'$.kind') IN ('reply','question','suggestion')))",
                 params![key, cursor],
             )
             .map_err(|error| error.to_string())?;

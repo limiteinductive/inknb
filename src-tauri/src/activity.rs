@@ -2,6 +2,7 @@ use crate::DesktopState;
 use inknb_core::activity::{ActivityPage, ActivityQuery};
 use serde_json::Value;
 use tauri::{Emitter, Manager, State};
+#[cfg(not(target_os = "macos"))]
 use tauri_plugin_notification::NotificationExt;
 use uuid::Uuid;
 
@@ -104,8 +105,11 @@ pub fn activity_issue(
 }
 
 #[tauri::command]
-pub fn activity_background(app: tauri::AppHandle, enabled: bool) -> Result<(), String> {
+pub async fn activity_background(app: tauri::AppHandle, enabled: bool) -> Result<(), String> {
     if enabled {
+        #[cfg(target_os = "macos")]
+        crate::mac_notifications::authorize().await?;
+        #[cfg(not(target_os = "macos"))]
         app.notification()
             .request_permission()
             .map_err(|error| error.to_string())?;
@@ -135,46 +139,94 @@ pub fn activity_show(app: tauri::AppHandle) -> Result<(), String> {
 }
 
 pub fn start(app: &tauri::AppHandle) -> Result<(), String> {
-    let handle = app.clone();
-    app.notification()
-        .on_action(move |action| {
-            if action.action_id() != "tap" {
-                return;
-            }
-            let key = action
-                .notification()
-                .and_then(|notification| notification.extra().get("activityKey"))
-                .and_then(Value::as_str);
-            let _ = handle.emit_to("host", "inknb-activity-target", key);
-        })
-        .map_err(|error| error.to_string())?;
+    #[cfg(target_os = "macos")]
+    crate::mac_notifications::start(app);
+    #[cfg(not(target_os = "macos"))]
+    {
+        let handle = app.clone();
+        app.notification()
+            .on_action(move |action| {
+                if action.action_id() != "tap" {
+                    return;
+                }
+                let key = action
+                    .notification()
+                    .and_then(|notification| notification.extra().get("activityKey"))
+                    .and_then(Value::as_str);
+                let _ = handle.emit_to("host", "inknb-activity-target", key);
+            })
+            .map_err(|error| error.to_string())?;
+    }
     let handle = app.clone();
     tauri::async_runtime::spawn(async move {
-        let mut permission_requested = false;
         loop {
             let state = handle.state::<DesktopState>();
-            state.event_notification.notified().await;
-            let _ = handle.emit("inknb-activity", ());
+            let changed = state.event_notification.notified();
+            tokio::pin!(changed);
+            changed.as_mut().enable();
             let decisions_enabled = state
                 .configuration
                 .lock()
                 .map(|configuration| configuration.snapshot().effective.decision_notifications)
                 .unwrap_or(false);
+            tokio::time::sleep(std::time::Duration::from_millis(600)).await;
+            let _ = handle.emit("inknb-activity", ());
             let pending = state
                 .events
                 .lock()
                 .ok()
                 .and_then(|store| store.pending_notifications(decisions_enabled).ok())
                 .unwrap_or_default();
-            if !permission_requested && pending.iter().any(|item| item.kind == "decision") {
-                permission_requested = true;
-                let _ = handle.notification().request_permission();
+            #[cfg(target_os = "macos")]
+            {
+                let inbox = state.events.lock().ok().and_then(|store| {
+                    store
+                        .read_activity(&ActivityQuery {
+                            document_ids: None,
+                            before_cursor: None,
+                            before_key: None,
+                        })
+                        .ok()
+                });
+                if let Some(inbox) = inbox {
+                    crate::mac_notifications::synchronize(if inbox.background_notifications {
+                        &inbox.pending
+                    } else {
+                        &[]
+                    });
+                }
             }
             let focused = handle
                 .webview_windows()
                 .values()
                 .any(|window| window.is_focused().unwrap_or(false));
+            #[cfg(target_os = "macos")]
+            let library: Value = if pending.is_empty() || focused {
+                Value::Null
+            } else {
+                std::fs::read(state.directory.join("library.json"))
+                    .ok()
+                    .and_then(|bytes| serde_json::from_slice(&bytes).ok())
+                    .unwrap_or_default()
+            };
             for item in pending {
+                #[cfg(target_os = "macos")]
+                let sent = {
+                    let title = library["documents"]
+                        .as_array()
+                        .into_iter()
+                        .flatten()
+                        .find(|document| {
+                            document["id"]
+                                .as_str()
+                                .and_then(|identity| Uuid::parse_str(identity).ok())
+                                == item.document_id
+                        })
+                        .and_then(|document| document["title"].as_str())
+                        .unwrap_or("ink and butter");
+                    focused || crate::mac_notifications::show(&item, title).await.is_ok()
+                };
+                #[cfg(not(target_os = "macos"))]
                 let sent = focused
                     || handle
                         .notification()
@@ -190,6 +242,7 @@ pub fn start(app: &tauri::AppHandle) -> Result<(), String> {
                     }
                 }
             }
+            changed.await;
         }
     });
     Ok(())

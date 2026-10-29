@@ -293,7 +293,9 @@ Decision changes and their events commit in one recovery transaction. Read-by-ID
 
 The running desktop app publishes the tool catalog. MCP bridges retain the last available catalog during restarts and emit tools/list_changed notifications when it changes. Tool calls run concurrently. Each MCP connection remembers its registered caller. Explicit caller identity supports shared transports.
 
-Open decisions produce persistent Activity entries and native notifications. The decision_notifications configuration field controls these notifications. External relays consume decision.created through the existing event hook API. Named consumer checkpoints retain unhandled events across restarts. External destinations and credentials remain outside document metadata.
+Notifications use a `long-term` inbox shared by the list, unread badge, and native alerts. Each aside groups its question, pending suggestions, and completed reply. Linked suggestions share their source aside's group. Questions take priority over suggestions and completed replies. Delivery failures, save errors, source changes, and detached passages retain actionable entries. Delivery receipts, progress replies, successful builds, and routine document changes remain in the event journal.
+
+The macOS notifications switch controls native alerts. The decision_notifications configuration field can exclude decisions from enabled native alerts. Apple UserNotifications owns authorization and delivery. Native alerts appear while the app is in the background. Alerts from one aside replace its previous banner. Selecting an alert opens its document and discussion. Enabling alerts leaves existing inbox entries quiet. External relays consume decision.created through the existing event hook API. Named consumer checkpoints retain unhandled events across restarts. External destinations and credentials remain outside document metadata.
 
 The interface design system is `long-term`. Design tokens own the spacing scale and interface type roles. PanelPopover owns each toolbar panel's dialog and heading. PanelBody owns content gutters and scrolling. PanelEmpty owns empty messages. Features supply content and actions. The design contract check runs during type checks and production builds. `docs/design-system.md` defines component ownership and visual release criteria.
 
@@ -301,7 +303,7 @@ Bulk aside resolution is `long-term`. One document operation resolves all open d
 
 Human aside messages show compact delivery receipts. Saved requests have no recipient. Queued requests await transport or agent pickup. Sent requests have a delivery acknowledgement. Replied requests have an agent response. Failures retain a visible warning and expandable details.
 
-Resolved asides stay outside the document's inline and margin layouts. Saved expansion, unread state, and selection do not override resolution. History and Activity retain the conversation and its reopen action.
+Resolved asides stay outside the document's inline and margin layouts. Saved expansion, unread state, and selection do not override resolution. History retains the conversation and its reopen action. Unread completed replies remain in Notifications until read.
 
 Operation failures appear through the toolbar's Activity control. Its attention state uses the same control bounds and badge. A synchronized document with no pending writing clears its host timeout. Recovery matches the stored failure message before clearing it.
 

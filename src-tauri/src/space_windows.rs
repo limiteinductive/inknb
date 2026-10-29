@@ -34,10 +34,12 @@ pub fn host_lifecycle(
     if matches!(status.phase, HostPhase::Failed) {
         window.show().map_err(|error| error.to_string())?;
     }
+    let ready = matches!(status.phase, HostPhase::Ready);
     *state
         .host_lifecycle
         .lock()
         .map_err(|error| error.to_string())? = status;
+    if ready { state.window_ready.notify_waiters(); }
     Ok(())
 }
 

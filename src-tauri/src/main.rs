@@ -22,6 +22,8 @@ use tauri::{Emitter, Manager, State};
 use tokio::io::{AsyncBufReadExt, AsyncReadExt, AsyncWriteExt, BufReader};
 use tokio::sync::oneshot;
 mod activity;
+#[cfg(target_os = "macos")]
+mod mac_notifications;
 mod images;
 mod preview_window;
 mod space_windows;
@@ -1513,9 +1515,10 @@ fn main() {
     let events = EventStore::open(&directory).expect("The automation journal could not be opened.");
     let configuration = ConfigurationStore::open(&directory)
         .expect("The ink and butter configuration could not be opened.");
-    let app = tauri::Builder::default()
-        .plugin(tauri_plugin_dialog::init())
-        .plugin(tauri_plugin_notification::init())
+    let builder = tauri::Builder::default().plugin(tauri_plugin_dialog::init());
+    #[cfg(not(target_os = "macos"))]
+    let builder = builder.plugin(tauri_plugin_notification::init());
+    let app = builder
         .plugin(tauri::plugin::Builder::<tauri::Wry>::new("component-navigation")
             .on_navigation(|_, url| {
                 matches!(url.scheme(), "tauri" | "inknb-component" | "inknb-preview" | "about")

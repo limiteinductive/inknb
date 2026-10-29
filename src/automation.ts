@@ -262,6 +262,7 @@ export function planAutomation(
                   author: thread.messages.at(-1)?.author,
                   content: thread.messages.at(-1)?.content.slice(0, 240),
                   awaitingHuman: thread.messages.at(-1)?.awaitingHuman ?? false,
+                  status: thread.messages.at(-1)?.status ?? null,
                   label: agentAttribution(thread.messages.at(-1)?.agent),
                 }
               : null,
@@ -362,11 +363,16 @@ export function planAutomation(
     const before = previous.proposals.find(
       (candidate) => candidate.id === proposal.id,
     );
+    const contextThreadId = next.threads.find((thread) => thread.id === proposal.threadId)?.links.find(
+      (link) => link.relation === "suggestion_for" && link.documentId === next.documentId,
+    )?.threadId ?? null;
     if (!before)
       events.push(
         createEvent(next, "proposal.created", {
           proposalId: proposal.id,
           threadId: proposal.threadId,
+          contextThreadId,
+          explanation: proposal.explanation,
         }),
       );
     else if (before.status !== proposal.status) {
@@ -374,6 +380,8 @@ export function planAutomation(
         createEvent(next, "proposal.updated", {
           proposalId: proposal.id,
           threadId: proposal.threadId,
+          contextThreadId,
+          explanation: proposal.explanation,
           status: proposal.status,
         }),
       );

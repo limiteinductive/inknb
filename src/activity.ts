@@ -7,6 +7,7 @@ export const activityItemSchema = z.object({
   documentId: z.string().uuid().nullable(),
   threadId: z.string().uuid().nullable(),
   requestId: z.string().uuid().nullable(),
+  contextThreadId: z.string().uuid().nullable().default(null),
   decisionId: z.string().uuid().nullable().default(null),
   messageId: z.string().uuid().nullable().default(null),
   kind: z.string(),
@@ -81,9 +82,6 @@ class ActivityStore {
           (item) =>
             !scope || !item.documentId || scope.includes(item.documentId),
         );
-        const previous = this.state.items;
-        const keys = new Set(page.items.map((item) => item.key));
-        const oldest = page.items.at(-1)?.cursor ?? 0;
         this.update({
           ...page,
           unread: page.unread + issues.filter((item) => !item.read).length,
@@ -95,12 +93,6 @@ class ActivityStore {
           items: [
             ...issues,
             ...page.items.filter((item) => !this.issues.has(item.key)),
-            ...previous.filter(
-              (item) =>
-                !keys.has(item.key) &&
-                item.cursor < oldest &&
-                !this.issues.has(item.key),
-            ),
           ],
           error: null,
         });
@@ -114,29 +106,6 @@ class ActivityStore {
         }
       });
     return this.refreshing;
-  }
-  async more(): Promise<void> {
-    const scope = this.documentIds;
-    const last = this.state.items.at(-1);
-    if (!last) return;
-    const page = pageSchema.parse(
-      await invoke("activity_read", {
-        query: {
-          beforeCursor: last.cursor,
-          beforeKey: last.key,
-          documentIds: this.documentIds,
-        },
-      }),
-    );
-    if (scope !== this.documentIds) return;
-    const keys = new Set(this.state.items.map((item) => item.key));
-    this.update({
-      hasMore: page.hasMore,
-      items: [
-        ...this.state.items,
-        ...page.items.filter((item) => !keys.has(item.key)),
-      ],
-    });
   }
   report(
     documentId: string | null,
@@ -159,6 +128,7 @@ class ActivityStore {
       documentId,
       threadId: null,
       requestId: null,
+      contextThreadId: null,
       decisionId: null,
       messageId: null,
       kind: category,
@@ -213,7 +183,9 @@ class ActivityStore {
     const key = `${documentId ?? "00000000-0000-0000-0000-000000000000"}:${category === "error" ? "error" : "file"}`;
     if (
       !this.state.pending.some(
-        (item) => item.key === key && item.kind === category &&
+        (item) =>
+          item.key === key &&
+          item.kind === category &&
           (expectedMessage === undefined || item.detail === expectedMessage),
       )
     )
