@@ -14,6 +14,7 @@ line_width = 620
 reduce_motion = false
 autosave = true
 agent_edits = true
+comment_recipients = "choose"
 detached_preview = "document"
 library_depth = 1
 library_sort = "recent"
@@ -42,6 +43,7 @@ All keys are optional. Omitted keys use the values above. Unknown keys and unsup
 | `reduce_motion`    | Boolean                            | Disables positional animation when true                                   |
 | `autosave`         | Boolean                            | Saves documents automatically when true                                   |
 | `agent_edits`      | Boolean                            | Default agent edit access for documents without an override               |
+| `comment_recipients` | `choose`, `default` | Shows a recipient menu, or sends comments to the document default agent |
 | `detached_preview` | `document`, `active_document`      | Keeps the detached preview on its document or follows the active document |
 
 The macOS reduced motion preference also applies. Recovery writes continue when autosave is false.
@@ -129,3 +131,13 @@ Validation rejects unknown commands, invalid keys, overlapping bindings, and amb
 Bindings reload across open windows without restarting. Native menus, palette hints, and tooltips show the primary binding. All alternatives remain active. Native menus display key sequences as hints. Agents change bindings through `configuration_write` with the current fingerprint and preserve unrelated settings.
 
 Standard control navigation and macOS system actions remain platform-owned. Shortcut configuration grants no document editing permission and does not expose human submission or review actions to agent UI tools.
+
+## Comment recipients
+
+`comment_recipients = "choose"` shows a compact recipient menu when several agents are connected. Select one or more agents before sending a passage comment or an aside reply. The menu stays open for multiple choices. Escape or clicking outside closes it. At least one recipient stays selected. New comments start with the document default agent. Replies inherit the recipients of the previous human message.
+
+One human message creates one shared aside. Each selected agent receives a separate request with its own delivery state. The aside stays open until every request and linked suggestion is settled. A disconnected selected agent blocks submission and preserves the draft. Remove that selection or reconnect the agent.
+
+`comment_recipients = "default"` hides the menu and routes comments to the document default agent. With no agent connected, requests stay saved for a later connection. Agents configure this through `configuration_write`. No settings panel is needed. Changes apply across writing windows immediately. Existing queued requests keep their recipient snapshots.
+
+Draft recovery retains recipient selections. Earlier drafts with a single `recipientAgentId` remain readable. New selections use `recipientAgentIds`.

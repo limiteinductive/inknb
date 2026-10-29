@@ -47,6 +47,8 @@ Comment fields use existing space above their passage before adding padding. Ope
 
 Application choice menus use the shared menu surface and accessible menu primitives. Single choices show a check beside the selected item. Native HTML dropdowns are rejected by the design contract.
 
+Passage comments and aside replies share one recipient menu. Passage fields use a compact people glyph and a count for multiple recipients. Aside composers show the chosen agent name or recipient count. The menu keeps multiple choices open and uses the shared checkmarks, spacing, and surface. Recipient controls remain visible while writing. Configuration can hide the chooser and use the default agent.
+
 Agent attribution uses the session name and role. Unnamed sessions include a short session identifier. Replies, full responses, decisions, recipients, and connection panels share the same label.
 
 Aside cards use a 16 pixel content gutter. Conversation headers keep 4 pixels above and below their control row. Controls retain their standard target size. A single header contains collapse and thread actions. Passage context sits below that header. Copy reference remains visible and confirms a successful copy in place.

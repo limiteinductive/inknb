@@ -74,7 +74,7 @@ export class PreviewAsides implements AsideSession {
         ...Object.fromEntries(
           [...this.drafts].map(([key, draft]) => [
             key,
-            { content: draft.content, images: draft.images, references: draft.references, annotations: draft.annotations, annotation: draft.annotation, recipientAgentId: draft.recipientAgentId },
+            { content: draft.content, images: draft.images, references: draft.references, annotations: draft.annotations, annotation: draft.annotation, recipientAgentIds: draft.recipientAgentIds, recipientAgentId: draft.recipientAgentId },
           ]),
         ),
       },

@@ -1,6 +1,6 @@
 import { DecisionCard } from "./Decisions";
 import { useAutoHideScrollbar } from "./use-auto-hide-scrollbar";
-import { agentAttribution, messageSummary, defaultAgent, requestAgentId, proposalTurnId } from "./domain";
+import { agentAttribution, messageSummary, defaultAgent, proposalTurnId } from "./domain";
 import { focusAside, revealAsideComposer } from "./aside-focus";
 import {
   Fragment,
@@ -64,6 +64,7 @@ import IconButton from "./IconButton";
 import ReferenceEditor from "./ReferenceEditor";
 import PassageText from "./PassageText";
 import AnnotationContext from "./AnnotationContext";
+import CommentRecipients from "./CommentRecipients";
 
 function AsidePassage({ threadId }: { threadId?: string }) {
   const session = useAsideSession();
@@ -124,29 +125,9 @@ function Composer({
     content: "",
     images: [],
   };
-  const recipientId = requestAgentId(
-    state.metadata,
-    threadId,
-    state.drafts[draftKey]?.recipientAgentId,
-  );
-  const disconnectedRecipient = Boolean(
-    recipientId &&
-    !state.metadata.agents.some((agent) => agent.id === recipientId),
-  );
-  const recipientLabel = disconnectedRecipient
-    ? "Disconnected recipient"
-    : agentAttribution(state.metadata.agents.find((agent) => agent.id === recipientId));
   const textarea = useRef<HTMLElement>(null);
   const composerContent = useRef<HTMLDivElement>(null);
   useAutoHideScrollbar(composerContent);
-  const recipientTrigger = useRef<HTMLButtonElement>(null);
-  const [recipientOpen, setRecipientOpen] = useState(false);
-  const recipientWasOpen = useRef(false);
-  useLayoutEffect(() => {
-    if (recipientWasOpen.current && !recipientOpen)
-      queueMicrotask(() => recipientTrigger.current?.focus({ preventScroll: true }));
-    recipientWasOpen.current = recipientOpen;
-  }, [recipientOpen]);
   useLayoutEffect(() => {
     if (threadId) return;
     const element = textarea.current;
@@ -179,61 +160,15 @@ function Composer({
       }}
     >
       {!threadId && <AsidePassage />}
-      {(state.metadata.agents.length > 1 || disconnectedRecipient) && (
-        <MenuTrigger isOpen={recipientOpen} onOpenChange={setRecipientOpen}>
-          <Button
-            ref={recipientTrigger}
-            className="text-button recipient-trigger"
-            aria-label={`Send to agent: ${recipientLabel}`}
-            data-inknb-control={`recipient.open:${draftKey}`}
-          >
-            <span>{recipientLabel}</span>
-            <ChevronDown size={12} aria-hidden="true" />
-          </Button>
-          <Popover className="menu-popover" placement="bottom start" offset={5}>
-            <Menu
-              className="menu"
-              aria-label="Send to agent"
-              selectionMode="single"
-              disallowEmptySelection
-              selectedKeys={recipientId ? [recipientId] : []}
-              onSelectionChange={(selection) => {
-                if (selection === "all") return;
-                const [recipientAgentId] = selection;
-                if (typeof recipientAgentId !== "string") return;
-                session.update({
-                  drafts: {
-                    ...state.drafts,
-                    [draftKey]: { ...state.drafts[draftKey], content, images, recipientAgentId },
-                  },
-                });
-              }}
-            >
-              {disconnectedRecipient && (
-                <MenuItem id={recipientId!} className="menu-item" isDisabled>
-                  Disconnected recipient
-                </MenuItem>
-              )}
-              {state.metadata.agents.map((agent) => (
-                <MenuItem
-                  key={agent.id}
-                  id={agent.id}
-                  textValue={agentAttribution(agent)}
-                  className="menu-item"
-                  data-inknb-control={`recipient.select:${agent.id}`}
-                >
-                  {({ isSelected }) => (
-                    <>
-                      <span>{agentAttribution(agent)}</span>
-                      {isSelected && <Check size={15} aria-hidden="true" />}
-                    </>
-                  )}
-                </MenuItem>
-              ))}
-            </Menu>
-          </Popover>
-        </MenuTrigger>
-      )}
+      <CommentRecipients
+        metadata={state.metadata}
+        preferences={state.preferences}
+        draft={state.drafts[draftKey]}
+        threadId={threadId}
+        controlId={draftKey}
+        disabled={sending}
+        onChange={recipientAgentIds => session.update({ drafts: { ...state.drafts, [draftKey]: { ...state.drafts[draftKey], content, images, recipientAgentIds, recipientAgentId: undefined } } })}
+      />
       <div
         className="composer-content"
         ref={composerContent}
@@ -333,7 +268,7 @@ function Composer({
   );
 }
 
-function DeliveryReceipt({ request }: { request: AgentRequest }) {
+function DeliveryReceipt({ request, named = false }: { request: AgentRequest; named?: boolean }) {
   const state = useAsideState();
   const recipient = request.binding ?? defaultAgent(state.metadata);
   const label = request.state === "failed"
@@ -354,7 +289,7 @@ function DeliveryReceipt({ request }: { request: AgentRequest }) {
     <div className={`delivery ${request.state}`}>
       <span className="delivery-receipt" role="status">
         <Icon size={14} strokeWidth={1.6} aria-hidden="true" />
-        {label}
+        {named ? `${agentAttribution(recipient)}: ${label}` : label}
       </span>
       {request.state === "failed" && request.error && (
         <details className="inspection">
@@ -744,11 +679,11 @@ export function Conversation({
         {turns.map((turn) => (
           <Fragment key={turn.id ?? "earlier-edits"}>
         {turn.messages.map((message) => {
-          const request = message.author === "human"
+          const messageRequests = message.author === "human"
             ? requests.filter((request) =>
                 request.trigger.kind === "human" && request.messageId === message.id,
-              ).at(-1)
-            : null;
+              )
+            : [];
           return (
           <article
             className={`message ${message.author}`}
@@ -793,7 +728,7 @@ export function Conversation({
                 ))}
               </div>
             )}
-            {request && <DeliveryReceipt request={request} />}
+            {messageRequests.map(request => <DeliveryReceipt key={request.id} request={request} named={messageRequests.length > 1} />)}
           </article>
           );
         })}

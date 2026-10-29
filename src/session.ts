@@ -1,6 +1,6 @@
 import { reconcileText } from "./file-sync";
 import { documentAuthoring, documentOutline } from "./document-structure";
-import { defaultAgent, agentId, requestAgentId, decisionSchema, decisionOptionSchema } from "./domain";
+import { defaultAgent, agentId, requestAgentIds, decisionSchema, decisionOptionSchema } from "./domain";
 import { NativeDocumentModel } from "./native-model";
 import { activity } from "./activity";
 import { asideReaderSchema } from "./spaces";
@@ -572,7 +572,7 @@ export class DocumentSession {
           this.update({
             drafts: {
               ...this.state.drafts,
-              [action.key]: { content: action.content, images: action.images, references: action.references, annotations: action.annotations, annotation: action.annotation, recipientAgentId: action.recipientAgentId },
+              [action.key]: { content: action.content, images: action.images, references: action.references, annotations: action.annotations, annotation: action.annotation, recipientAgentIds: action.recipientAgentIds, recipientAgentId: action.recipientAgentId },
             },
           });
           if (!action.content && !action.images.length && !action.annotations?.length && this.state.metadata.threads.find((thread) => thread.id === action.key)?.messages.at(-1)?.status === "complete")
@@ -587,7 +587,8 @@ export class DocumentSession {
           if (previous && draft.annotation.expectedComment !== undefined && previous.comment !== draft.annotation.expectedComment)
             throw Error("This annotation changed elsewhere. Your draft stays saved.");
           const source = previous?.source ?? this.currentPassage(draft.annotation.source);
-          const recipient = requestAgentId(this.state.metadata, undefined, draft.recipientAgentId);
+          const recipientIds = requestAgentIds(this.state.metadata, undefined, draft, this.state.preferences.comment_recipients);
+          if (recipientIds.some(recipientId => !this.state.metadata.agents.some(agent => agent.id === recipientId))) throw Error("A selected agent disconnected. Choose another recipient. Your draft stays saved.");
           const createdAt = new Date().toISOString();
           this.changed({
             ...this.state.metadata,
@@ -597,7 +598,7 @@ export class DocumentSession {
             requests: [...this.state.metadata.requests.map(request => request.trigger.kind === "annotation" && request.trigger.annotationId === identity ? { ...request, state: "answered" as const } : request), {
               id: crypto.randomUUID(), threadId: null, messageId: null, revision: this.state.metadata.revision,
               trigger: { kind: "annotation", annotationId: identity }, permission: this.agentAccess, state: "pending",
-              binding: this.state.metadata.agents.find(agent => agent.id === recipient) ?? null,
+              binding: this.state.metadata.agents.find(agent => agent.id === recipientIds[0]) ?? null,
               createdAt, deliveredAt: null, error: null,
             }],
           });
@@ -615,7 +616,7 @@ export class DocumentSession {
           if (!draft?.annotation) throw Error("This annotation is unavailable.");
           const source = draft.annotation.source;
           if (source.documentId !== this.state.metadata.documentId) throw Error("The document changed.");
-          return this.comment("", undefined, { composerAnchor: null, composerPreviewAnchor: null, draft: { content: "", images: [], recipientAgentId: draft.recipientAgentId, annotations: [{ id: crypto.randomUUID(), source, comment: draft.content, ...(work ? { annotationId: work.id } : {}) }] } });
+          return this.comment("", undefined, { composerAnchor: null, composerPreviewAnchor: null, draft: { content: "", images: [], recipientAgentIds: draft.recipientAgentIds, recipientAgentId: draft.recipientAgentId, annotations: [{ id: crypto.randomUUID(), source, comment: draft.content, ...(work ? { annotationId: work.id } : {}) }] } });
         }
         case "composer": {
           const { kind, ...patch } = action;
@@ -1484,8 +1485,8 @@ export class DocumentSession {
     const references = (draft?.references ?? []).map(reference => ({ ...reference, source: this.currentPassage(reference.source), from: reference.from - leading, to: reference.to - leading }));
     validatePassageReferences(content.trim(), references);
     const permission = this.agentAccess;
-    const recipientId = requestAgentId(this.state.metadata, threadId, draft?.recipientAgentId);
-    if (recipientId && !this.state.metadata.agents.some((agent) => agent.id === recipientId)) throw Error("The selected agent disconnected. Choose another recipient. Your draft stays saved.");
+    const recipientIds = requestAgentIds(this.state.metadata, threadId, draft, this.state.preferences.comment_recipients);
+    if (recipientIds.some(recipientId => !this.state.metadata.agents.some(agent => agent.id === recipientId))) throw Error("A selected agent disconnected. Choose another recipient. Your draft stays saved.");
     let metadata = this.state.metadata;
     let request: AgentRequest;
     if (threadId) {
@@ -1509,7 +1510,7 @@ export class DocumentSession {
         permission,
         trigger: { kind: "human" },
         state: "pending",
-        binding: metadata.agents.find((agent) => agent.id === recipientId) ?? null,
+        binding: metadata.agents.find((agent) => agent.id === recipientIds[0]) ?? null,
         createdAt: message.createdAt,
         deliveredAt: null,
         error: null,
@@ -1539,7 +1540,7 @@ export class DocumentSession {
         images,
         annotations,
       );
-      created.request.binding = metadata.agents.find((agent) => agent.id === recipientId) ?? null;
+      created.request.binding = metadata.agents.find((agent) => agent.id === recipientIds[0]) ?? null;
       created.thread.messages[0].references = references;
       if (created.thread.anchor && context.composerAnchor?.native)
         created.thread.anchor.native = context.composerAnchor.native;
@@ -1560,6 +1561,12 @@ export class DocumentSession {
           [created.thread.id]: created.thread.anchor,
         });
     }
+    const requests = [request, ...recipientIds.slice(1).map(recipientId => ({
+      ...request,
+      id: crypto.randomUUID(),
+      binding: metadata.agents.find(agent => agent.id === recipientId)!,
+    }))];
+    metadata = { ...metadata, requests: [...metadata.requests, ...requests.slice(1)] };
     this.update({ composerAnchor: null, composerPreviewAnchor: null });
     metadata = {
       ...metadata,
@@ -1588,7 +1595,7 @@ export class DocumentSession {
           [draftKey]: { content: "", images: [] },
         },
       });
-    await this.deliver(request.id);
+    await Promise.all(requests.map(request => this.deliver(request.id)));
     return { threadId: request.threadId! };
   }
 

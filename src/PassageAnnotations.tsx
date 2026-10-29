@@ -11,6 +11,7 @@ import { useAutoHideScrollbar } from "./use-auto-hide-scrollbar";
 import { annotationSpace } from "./annotation-layout";
 import { ArrowUp, X } from "lucide-react";
 import IconButton from "./IconButton";
+import CommentRecipients from "./CommentRecipients";
 
 export default function PassageAnnotations({ active }: { active: boolean }) {
   const session = useDocumentSession();
@@ -278,7 +279,11 @@ function PassageAnnotation({ identity, sourceRange, reply }: { identity: string;
     if (sending) return;
     setSending(true);
     try {
-      if (work && annotation && !annotation.completed) await session.commitAnnotation(identity);
+      if (work && draft?.annotation && !draft.annotation.completed) {
+        await session.commitAnnotation(identity);
+        const current = session.getSnapshot();
+        session.update({ drafts: { ...current.drafts, [identity]: { ...draft, annotation: { ...draft.annotation, completed: true } } } });
+      }
       await session.sendAnnotation(identity);
       setAnnouncement("Annotation sent in a new aside.");
     } catch (error) {
@@ -395,6 +400,18 @@ function PassageAnnotation({ identity, sourceRange, reply }: { identity: string;
                 }}
               />
             )}
+            <CommentRecipients
+              metadata={state.metadata}
+              preferences={state.preferences}
+              draft={draft}
+              controlId={identity}
+              compact
+              disabled={sending}
+              onChange={recipientAgentIds => {
+                const current = session.getSnapshot();
+                session.update({ drafts: { ...current.drafts, [identity]: { ...draft, recipientAgentIds, recipientAgentId: undefined } } });
+              }}
+            />
             <div className="annotation-actions">
               <IconButton icon={ArrowUp} appearance="glyph" label="Send in a new aside" disabled={sending} onPress={() => void send()} />
               <IconButton icon={X} appearance="glyph" label="Delete annotation" agentControl={`annotation.delete:${identity}`} disabled={sending} onPress={dismiss} />

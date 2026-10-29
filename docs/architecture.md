@@ -279,9 +279,9 @@ Command-Shift-Return sends selected manuscript text as a new aside. The host che
 
 ## Decisions and connected agents
 
-This design is long-term. Document metadata owns decision records and named agent connections. The default agent receives new human requests. Each queued request retains its recipient snapshot. Connection identities are self-declared and confer no edit permission.
+This design is long-term. Document metadata owns decision records and named agent connections. New drafts start with the default agent. Each queued request retains its recipient snapshot. Connection identities are self-declared and confer no edit permission.
 
-Annotation format 12 migrates the single connection into the connections list. Messages, proposals, and decisions retain their creator identity. Connection updates preserve historical attribution. Drafts retain the selected recipient.
+Annotation format 12 migrates the single connection into the connections list. Messages, proposals, and decisions retain their creator identity. Connection updates preserve historical attribution. Drafts retain the selected recipients. A human message can create several requests, each bound to one agent. These requests share one message and one aside. Every selected agent must settle its own request before automatic closure. `comment_recipients` selects a compact multi-recipient menu or automatic routing to the document default. Agent configuration controls this behavior.
 
 Each decision has a retry-safe identity, question, options, recommendation, optional Markdown context, and optional passage anchor. Live anchors follow document transactions. The original anchor remains available for retry validation. Human answers retain exact text, the chosen option, and the recorded time.
 

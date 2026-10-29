@@ -2134,6 +2134,10 @@ del[data-change="removed"] {
   gap: var(--space-1);
   max-width: 100%;
 }
+.recipient-trigger[data-compact="true"] {
+  flex-shrink: 0;
+  color: var(--muted);
+}
 .recipient-trigger > span {
   overflow: hidden;
   text-overflow: ellipsis;

@@ -17,6 +17,13 @@ pub enum Placement {
 
 #[derive(Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "lowercase")]
+pub enum CommentRecipients {
+    Default,
+    Choose,
+}
+
+#[derive(Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "lowercase")]
 pub enum Appearance {
     System,
     Light,
@@ -113,6 +120,7 @@ pub struct Configuration {
     pub reduce_motion: bool,
     pub autosave: bool,
     pub agent_edits: bool,
+    pub comment_recipients: CommentRecipients,
     pub detached_preview: DetachedPreview,
     #[schemars(range(min = -1))]
     pub library_depth: i32,
@@ -137,6 +145,7 @@ impl Default for Configuration {
             reduce_motion: false,
             autosave: true,
             agent_edits: true,
+            comment_recipients: CommentRecipients::Choose,
             detached_preview: DetachedPreview::Document,
             library_depth: 1,
             library_sort: LibrarySort::Recent,

@@ -6,7 +6,7 @@ import { nativeDocumentSchema } from "./native-schema";
 import { linkedResourceSchema } from "./resources";
 import { documentPageSchema } from "./document-page";
 import { imageSchema } from "./images";
-import type { ImageAsset } from "./images";
+import type { AsideDraft, ImageAsset } from "./images";
 import type { MessageAnnotation } from "./passage-reference";
 import { passageReferenceSchema, messageAnnotationSchema, passageSourceSchema, mapPassageSource } from "./passage-reference";
 import {
@@ -369,6 +369,7 @@ export const preferencesSchema = z.object({
   reduce_motion: z.boolean(),
   autosave: z.boolean(),
   agent_edits: z.boolean().default(true),
+  comment_recipients: z.enum(["default", "choose"]).default("choose"),
   detached_preview: z.enum(["document", "active_document"]).default("document"),
   library_depth: z.number().int().min(-1).default(1),
   library_sort: z.enum(["recent", "alphabetical", "manual"]).default("recent"),
@@ -474,6 +475,7 @@ export const defaultPreferences: Preferences = {
   reduce_motion: false,
   autosave: true,
   agent_edits: true,
+  comment_recipients: "choose",
   detached_preview: "document",
   library_depth: 1,
   library_sort: "recent",
@@ -777,8 +779,13 @@ export function defaultAgent(metadata: Metadata): AgentConnection | null {
   return metadata.agents.find((agent) => agent.id === metadata.defaultAgentId) ?? null;
 }
 
-export function requestAgentId(metadata: Metadata, threadId?: string, choice?: string | null): string | null {
-  if (choice) return choice;
-  const recipient = threadId ? metadata.requests.filter((request) => request.threadId === threadId).at(-1)?.binding : null;
-  return recipient ? agentId(recipient) : metadata.defaultAgentId;
+export function requestAgentIds(metadata: Metadata, threadId?: string, draft?: Pick<AsideDraft, "recipientAgentIds" | "recipientAgentId">, mode: Preferences["comment_recipients"] = "choose"): string[] {
+  if (mode === "default") return metadata.defaultAgentId ? [metadata.defaultAgentId] : [];
+  if (draft?.recipientAgentIds?.length) return [...new Set(draft.recipientAgentIds)];
+  if (draft?.recipientAgentId) return [draft.recipientAgentId];
+  const previous = threadId ? metadata.requests.filter(request => request.threadId === threadId && request.trigger.kind === "human").at(-1) : null;
+  const recipients = previous?.messageId
+    ? metadata.requests.filter(request => request.messageId === previous.messageId && request.binding).map(request => agentId(request.binding!))
+    : [];
+  return recipients.length ? [...new Set(recipients)] : metadata.defaultAgentId ? [metadata.defaultAgentId] : [];
 }

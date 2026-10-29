@@ -27,6 +27,7 @@ export const draftSchema = z.object({
   annotations: z.array(messageAnnotationSchema).optional(),
   annotation: passageAnnotationSchema.optional(),
   recipientAgentId: z.string().nullable().optional(),
+  recipientAgentIds: z.array(z.string().min(1)).min(1).optional(),
   images: z.array(imageSchema).default([]),
 });
 export type AsideDraft = z.infer<typeof draftSchema>;
