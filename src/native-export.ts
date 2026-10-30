@@ -153,9 +153,16 @@ export function serializeDocument(
           defaultMarkdownSerializer.nodes.image(state, node, parent, index);
           return;
         }
-        const destination = String(node.attrs.src).replace(/[<>\\]/g, "\\$&").replace(/\r/g, "%0D").replace(/\n/g, "%0A");
-        const title = node.attrs.title ? ` "${String(node.attrs.title).replace(/["\\]/g, "\\$&")}"` : "";
-        state.write(`![${state.esc(String(node.attrs.alt ?? ""))}](<${destination}>${title})`);
+        const destination = String(node.attrs.src)
+          .replace(/[<>\\]/g, "\\$&")
+          .replace(/\r/g, "%0D")
+          .replace(/\n/g, "%0A");
+        const title = node.attrs.title
+          ? ` "${String(node.attrs.title).replace(/["\\]/g, "\\$&")}"`
+          : "";
+        state.write(
+          `![${state.esc(String(node.attrs.alt ?? ""))}](<${destination}>${title})`,
+        );
       },
       text(state, node, parent, index) {
         defaultMarkdownSerializer.nodes.text(
@@ -192,6 +199,10 @@ export function serializeDocument(
           );
         state.write(String(node.attrs.original));
         state.closeBlock(node);
+      },
+      abstract(state, node) {
+        state.write("## Abstract\n\n");
+        state.renderContent(node);
       },
       section(state, node) {
         state.renderContent(node);
@@ -274,7 +285,11 @@ export function serializeDocument(
     }
     const type = node.type.name;
     if (node.isText) return escapedText(node.text ?? "", format);
-    if (type === "source_object" || type === "source_inline") {
+    if (
+      type === "source_object" ||
+      type === "source_inline" ||
+      type === "title_block"
+    ) {
       if (format !== originalFormat)
         throw Error(
           "This embedded content needs conversion before changing its export format.",

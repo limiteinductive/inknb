@@ -172,11 +172,17 @@ export function restoreDocument(
     throw Error(
       "The saved native document does not match its source projection.",
     );
-  if (format === "html" && saved.data.version === 1) {
+  if (
+    (format === "html" && saved.data.version === 1) ||
+    (format === "latex" && saved.data.version < 3)
+  ) {
     const imported = importDocument(source, format);
-    if (contentRanges(document).text !== contentRanges(imported).text)
+    if (
+      format === "html" &&
+      contentRanges(document).text !== contentRanges(imported).text
+    )
       throw Error(
-        "The imported HTML does not match the saved document content.",
+        "The imported document does not match the saved document content.",
       );
     const previous: DocumentNode[] = [];
     document.descendants((node) => {
@@ -222,7 +228,7 @@ export function captureDocument(
   if (projectDocument(document).text !== source)
     throw Error("The native document does not match its source projection.");
   return nativeDocumentSchema.parse({
-    version: 2,
+    version: 3,
     format: sourceFormatSchema.parse(document.attrs.format),
     source,
     content: z.json().parse(document.toJSON()),

@@ -141,7 +141,15 @@ export function importLatex(source: string): DocumentNode {
         continue;
       }
       if (node.type === "string") {
-        append(sourceText(node.content, source, start, end, marks));
+        append(
+          sourceText(
+            node.content,
+            source,
+            start,
+            node.position?.end.offset ?? end,
+            marks,
+          ),
+        );
         continue;
       }
       if (node.type === "inlinemath" || node.type === "displaymath") {
@@ -206,6 +214,65 @@ export function importLatex(source: string): DocumentNode {
         };
         if (literalCommands[name]) {
           append(sourceText(literalCommands[name], source, start, end, marks));
+          continue;
+        }
+        if (name === "maketitle" && !inline) {
+          const fields: Record<string, string> = {};
+          for (const declaration of [...root.content, ...content]) {
+            if (
+              declaration.type !== "macro" ||
+              !["title", "author", "date"].includes(declaration.content) ||
+              (declaration.position?.start.offset ?? source.length) >= start
+            )
+              continue;
+            const declarationStart = declaration.position?.start.offset ?? 0;
+            const declarationEnd =
+              declaration.position?.end.offset ?? declarationStart;
+            const selected = argument(
+              declaration,
+              declarationStart,
+              declarationEnd,
+            );
+            const parts = selected.value
+              ? build(selected.value.content, selected.from, selected.to, true)
+              : [];
+            fields[declaration.content] = parts
+              .map(({ node }) =>
+                node.isText
+                  ? node.text
+                  : node.type.name === "hard_break" ||
+                      (node.type.name === "source_inline" &&
+                        String(node.attrs.original).trim() === "\\and")
+                    ? "\n"
+                    : node.type.name === "math"
+                      ? String(node.attrs.value)
+                      : node.attrs.label === ""
+                        ? ""
+                        : String(node.attrs.original || node.attrs.label || ""),
+              )
+              .join("")
+              .split("\n")
+              .map((line) => line.trim())
+              .join("\n");
+          }
+          append(
+            [
+              sourceNode(
+                "title_block",
+                {
+                  title: fields.title ?? "",
+                  author: fields.author ?? "",
+                  date: fields.date ?? "",
+                  original: source.slice(start, end),
+                },
+                [],
+                source,
+                start,
+                end,
+              ),
+            ],
+            true,
+          );
           continue;
         }
         if (name === "par") {
@@ -363,7 +430,6 @@ export function importLatex(source: string): DocumentNode {
         }
         const silent = [
           "label",
-          "maketitle",
           "centering",
           "small",
           "footnotesize",
@@ -701,7 +767,9 @@ export function importLatex(source: string): DocumentNode {
               sourceNode(
                 name === "quote" || name === "quotation"
                   ? "blockquote"
-                  : "section",
+                  : name === "abstract"
+                    ? "abstract"
+                    : "section",
                 {},
                 children,
                 source,

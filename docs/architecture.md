@@ -46,6 +46,8 @@ Each frontend document session owns its transactions. Agent requests enter the d
 
 Writing windows apply local typing immediately. ProseMirror collaboration steps reconcile each view with the app-owned document model. The host persists accepted transactions before acknowledgement. Agent reads inspect committed source. Agent mutations enter the JavaScript transaction loop with revision and expected-text preconditions. A stale mutation returns a conflict.
 
+LaTeX title declarations remain in the original source. At `\maketitle`, a read-only title block displays their title, author, and explicit date; abstract environments retain an editable body beneath an app-generated heading. Native document format 3 rebuilds earlier LaTeX views from their verified source while retaining the document identity, operation records, and matching object identities.
+
 ## Files
 
 Documents contain UTF-8 text. New documents receive local text files through the app. Imported files retain their paths and contents. The writer interface requires no Markdown syntax.
