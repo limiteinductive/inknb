@@ -17,6 +17,8 @@ import type { AsideReference, ConfigurationSnapshot } from "./domain";
 import { asideConnections, parseAsideLink } from "./aside-reference";
 import { DocumentSession } from "./session";
 import type { Bootstrap, DocumentHost, LoadedDocument } from "./session";
+import { sourceFormatSchema } from "./native-schema";
+import type { SourceFormat } from "./native-schema";
 
 import { draftSchema } from "./images";
 const nodeSchema = z.object({
@@ -561,7 +563,7 @@ export class DocumentLibrary implements DocumentHost {
       .then(() => invoke<void>("store_library", { library }));
     await this.persistence;
   }
-  async newDocument(): Promise<void> {
+  async newDocument(format: SourceFormat = "markdown"): Promise<void> {
     const session = new DocumentSession(this);
     const configuration = this.bootstrap;
     session.update({
@@ -575,6 +577,7 @@ export class DocumentLibrary implements DocumentHost {
     session.changed();
     const path = await invoke<string>("allocate_document", {
       documentId: session.getSnapshot().metadata.documentId,
+      format,
     });
     await session.saveTo(path, false);
     this.register(
@@ -987,6 +990,7 @@ export class DocumentLibrary implements DocumentHost {
       const parsed = z
         .object({
           title: z.string().trim().min(1),
+          format: sourceFormatSchema.default("markdown"),
           collectionId: z.string().uuid().nullable().optional(),
           parentId: z.string().uuid().nullable().optional(),
         })
@@ -1011,7 +1015,7 @@ export class DocumentLibrary implements DocumentHost {
           ? parsed.parentId
           : (parsed.collectionId ?? null),
       );
-      await this.newDocument();
+      await this.newDocument(parsed.format);
       const identity = this.state.activeId!;
       this.rename(identity, parsed.title);
       if (parsed.parentId !== undefined || parsed.collectionId !== undefined)
@@ -1022,7 +1026,7 @@ export class DocumentLibrary implements DocumentHost {
             : (parsed.collectionId ?? null),
         );
       await this.persist();
-      return { documentId: identity };
+      return { documentId: identity, format: parsed.format };
     }
     if (method === "library_update") {
       const parsed = z

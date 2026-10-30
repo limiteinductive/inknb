@@ -99,7 +99,7 @@ Component events use the durable event stream. External hooks handle backend wor
 
 ## Document library
 
-Use `library_list` to find documents and collections. `document_create` creates a named local document. `collection_create` and `library_update` organize documents. These operations do not change prose.
+Use `library_list` to find documents and collections. `document_create` creates a named Markdown document and returns its identity and format. Headings, tables, links, and math render from subsequent source edits. Supply `format` as `text`, `html`, or `latex` when needed. New files use `.md`, `.txt`, `.html`, or `.tex` to match their format. `collection_create` and `library_update` organize documents. These operations do not change prose.
 
 Use `library_reorder` to place a document before or after another document. The saved order applies to the sidebar and collection views. Reordering preserves the active document.
 

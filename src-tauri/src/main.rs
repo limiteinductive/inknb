@@ -506,14 +506,33 @@ fn store_library(state: State<DesktopState>, library: Value) -> Result<(), Strin
 }
 
 #[tauri::command]
-fn allocate_document(state: State<DesktopState>, document_id: String) -> Result<String, String> {
+fn allocate_document(
+    state: State<DesktopState>,
+    document_id: String,
+    format: DocumentFormat,
+) -> Result<String, String> {
     let identity = uuid::Uuid::parse_str(&document_id).map_err(|error| error.to_string())?;
+    let extension = match format {
+        DocumentFormat::Text => "txt",
+        DocumentFormat::Markdown => "md",
+        DocumentFormat::Html => "html",
+        DocumentFormat::Latex => "tex",
+    };
     let directory = state.directory.join("documents");
     fs::create_dir_all(&directory).map_err(|error| error.to_string())?;
     Ok(directory
-        .join(format!("{identity}.txt"))
+        .join(format!("{identity}.{extension}"))
         .to_string_lossy()
         .into_owned())
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "lowercase")]
+enum DocumentFormat {
+    Text,
+    Markdown,
+    Html,
+    Latex,
 }
 
 #[tauri::command]

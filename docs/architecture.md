@@ -50,7 +50,7 @@ LaTeX title declarations remain in the original source. At `\maketitle`, a read-
 
 ## Files
 
-Documents contain UTF-8 text. New documents receive local text files through the app. Imported files retain their paths and contents. The writer interface requires no Markdown syntax.
+Documents contain UTF-8 text. New documents default to Markdown files. The creation API accepts an explicit source format and allocates a matching file extension. It returns the document identity and format. Imported files retain their paths and contents. The writer interface requires no Markdown syntax.
 
 The adjacent `<filename>.aside.json` sidecar uses annotation format 6. It reads formats 1 through 5. Formats 1 through 4 receive read access. Format 5 retains its document grant. It stores document identity, access, annotations, requests, proposals, and provenance. Each document has its own recovery snapshot. Startup migrates the earlier shared snapshot.
 
