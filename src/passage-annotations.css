@@ -63,14 +63,26 @@
   outline: none;
   box-shadow: none;
 }
-.annotation-actions {
-  display: none;
-  flex-shrink: 0;
-  margin-block: calc(-1 * var(--space-1));
-  margin-inline-end: calc(-1 * var(--space-2));
-}
-.passage-annotation:is(:hover, :focus-within) .annotation-actions {
+.annotation-footer {
   display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  margin-block-start: var(--space-2);
+}
+.annotation-footer:empty,
+.passage-annotation[data-empty="true"]:not(:focus-within):not(:has([aria-expanded="true"])) .annotation-footer,
+.passage-annotation[data-completed="true"]:not(:hover):not(:focus-within):not(:has([aria-expanded="true"])) .annotation-footer {
+  display: none;
+}
+.annotation-actions {
+  display: flex;
+  flex-shrink: 0;
+  gap: var(--space-1);
+  margin-inline-start: auto;
+}
+.passage-annotation:not(:hover):not(:focus-within) .annotation-actions {
+  display: none;
 }
 .reference-editor {
   min-height: 1lh;

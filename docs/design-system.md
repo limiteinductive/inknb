@@ -41,13 +41,13 @@ Web links reveal a preview after a short hover or on keyboard focus. The preview
 
 Links use the hand pointer, including inside editable text. Whole-table annotations reserve space above the table and align with its right edge.
 
-Annotations align above the right edge of their passage. Their opaque material and neutral edge separate them from the reading surface. Double-click or F2 edits the existing annotation. Enter sends its comment in a new aside. Shift+Enter inserts a line. Escape cancels an edit. Send and delete use the glyph variant of the shared icon control. These actions appear on hover or focus. A single click focuses the annotation. Hidden actions reserve no space.
+Annotations align above the right edge of their passage. Their opaque material and neutral edge separate them from the reading surface. Double-click or F2 edits the existing annotation. Enter sends its comment in a new aside. Shift+Enter inserts a line. Escape cancels an edit. The comment text occupies a full row. A footer places the named recipient menu on the left and glyph actions on the right. Send appears after the writer adds text. Empty comments cannot send. Discard and delete use the cross glyph. An unfocused empty field shows no footer. Written drafts reveal actions on hover or focus. Completed annotations reveal their footer on hover or focus. A single click focuses the annotation. Hidden actions reserve no space.
 
 Comment fields use existing space above their passage before adding padding. Opening, resizing, and closing preserve the passage's screen position within scroll limits. Draft fields scroll at one quarter of the viewport height or the shared draft height limit.
 
 Application choice menus use the shared menu surface and accessible menu primitives. Single choices show a check beside the selected item. Native HTML dropdowns are rejected by the design contract.
 
-Passage comments and aside replies share one recipient menu. Passage fields use a compact people glyph and a count for multiple recipients. Aside composers show the chosen agent name or recipient count. The menu keeps multiple choices open and uses the shared checkmarks, spacing, and surface. Recipient controls remain visible while writing. Configuration can hide the chooser and use the default agent.
+Passage comments and aside replies share one recipient menu. Passage fields show the selected session name or a count for multiple recipients. Aside composers show the chosen agent name or recipient count. The menu keeps multiple choices open and uses the shared checkmarks, spacing, and surface. Recipient controls remain visible while writing. Configuration can hide the chooser and use the default agent.
 
 Agent attribution uses the session name and role. Unnamed sessions include a short session identifier. Replies, full responses, decisions, recipients, and connection panels share the same label.
 

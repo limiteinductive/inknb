@@ -2135,8 +2135,8 @@ del[data-change="removed"] {
   max-width: 100%;
 }
 .recipient-trigger[data-compact="true"] {
-  flex-shrink: 0;
-  color: var(--muted);
+  min-width: 0;
+  color: var(--ink);
 }
 .recipient-trigger > span {
   overflow: hidden;

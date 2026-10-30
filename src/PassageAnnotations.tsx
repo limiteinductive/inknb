@@ -276,7 +276,7 @@ function PassageAnnotation({ identity, sourceRange, reply }: { identity: string;
     };
   }, [annotation, draft?.content, sourceRange, session, state.ready, state.epoch]);
   async function send() {
-    if (sending) return;
+    if (sending || !draft?.content.trim()) return;
     setSending(true);
     try {
       if (work && draft?.annotation && !draft.annotation.completed) {
@@ -307,6 +307,7 @@ function PassageAnnotation({ identity, sourceRange, reply }: { identity: string;
           className="passage-annotation"
           data-shortcut-scope="annotation"
           data-completed={annotation.completed}
+          data-empty={!draft.content.trim()}
           style={position}
           role="dialog"
           aria-label="Annotate passage"
@@ -400,6 +401,8 @@ function PassageAnnotation({ identity, sourceRange, reply }: { identity: string;
                 }}
               />
             )}
+          </div>
+          <div className="annotation-footer">
             <CommentRecipients
               metadata={state.metadata}
               preferences={state.preferences}
@@ -412,10 +415,12 @@ function PassageAnnotation({ identity, sourceRange, reply }: { identity: string;
                 session.update({ drafts: { ...current.drafts, [identity]: { ...draft, recipientAgentIds, recipientAgentId: undefined } } });
               }}
             />
-            <div className="annotation-actions">
-              <IconButton icon={ArrowUp} appearance="glyph" label="Send in a new aside" disabled={sending} onPress={() => void send()} />
-              <IconButton icon={X} appearance="glyph" label="Delete annotation" agentControl={`annotation.delete:${identity}`} disabled={sending} onPress={dismiss} />
-            </div>
+            {(draft.content.trim() || work || annotation.completed) && (
+              <div className="annotation-actions">
+                <IconButton icon={X} appearance="glyph" label={work || annotation.completed ? "Delete annotation" : "Discard comment"} agentControl={`annotation.delete:${identity}`} disabled={sending} onPress={dismiss} />
+                <IconButton icon={ArrowUp} appearance="glyph" label={shortcutTooltip("Send in a new aside", "annotation.send", state.preferences)} disabled={sending || !draft.content.trim()} onPress={() => void send()} />
+              </div>
+            )}
           </div>
         </div>
       )}

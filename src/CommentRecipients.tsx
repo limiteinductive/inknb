@@ -8,7 +8,7 @@ import {
   Tooltip,
   TooltipTrigger,
 } from "react-aria-components";
-import { Check, ChevronDown, Users } from "lucide-react";
+import { Check, ChevronDown } from "lucide-react";
 import { agentAttribution, requestAgentIds } from "./domain";
 import type { Metadata, Preferences } from "./domain";
 import type { AsideDraft } from "./images";
@@ -47,6 +47,10 @@ export default function CommentRecipients({
       return agent ? agentAttribution(agent) : "Disconnected agent";
     })
     .join(", ");
+  const selectedAgent = metadata.agents.find(agent => agent.id === recipients[0]);
+  let displayLabel = label || "Choose recipients";
+  if (compact && selectedAgent?.name) displayLabel = selectedAgent.name;
+  if (recipients.length > 1) displayLabel = `${recipients.length} agents`;
   const trigger = useRef<HTMLButtonElement>(null);
   const [open, setOpen] = useState(false);
   const wasOpen = useRef(false);
@@ -71,15 +75,8 @@ export default function CommentRecipients({
           aria-label={`Send to agents: ${label || "Choose recipients"}`}
           isDisabled={disabled}
         >
-          {compact && <Users size={14} aria-hidden="true" />}
-          {(!compact || recipients.length > 1) && (
-            <span>
-              {recipients.length > 1
-                ? `${recipients.length}${compact ? "" : " agents"}`
-                : label || "Choose recipients"}
-            </span>
-          )}
-          <ChevronDown size={12} aria-hidden="true" />
+          <span>{displayLabel}</span>
+          <ChevronDown size={12} strokeWidth={1.6} aria-hidden="true" />
         </Button>
         <Tooltip className="control-tooltip" offset={7}>
           Send to: {label || "Choose recipients"}
