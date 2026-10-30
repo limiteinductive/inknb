@@ -590,3 +590,13 @@ The main update retained all 61 sources, messages, drafts, connections, permissi
 Live toolbar timing remains unverified. Both native windows reported document visibility hidden during automation. Transitions remained at time zero. Native pointer scrolling also returned noWindowsAvailable. Docking state changed under scrolling. The check did not certify animation timing.
 
 Decision notifications use native Activity delivery and the existing generic event relay. No external destination was configured or contacted.
+
+## LaTeX title and abstract rendering
+
+A synthetic article now shows its title, two authors separated by `\and`, explicit date, and Abstract heading before its Introduction. Unchanged export preserves the complete source; editing the abstract preserves the surrounding commands and newline before `\end{abstract}`. Earlier native document snapshots reopen with the new presentation, retaining the document identity and matching object identities.
+
+`npm run check`, all 19 existing frontend tests, all seven Rust tests, Clippy with warnings denied, changed-file Prettier checks, and isolated desktop packaging passed. `cargo fmt --all -- --check` found existing formatting differences in untouched `events.rs`, `lib.rs`, `main.rs`, and `space_windows.rs`; those files were left unchanged.
+
+The actual verification app was inspected at 1360 by 900 and the minimum 700 by 480 in light and dark appearances. Title and abstract content remained legible without horizontal clipping; selecting a source passage succeeded. Native keyboard, Undo, and dialog inspection could not run while macOS was locked, and the installed app was not replaced.
+
+Title metadata uses a plain text presentation, including explicit line breaks. This does not execute arbitrary TeX macros or reproduce document-class-specific title layouts.

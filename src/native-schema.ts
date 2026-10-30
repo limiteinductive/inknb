@@ -1,5 +1,9 @@
 import { Schema } from "prosemirror-model";
-import type { Node as DocumentNode, NodeSpec } from "prosemirror-model";
+import type {
+  DOMOutputSpec,
+  Node as DocumentNode,
+  NodeSpec,
+} from "prosemirror-model";
 import { schema as markdownSchema } from "prosemirror-markdown";
 import { tableNodes } from "prosemirror-tables";
 import { z } from "zod";
@@ -11,7 +15,7 @@ export const cellAlignmentSchema = z
   .nullable();
 
 export const nativeDocumentSchema = z.object({
-  version: z.union([z.literal(1), z.literal(2)]),
+  version: z.union([z.literal(1), z.literal(2), z.literal(3)]),
   format: sourceFormatSchema,
   source: z.string(),
   content: z.json(),
@@ -139,11 +143,44 @@ nodes.source_inline = {
     String(node.attrs.label),
   ],
 };
+nodes.title_block = {
+  group: "block",
+  atom: true,
+  attrs: {
+    ...sourceAttributes,
+    title: { default: "" },
+    author: { default: "" },
+    date: { default: "" },
+    original: { default: "" },
+  },
+  toDOM: (node) => {
+    const fields: DOMOutputSpec[] = [];
+    if (node.attrs.title) fields.push(["h1", String(node.attrs.title)]);
+    if (node.attrs.author) fields.push(["p", String(node.attrs.author)]);
+    if (node.attrs.date) fields.push(["p", String(node.attrs.date)]);
+    return [
+      "header",
+      { "data-native-title": "", contenteditable: "false" },
+      ...fields,
+    ];
+  },
+};
 nodes.section = {
   group: "block",
   content: "block+",
   attrs: { ...sourceAttributes },
   toDOM: () => ["section", 0],
+};
+nodes.abstract = {
+  group: "block",
+  content: "block+",
+  attrs: sourceAttributes,
+  toDOM: () => [
+    "section",
+    { "aria-label": "Abstract" },
+    ["h2", { contenteditable: "false" }, "Abstract"],
+    ["div", 0],
+  ],
 };
 
 let marks = markdownSchema.spec.marks;

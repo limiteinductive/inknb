@@ -22,9 +22,20 @@
 :is(.native-content, .response-content) h6 {
   font-size: var(--reading-heading-6-size);
 }
-:is(.native-content, .response-content) > :is(h1, h2, h3, h4, h5, h6):first-child {
+:is(.native-content, .response-content)
+  > :is(h1, h2, h3, h4, h5, h6):first-child {
   margin-block-start: 0;
 }
-:is(.native-content, .response-content) :is(h1, h2, h3, h4, h5, h6) + :is(h1, h2, h3, h4, h5, h6) {
+:is(.native-content, .response-content)
+  :is(h1, h2, h3, h4, h5, h6)
+  + :is(h1, h2, h3, h4, h5, h6) {
   margin-block-start: var(--reading-heading-stack-gap);
+}
+
+:is(.native-content, .response-content) [data-native-title] {
+  text-align: center;
+  margin-block-end: var(--reading-heading-before);
+}
+:is(.native-content, .response-content) [data-native-title] > h1:first-child {
+  margin-block-start: 0;
 }
