@@ -5,6 +5,37 @@ import type { PreviewInfo } from "./preview-model";
 import type { DocumentSession } from "./session";
 import { asideExpanded } from "./aside-state";
 
+interface SuggestionQueues {
+  current: readonly Proposal[];
+  visible: readonly Proposal[];
+  earlier: readonly Proposal[];
+}
+
+const queues = new WeakMap<SessionState, SuggestionQueues>();
+
+function suggestionQueues(state: SessionState): SuggestionQueues {
+  const saved = queues.get(state);
+  if (saved) return saved;
+  const current = state.metadata.proposals
+    .filter(proposal => proposal.status === "pending" &&
+      proposal.revision === state.metadata.revision &&
+      state.text.slice(proposal.from, proposal.to) === proposal.expectedText)
+    .sort((first, second) => first.from - second.from || first.createdAt.localeCompare(second.createdAt));
+  const threads = new Map(state.metadata.threads.map(thread => [thread.id, thread]));
+  const visible = state.focus || !state.asidesOpen ? [] : current.filter(proposal => {
+    const thread = proposal.threadId ? threads.get(proposal.threadId) : undefined;
+    if (thread?.resolved)
+      return state.threadExpansions[thread.id] ?? state.reviewProposalId === proposal.id;
+    return thread ? asideExpanded(state, thread) : state.reviewProposalId === proposal.id;
+  });
+  const identities = new Set(current.map(proposal => proposal.id));
+  const earlier = state.metadata.proposals.filter(proposal => proposal.status === "conflict" ||
+    (proposal.status === "pending" && !identities.has(proposal.id)));
+  const result = { current, visible, earlier };
+  queues.set(state, result);
+  return result;
+}
+
 export function pendingSuggestions(metadata: Metadata, threadId: string): Proposal[] {
   return metadata.proposals.filter(proposal =>
     ["pending", "conflict"].includes(proposal.status) && (
@@ -16,19 +47,8 @@ export function pendingSuggestions(metadata: Metadata, threadId: string): Propos
   );
 }
 
-export function currentSuggestions(state: SessionState): Proposal[] {
-  return state.metadata.proposals
-    .filter(
-      (proposal) =>
-        proposal.status === "pending" &&
-        proposal.revision === state.metadata.revision &&
-        state.text.slice(proposal.from, proposal.to) === proposal.expectedText,
-    )
-    .sort(
-      (first, second) =>
-        first.from - second.from ||
-        first.createdAt.localeCompare(second.createdAt),
-    );
+export function currentSuggestions(state: SessionState): readonly Proposal[] {
+  return suggestionQueues(state).current;
 }
 
 export function nonOverlappingSuggestions(state: SessionState): Proposal[] {
@@ -44,15 +64,8 @@ export function sameSuggestionChange(first: Proposal, second: Proposal): boolean
     first.expectedText === second.expectedText && first.replacement === second.replacement;
 }
 
-export function earlierSuggestions(state: SessionState): Proposal[] {
-  const current = new Set(
-    currentSuggestions(state).map((proposal) => proposal.id),
-  );
-  return state.metadata.proposals.filter(
-    (proposal) =>
-      proposal.status === "conflict" ||
-      (proposal.status === "pending" && !current.has(proposal.id)),
-  );
+export function earlierSuggestions(state: SessionState): readonly Proposal[] {
+  return suggestionQueues(state).earlier;
 }
 
 export function reviewSuggestion(
@@ -78,18 +91,8 @@ export function reviewSuggestion(
   return true;
 }
 
-export function visibleSuggestions(state: SessionState): Proposal[] {
-  if (state.focus || !state.asidesOpen) return [];
-  return currentSuggestions(state).filter((proposal) => {
-    const thread = state.metadata.threads.find(
-      (thread) => thread.id === proposal.threadId,
-    );
-    if (thread?.resolved)
-      return state.threadExpansions[thread.id] ?? state.reviewProposalId === proposal.id;
-    return thread
-      ? asideExpanded(state, thread)
-      : state.reviewProposalId === proposal.id;
-  });
+export function visibleSuggestions(state: SessionState): readonly Proposal[] {
+  return suggestionQueues(state).visible;
 }
 
 export interface ProjectedSuggestion {

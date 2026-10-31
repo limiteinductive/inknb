@@ -18,6 +18,7 @@ export function suggestionMarkers(
 ): Decoration[] {
   if (state.focus) return [];
   const markers: Decoration[] = [];
+  const focused = new Set(visibleSuggestions(state).map(proposal => proposal.id));
   for (const proposal of currentSuggestions(state)) {
     if (excluded?.has(proposal.id)) continue;
     const start = documentPosition(projection, proposal.from) - offset;
@@ -25,11 +26,9 @@ export function suggestionMarkers(
     if (start > document.content.size || end < 0) continue;
     const from = Math.max(0, start);
     const to = Math.max(from, Math.min(document.content.size, end));
-    const focused = visibleSuggestions(state).some(
-      (visible) => visible.id === proposal.id,
-    );
+    const expanded = focused.has(proposal.id);
     const attributes = {
-      class: `suggestion-anchor${!proposal.replacement || focused ? " suggestion-deletion" : ""}${focused ? " suggestion-anchor-focused" : ""}`,
+      class: `suggestion-anchor${!proposal.replacement || expanded ? " suggestion-deletion" : ""}${expanded ? " suggestion-anchor-focused" : ""}`,
       "data-review-proposal": proposal.id,
     };
     const resolvedStart = document.resolve(from);
@@ -45,7 +44,7 @@ export function suggestionMarkers(
         markers.push(
           Decoration.node(position, position + node.nodeSize, {
             ...attributes,
-            class: `suggestion-block-anchor${focused ? " suggestion-block-focused" : ""}`,
+            class: `suggestion-block-anchor${expanded ? " suggestion-block-focused" : ""}`,
           }),
         );
         return false;

@@ -13,7 +13,7 @@ export interface TableSuggestionGroup {
 export interface TableReviewRequest {
   generation: number;
   document: unknown;
-  proposals: Proposal[];
+  proposals: readonly Proposal[];
 }
 
 type ReviewedGroup = {
@@ -41,7 +41,7 @@ export class TableSuggestionReview {
   private revision = 0;
   private displayed: {
     document: DocumentNode;
-    proposals: Proposal[];
+    proposals: readonly Proposal[];
     revision: number;
     groups: TableSuggestionGroup[];
   } | null = null;
@@ -60,7 +60,7 @@ export class TableSuggestionReview {
 
   read(
     model: NativeDocumentModel,
-    proposals: Proposal[],
+    proposals: readonly Proposal[],
   ): TableSuggestionGroup[] {
     const document = model.state.doc;
     const key = JSON.stringify(
