@@ -2,6 +2,7 @@ import { reconcileText } from "./file-sync";
 import { documentAuthoring, documentOutline } from "./document-structure";
 import { defaultAgent, agentId, requestAgentIds, decisionSchema, decisionOptionSchema } from "./domain";
 import { NativeDocumentModel } from "./native-model";
+import { DocumentJournal } from "./document-journal";
 import { activity } from "./activity";
 import { asideReaderSchema } from "./spaces";
 import {
@@ -340,11 +341,13 @@ export class DocumentSession {
   private recoveredGeneration = -1;
   private checking = false;
   publication = 0;
+  journal = new DocumentJournal();
   model: NativeDocumentModel | null = null;
   view: NativeEditor | null = null;
 
   prepareModel(): void {
     this.model = new NativeDocumentModel(this);
+    this.journal = new DocumentJournal();
     this.update({
       metadata: {
         ...this.state.metadata,
@@ -1262,6 +1265,7 @@ export class DocumentSession {
       });
     }
     this.update({ selection: update.selection, previewSelection: null, drafts: mapPassageDrafts(this.state.drafts, this.state.metadata.documentId, update.source.toString(), update.changes) });
+    this.journal.append(update.transactions);
   }
 
   selectThread(identity: string | null): void {
@@ -2437,7 +2441,11 @@ export class DocumentSession {
         const generation = this.generation;
         const editor = this.model;
         const nativeState = editor?.state;
-        const stepCount = editor?.steps.length ?? 0;
+        const journal = this.journal;
+        const journalVersion = journal.version;
+        const journalChanges = journal.changes;
+        const stepCount = journalChanges.length;
+        const lastClientId = journal.lastClientId;
         const source = editor?.source;
         const projection = editor?.projection;
         const anchors = editor ? { ...editor.anchors } : null;
@@ -2470,7 +2478,10 @@ export class DocumentSession {
               editor.projection = projection;
               editor.anchors = anchors;
               editor.state = nativeState;
-              editor.steps.length = stepCount;
+              journal.version = journalVersion;
+              journalChanges.length = stepCount;
+              journal.changes = journalChanges;
+              journal.lastClientId = lastClientId;
               this.view?.editor.updateState(nativeState);
             }
             this.readSnapshots.clear();

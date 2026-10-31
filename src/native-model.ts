@@ -94,6 +94,7 @@ function sourceSelection(selection: Selection, projection: SourceProjection): So
 }
 
 export interface NativeUpdate {
+  transactions: readonly Transaction[];
   before: Text;
   source: Text;
   changes: ChangeSet;
@@ -108,8 +109,6 @@ export interface NativeUpdate {
 
 export class NativeDocumentModel {
   readonly documentId: string;
-  readonly epoch = crypto.randomUUID();
-  readonly steps: { step: unknown; clientId: string }[] = [];
   state: EditorState;
   source: Text;
   projection: SourceProjection;
@@ -398,6 +397,7 @@ export class NativeDocumentModel {
       )
         statuses[proposal.id] = operations[proposal.id] ? "applied" : "undone";
     const update: NativeUpdate = {
+      transactions: applied.transactions,
       before,
       source,
       beforeFormat: sourceFormatSchema.parse(previousFormat),
@@ -414,15 +414,6 @@ export class NativeDocumentModel {
     this.source = source;
     this.anchors = anchors;
     this.state = next;
-    for (const appliedTransaction of applied.transactions)
-      for (const step of appliedTransaction.steps)
-        this.steps.push({
-          step: step.toJSON(),
-          clientId:
-            appliedTransaction === transaction
-              ? (transaction.getMeta("clientId") ?? "host")
-              : "host",
-        });
     for (const [identity, anchor] of Object.entries(anchors))
       if (docChanged && anchor.status !== "detached")
         this.anchors[identity] = this.capture(anchor);

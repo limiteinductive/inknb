@@ -11,6 +11,13 @@ import { resourceActionSchema } from "./resources";
 
 export const hostRequestSchema = z.discriminatedUnion("kind", [
   z.object({
+    kind: z.literal("acknowledge"),
+    versions: z.record(z.string().uuid(), z.object({
+      epoch: z.string().uuid(),
+      version: z.number().int().nonnegative(),
+    })),
+  }),
+  z.object({
     kind: z.literal("snapshot"),
     versions: z.record(
       z.string().uuid(),

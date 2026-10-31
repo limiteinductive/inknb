@@ -316,6 +316,7 @@ class AppHost {
     versions: Extract<HostRequest, { kind: "snapshot" }>["versions"],
   ): Promise<HostSnapshot> {
     const window = this.spaces.window(windowId);
+    if (!window.open) throw Error("This writing window is closed.");
     const space = this.spaces.space(window.spaceId);
     const documents: Record<string, DocumentExchange> = {};
     const identities = [
@@ -329,27 +330,32 @@ class AppHost {
           .map(([identity]) => identity),
       ]),
     ];
+    for (const [identity, session] of this.documents.sessions) {
+      const previous = versions[identity];
+      if (previous?.epoch === session.journal.epoch)
+        session.journal.acknowledge(windowId, previous.version);
+      else if (!identities.includes(identity)) session.journal.forget(windowId);
+    }
     for (const identity of identities) {
       const session = this.documents.sessions.get(identity);
       if (!session?.model) continue;
       await session.recover();
-      const model = session.model;
+      const journal = session.journal;
       const previous = versions[identity];
-      const reset = !previous || previous.epoch !== model.epoch;
+      const reset = !previous || previous.epoch !== journal.epoch;
+      if (reset) journal.acknowledge(windowId, journal.version);
       if (
         !reset &&
         previous.publication === session.publication &&
-        previous.version === model.steps.length
+        previous.version === journal.version
       )
         continue;
-      if (!reset && previous.version > model.steps.length)
-        throw Error("The window document version is ahead of the host.");
-      const changes = reset ? [] : model.steps.slice(previous.version);
+      const changes = reset ? [] : journal.changes.slice(previous.version - (journal.version - journal.changes.length));
       documents[identity] = {
         state: session.getSnapshot(),
         publication: session.publication,
-        epoch: model.epoch,
-        version: model.steps.length,
+        epoch: journal.epoch,
+        version: journal.version,
         steps: changes.map((change) => change.step),
         clients: changes.map((change) => change.clientId),
         reset,
@@ -415,6 +421,14 @@ class AppHost {
       return null;
     }
     const window = this.spaces.window(windowId);
+    if (request.kind === "acknowledge") {
+      if (!window.open) return null;
+      for (const [identity, version] of Object.entries(request.versions)) {
+        const journal = this.documents.sessions.get(identity)?.journal;
+        if (journal?.epoch === version.epoch) journal.acknowledge(windowId, version.version);
+      }
+      return null;
+    }
     if (request.kind === "open-aside") {
       await this.openAside(request.reference);
       return null;
@@ -463,6 +477,7 @@ class AppHost {
     }
     if (request.kind === "close-window") {
       this.spaces.updateWindow(windowId, { open: false });
+      for (const session of this.documents.sessions.values()) session.journal.forget(windowId);
       await this.persist();
       return null;
     }
@@ -537,8 +552,8 @@ class AppHost {
       result = await session.transact(async () => {
         const model = session.model!;
         if (
-          model.epoch !== request.epoch ||
-          model.steps.length !== request.version
+          session.journal.epoch !== request.epoch ||
+          session.journal.version !== request.version
         )
           return { accepted: false };
         const transaction = model.state.tr.setMeta("clientId", windowId);
@@ -547,7 +562,7 @@ class AppHost {
         transaction.setSelection(
           Selection.fromJSON(transaction.doc, request.selection),
         );
-        if (model.steps.at(-1)?.clientId !== windowId)
+        if (session.journal.lastClientId !== windowId)
           closeHistory(transaction);
         model.commit(transaction);
         return { accepted: true };

@@ -243,6 +243,12 @@ class WindowWorkspace implements DocumentHost {
         } finally {
           this.receiving = false;
         }
+        const acknowledgements = Object.fromEntries(Object.keys(snapshot.documents).flatMap(identity => {
+          const session = this.sessions.get(identity);
+          return session?.model ? [[identity, { epoch: session.epochIdentity, version: getVersion(session.model.state) }]] : [];
+        }));
+        if (Object.keys(acknowledgements).length)
+          await this.request({ kind: "acknowledge", versions: acknowledgements });
       } while (this.refreshAgain);
     })().finally(() => {
       this.refreshing = null;
