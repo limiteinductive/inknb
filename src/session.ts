@@ -14,6 +14,7 @@ import { documentScroll } from "./document-scroll";
 import { revealAsideComposer } from "./aside-focus";
 import { nonOverlappingSuggestions } from "./suggestions";
 import type { WritingSurface } from "./document-surface";
+import type { SourceEditor } from "./source-editor";
 import type { PageDraft } from "./document-page";
 import { invoke } from "@tauri-apps/api/core";
 import type { AsideDraft } from "./images";
@@ -268,8 +269,9 @@ interface ReadSnapshot {
 export class DocumentSession {
   constructor(readonly host?: DocumentHost) {}
   writingSurface: WritingSurface | null = null;
+  sourceView: SourceEditor | null = null;
   get surface(): WritingSurface | null {
-    return this.writingSurface ?? this.view;
+    return this.state.editorMode === "edit" && this.sourceView ? this.sourceView : this.writingSurface ?? this.view;
   }
   get agentAccess(): "read" | "edit" {
     return (
@@ -2107,7 +2109,10 @@ export class DocumentSession {
   async command(command: string): Promise<void> {
     try {
       if (command === "comment-region") this.view?.region.start();
-      if (command === "find") this.view?.openFind();
+      if (command === "find") {
+        if (this.state.editorMode === "edit" && this.sourceView) this.sourceView.openFind();
+        else this.view?.openFind();
+      }
       if (command === "undo" || command === "redo") {
         const active = document.activeElement;
         if (active && this.surface?.dom.contains(active)) this.view?.[command]();

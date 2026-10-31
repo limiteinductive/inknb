@@ -156,7 +156,7 @@ export function useContextMenus(
       );
       const bounds = target.getBoundingClientRect();
       const keyboard = event.clientX === 0 && event.clientY === 0;
-      const native = target.closest(".native-content, .page-region-content")
+      const native = target.closest(".native-content, .page-region-content, .source-editor-host .cm-content")
         ? callbacks.current.native?.()
         : undefined;
       const image = native?.image(target);
@@ -172,7 +172,7 @@ export function useContextMenus(
           ? native?.region
           : undefined),
         native: image ? undefined : native,
-        aside: image?.aside ?? table?.aside ?? (target.closest(".native-content, .page-region-content")
+        aside: image?.aside ?? table?.aside ?? (target.closest(".native-content, .page-region-content, .source-editor-host .cm-content")
           ? callbacks.current.aside?.()
           : undefined),
       }).catch((error) => callbacks.current.onError(error));

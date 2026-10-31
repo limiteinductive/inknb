@@ -330,7 +330,7 @@ export class NativeEditor extends NativeDocumentModel {
     MathfieldElement.fontsDirectory = null;
     const shortcuts = new ShortcutResolver();
     this.editor = new EditorView(host, {
-      editable: () => session.getWorkingSnapshot().editorMode === "edit",
+      editable: () => false,
       handleKeyDown: (view, event) => shortcuts.handle(event, session.getSnapshot().preferences, "editor", identity => {
         if (identity.startsWith("editor.heading-")) return setBlockType(nativeSchema.nodes.heading, { level: Number(identity.slice(-1)) })(view.state, view.dispatch, view);
         const commands: Record<string, Command> = {
@@ -356,7 +356,7 @@ export class NativeEditor extends NativeDocumentModel {
         class: "native-content",
         "data-shortcut-scope": "editor",
         "aria-label": "Document",
-        "aria-readonly": String(session.getWorkingSnapshot().editorMode !== "edit"),
+        "aria-readonly": "true",
         role: "textbox",
         tabindex: "0",
         spellcheck: "true",
@@ -695,7 +695,7 @@ export class NativeEditor extends NativeDocumentModel {
     const field = new MathfieldElement();
     element.append(field);
     this.equations.add(field);
-    field.readOnly = this.session.getWorkingSnapshot().editorMode !== "edit";
+    field.readOnly = true;
     field.setAttribute("value", String(node.attrs.value));
     field.mathVirtualKeyboardPolicy = "manual";
     field.setAttribute(
@@ -976,8 +976,7 @@ export class NativeEditor extends NativeDocumentModel {
 
   refresh(): void {
     if (!this.destroyed) {
-      const readOnly = this.session.getWorkingSnapshot().editorMode !== "edit";
-      for (const field of this.equations) field.readOnly = readOnly;
+      for (const field of this.equations) field.readOnly = true;
       this.editor.updateState(this.editor.state);
       this.measureTables();
       this.positionRegionHighlight();
@@ -988,6 +987,10 @@ export class NativeEditor extends NativeDocumentModel {
     this.refresh();
   }
   selectSource(from: number, to = from, scroll = false): void {
+    if (this.session.getWorkingSnapshot().editorMode === "edit" && this.session.sourceView) {
+      this.session.sourceView.selectSource(from, to, scroll);
+      return;
+    }
     const state = this.editor.state;
     const selection = Selection.near(
       state.doc.resolve(documentPosition(this.projection, from)),
