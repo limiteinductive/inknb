@@ -31,6 +31,9 @@ interface ContentRange {
   documentTo: number;
 }
 
+const sourceProjections = new WeakMap<DocumentNode, SourceProjection>();
+const capturedDocuments = new WeakMap<DocumentNode, NativeDocument>();
+
 export function contentRanges(document: DocumentNode): {
   text: string;
   ranges: ContentRange[];
@@ -76,9 +79,19 @@ export function importDocument(
 }
 
 export function projectDocument(document: DocumentNode): SourceProjection {
-  if (unchangedSource(document) !== null) return originalProjection(document);
+  const saved = sourceProjections.get(document);
+  if (saved) return saved;
+  if (unchangedSource(document) !== null) {
+    const projection = originalProjection(document);
+    sourceProjections.set(document, projection);
+    return projection;
+  }
   const format = sourceFormatSchema.parse(document.attrs.format);
-  if (format === "text") return plainProjection(document);
+  if (format === "text") {
+    const projection = plainProjection(document);
+    sourceProjections.set(document, projection);
+    return projection;
+  }
   const text = serializeDocument(document, format);
   const parsed = importDocument(text, format);
   const previous = contentRanges(document);
@@ -152,7 +165,9 @@ export function projectDocument(document: DocumentNode): SourceProjection {
       });
     }
   }
-  return { text, spans };
+  const projection = { text, spans };
+  sourceProjections.set(document, projection);
+  return projection;
 }
 
 export function restoreDocument(
@@ -225,12 +240,16 @@ export function captureDocument(
   document: DocumentNode,
   source: string,
 ): NativeDocument {
-  if (projectDocument(document).text !== source)
+  const saved = capturedDocuments.get(document);
+  if ((saved?.source ?? projectDocument(document).text) !== source)
     throw Error("The native document does not match its source projection.");
-  return nativeDocumentSchema.parse({
+  if (saved) return saved;
+  const captured = nativeDocumentSchema.parse({
     version: 3,
     format: sourceFormatSchema.parse(document.attrs.format),
     source,
     content: z.json().parse(document.toJSON()),
   });
+  capturedDocuments.set(document, captured);
+  return captured;
 }

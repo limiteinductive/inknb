@@ -34,6 +34,26 @@ import type { DocumentSession } from "./session";
 
 const operationSchema = z.record(z.string(), z.literal("applied"));
 
+interface NativeObjectLocation {
+  node: DocumentNode;
+  position: number;
+}
+
+const documentObjects = new WeakMap<DocumentNode, Map<string, NativeObjectLocation>>();
+
+function nativeObjects(document: DocumentNode): Map<string, NativeObjectLocation> {
+  const saved = documentObjects.get(document);
+  if (saved) return saved;
+  const objects = new Map<string, NativeObjectLocation>();
+  objects.set(String(document.attrs.identity), { node: document, position: -1 });
+  document.descendants((node, position) => {
+    if (node.attrs.identity)
+      objects.set(String(node.attrs.identity), { node, position });
+  });
+  documentObjects.set(document, objects);
+  return objects;
+}
+
 export function selectionForRange(
   document: DocumentNode,
   from: number,
@@ -166,16 +186,10 @@ export class NativeDocumentModel {
   capture(anchor: Anchor): Anchor {
     const region = anchor.native?.region;
     if (region) {
-      let node = this.state.doc;
-      let position = -1;
-      this.state.doc.descendants((candidate, offset) => {
-        if (candidate.attrs.identity === region.identity) {
-          node = candidate;
-          position = offset;
-        }
-      });
-      if (node.attrs.identity !== region.identity)
+      const object = nativeObjects(this.state.doc).get(region.identity);
+      if (!object)
         return { ...anchor, status: "detached" };
+      const { node, position } = object;
       const range = nativeRange(node, position);
       const source = captureAnchor(this.source.toString(), {
         from: sourcePosition(this.projection, range.from),
@@ -246,8 +260,8 @@ export class NativeDocumentModel {
     );
     const projection = docChanged ? projectDocument(next.doc) : this.projection;
     const before = this.source;
-    let start = 0;
     const previous = before.toString();
+    let start = docChanged ? 0 : previous.length;
     while (
       start < previous.length &&
       start < projection.text.length &&
@@ -280,21 +294,17 @@ export class NativeDocumentModel {
     if (source.toString() !== projection.text)
       throw Error("The source edit does not match the native document.");
     const anchors: Record<string, Anchor> = {};
-    const objects = new Map<string, { node: DocumentNode; position: number }>();
-    objects.set(String(next.doc.attrs.identity), {
-      node: next.doc,
-      position: -1,
-    });
-    next.doc.descendants((node, position) => {
-      if (node.attrs.identity)
-        objects.set(String(node.attrs.identity), { node, position });
-    });
+    const objects = nativeObjects(next.doc);
     const replacedRanges: { from: number; to: number }[] = [];
     for (const map of mapping.maps)
       map.forEach((from, to) => {
         if (to > from) replacedRanges.push({ from, to });
       });
     for (const [identity, anchor] of Object.entries(this.anchors)) {
+      if (!docChanged) {
+        anchors[identity] = anchor;
+        continue;
+      }
       const mapped = mapAnchor(projection.text, anchor, changes);
       if (
         !anchor.native ||
@@ -327,23 +337,15 @@ export class NativeDocumentModel {
             return object.position + 1 + point.offset;
           if (anchor.status === "detached")
             return Math.min(bounds.to, bounds.from + point.offset);
-          const oldObjectPosition =
-            this.state.doc === next.doc ? object.position : null;
-          let oldPosition: number | null = oldObjectPosition;
-          let oldSize = 0;
-          this.state.doc.descendants((node, position) => {
-            if (node.attrs.identity === point.identity) {
-              oldPosition = position;
-              oldSize = node.nodeSize;
-            }
-          });
+          const oldObject = nativeObjects(this.state.doc).get(point.identity);
+          const oldPosition = oldObject?.position ?? null;
           if (
             transaction.getMeta("sourceChanges") ||
             (oldPosition !== null &&
               replacedRanges.some(
                 (range) =>
                   range.from <= oldPosition! &&
-                  range.to >= oldPosition! + oldSize,
+                  range.to >= oldPosition! + oldObject!.node.nodeSize,
               ))
           )
             return documentPosition(
@@ -422,7 +424,7 @@ export class NativeDocumentModel {
               : "host",
         });
     for (const [identity, anchor] of Object.entries(anchors))
-      if (anchor.status !== "detached")
+      if (docChanged && anchor.status !== "detached")
         this.anchors[identity] = this.capture(anchor);
     return update;
   }
