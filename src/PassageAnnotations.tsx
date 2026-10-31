@@ -195,7 +195,11 @@ function PassageAnnotation({ identity, sourceRange, reply }: { identity: string;
   }, [identity]);
   useLayoutEffect(() => {
     if (!annotation) return;
+    let frame = 0;
+    let layoutChanged = true;
+    let offset = 0;
     const place = () => {
+      frame = 0;
       const source = annotation.source;
       let sourceElement: Element | null | undefined = sourceRange?.startContainer.parentElement;
       let passageRange = sourceRange?.startContainer.isConnected ? sourceRange : null;
@@ -230,8 +234,11 @@ function PassageAnnotation({ identity, sourceRange, reply }: { identity: string;
       const width = popup.current?.offsetWidth ?? 280;
       const height = popup.current?.offsetHeight ?? 44;
       if (reserved.current && reserved.current !== paragraph) annotationSpace(reserved.current, identity, 0);
-      reserved.current = paragraph;
-      const offset = annotationSpace(paragraph, identity, height + 8);
+      if (layoutChanged || reserved.current !== paragraph) {
+        reserved.current = paragraph;
+        offset = annotationSpace(paragraph, identity, height + 8);
+        layoutChanged = false;
+      }
       const paragraphBounds = paragraph.getBoundingClientRect();
       const viewport = { left: 0, top: 0, right: window.innerWidth, bottom: window.innerHeight };
       for (let parent = sourceElement; parent; parent = parent.parentElement) {
@@ -258,21 +265,29 @@ function PassageAnnotation({ identity, sourceRange, reply }: { identity: string;
       element.style.height = `${element.scrollHeight}px`;
     }
     place();
-    const observer = new ResizeObserver(place);
+    const schedule = () => {
+      if (!frame) frame = requestAnimationFrame(place);
+    };
+    const invalidate = () => {
+      layoutChanged = true;
+      schedule();
+    };
+    const observer = new ResizeObserver(invalidate);
     if (popup.current) observer.observe(popup.current);
     if (reserved.current) {
       observer.observe(reserved.current);
       const viewport = reserved.current.closest(".document-scroll, .aside-conversation-scroll, .response-scroll");
       if (viewport) observer.observe(viewport);
     }
-    window.addEventListener("resize", place);
-    document.addEventListener("scroll", place, true);
-    document.addEventListener("inknb-annotations-layout", place);
+    window.addEventListener("resize", invalidate);
+    document.addEventListener("scroll", schedule, true);
+    document.addEventListener("inknb-annotations-layout", invalidate);
     return () => {
+      cancelAnimationFrame(frame);
       observer.disconnect();
-      window.removeEventListener("resize", place);
-      document.removeEventListener("scroll", place, true);
-      document.removeEventListener("inknb-annotations-layout", place);
+      window.removeEventListener("resize", invalidate);
+      document.removeEventListener("scroll", schedule, true);
+      document.removeEventListener("inknb-annotations-layout", invalidate);
     };
   }, [annotation, draft?.content, sourceRange, session, state.ready, state.epoch]);
   async function send() {

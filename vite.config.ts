@@ -2,6 +2,7 @@ import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 import packageMetadata from "./package.json" with { type: "json" };
 import { createHash } from "node:crypto";
+import { createRequire } from "node:module";
 import { readFileSync, readdirSync, statSync } from "node:fs";
 import path from "node:path";
 
@@ -82,6 +83,16 @@ export default defineConfig({
       },
     },
   ],
+  worker: {
+    plugins: () => [{
+      name: "worker-character-references",
+      enforce: "pre",
+      resolveId(source) {
+        if (source === "decode-named-character-reference")
+          return createRequire(import.meta.url).resolve(source);
+      },
+    }],
+  },
   clearScreen: false,
   define: { __INKNB_BUILD__: JSON.stringify(build) },
   server: { host: "127.0.0.1", port: 1420, strictPort: true },

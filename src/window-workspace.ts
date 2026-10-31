@@ -274,17 +274,21 @@ class WindowWorkspace implements DocumentHost {
     const position = await window.outerPosition();
     const size = await window.innerSize();
     const documents = Object.fromEntries(
-      [...this.sessions].map(([identity, session]) => [
-        identity,
-        {
-          ...documentViewSchema.parse(session.getSnapshot()),
+      [...this.sessions].map(([identity, session]) => {
+        const view = documentViewSchema.parse(session.getSnapshot());
+        const reader = identity === this.state.activeId
+          ? session.view?.dom.closest(".document-body")?.querySelector<HTMLElement>(".aside-reader-scroll")
+          : null;
+        return [identity, {
+          ...view,
+          asideReader: { ...view.asideReader, scrollTop: reader?.scrollTop ?? view.asideReader.scrollTop },
           scrollTop:
             session.view && identity === this.state.activeId
               ? this.scrollTop
               : (this.state.documents.find((entry) => entry.id === identity)
                   ?.scrollTop ?? 0),
-        },
-      ]),
+        }];
+      }),
     );
     const patch: Partial<SpaceWindow> = {
       activeId: this.state.activeId,

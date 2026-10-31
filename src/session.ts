@@ -2061,7 +2061,7 @@ export class DocumentSession {
         if (this.state.dirty && this.state.preferences.autosave)
           void this.persist().catch(error => this.fail(error));
       } else {
-        this.update({ externalChange: false });
+        if (this.state.externalChange) this.update({ externalChange: false });
         activity.clear(this.state.metadata.documentId, "external");
       }
       let changed = false;

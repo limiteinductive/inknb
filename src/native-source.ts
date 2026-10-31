@@ -225,16 +225,17 @@ export function sourcePosition(
   association = 1,
 ): number {
   const spans = projection.spans;
-  const span =
-    spans.find(
-      (candidate) =>
-        position >= candidate.documentFrom && position <= candidate.documentTo,
-    ) ??
-    (association < 0
-      ? [...spans]
-          .reverse()
-          .find((candidate) => candidate.documentTo <= position)
-      : spans.find((candidate) => candidate.documentFrom >= position));
+  let lower = 0;
+  let upper = spans.length;
+  while (lower < upper) {
+    const middle = Math.floor((lower + upper) / 2);
+    if (spans[middle].documentTo < position) lower = middle + 1;
+    else upper = middle;
+  }
+  const candidate = spans[lower];
+  const span = candidate && candidate.documentFrom <= position
+    ? candidate
+    : association < 0 ? spans[lower - 1] : candidate;
   if (!span) return association < 0 ? 0 : projection.text.length;
   if (span.boundaries)
     return (

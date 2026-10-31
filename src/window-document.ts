@@ -179,7 +179,6 @@ export class WindowDocument extends DocumentSession {
           ),
         ),
       );
-      this.view?.refresh();
     } finally {
       this.receiving = false;
     }

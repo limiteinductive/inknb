@@ -31,6 +31,7 @@ export default function AsideLayout({
   const state = useAsideState();
   const container = useRef<HTMLDivElement>(null);
   const readerViewport = useRef<HTMLDivElement>(null);
+  const documentViewport = useRef<HTMLDivElement>(null);
   const drag = useRef<{ start: number; width: number } | null>(null);
   const [width, setWidth] = useState(window.innerWidth);
   const minimumWidth = 320;
@@ -64,6 +65,50 @@ export default function AsideLayout({
     if (open && readerViewport.current)
       readerViewport.current.scrollTop = state.asideReader.scrollTop;
   }, [open]);
+  useLayoutEffect(() => {
+    const viewport = documentViewport.current;
+    if (!viewport) return;
+    let frame = 0;
+    const measure = () => {
+      frame = 0;
+      viewport.style.setProperty(
+        "--document-scroll-floor",
+        `${viewport.scrollTop + viewport.clientHeight}px`,
+      );
+    };
+    const schedule = () => {
+      if (!frame) frame = requestAnimationFrame(measure);
+    };
+    viewport.addEventListener("scroll", schedule, { passive: true });
+    return () => {
+      cancelAnimationFrame(frame);
+      viewport.removeEventListener("scroll", schedule);
+    };
+  }, []);
+  useLayoutEffect(() => {
+    const viewport = readerViewport.current;
+    if (!open || !viewport) return;
+    let timer: ReturnType<typeof setTimeout>;
+    let scrollTop = viewport.scrollTop;
+    const persist = () => {
+      clearTimeout(timer);
+      const reader = session.getSnapshot().asideReader;
+      if (reader.scrollTop !== scrollTop)
+        session.update({ asideReader: { ...reader, scrollTop } });
+    };
+    const remember = () => {
+      scrollTop = Math.max(0, viewport.scrollTop);
+      clearTimeout(timer);
+      timer = setTimeout(persist, 150);
+    };
+    viewport.addEventListener("scroll", remember, { passive: true });
+    viewport.addEventListener("scrollend", persist);
+    return () => {
+      viewport.removeEventListener("scroll", remember);
+      viewport.removeEventListener("scrollend", persist);
+      persist();
+    };
+  }, [open, session]);
   return (
     <div
       className="document-body"
@@ -78,16 +123,10 @@ export default function AsideLayout({
     >
       <div
         className="document-scroll"
+        ref={documentViewport}
         data-inknb-scroll="true"
         aria-label="Document"
         tabIndex={0}
-        onScroll={(event) => {
-          const viewport = event.currentTarget;
-          viewport.style.setProperty(
-            "--document-scroll-floor",
-            `${viewport.scrollTop + viewport.clientHeight}px`,
-          );
-        }}
       >
         <div className="document-canvas">
           <div className="document-surface-container">{children}</div>
@@ -106,14 +145,6 @@ export default function AsideLayout({
               data-inknb-control="asides.reader"
               tabIndex={0}
               aria-label="Independently scrolling asides"
-              onScroll={(event) => {
-                session.update({
-                  asideReader: {
-                    ...session.getSnapshot().asideReader,
-                    scrollTop: Math.max(0, event.currentTarget.scrollTop),
-                  },
-                });
-              }}
             >
               <Asides historyOpen={historyOpen} />
             </div>

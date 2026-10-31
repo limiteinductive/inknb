@@ -59,17 +59,33 @@ export default function DocumentOutline({ active }: { active: boolean }) {
     const surface = session.surface?.dom;
     if (!viewport || !surface || !visible || !active || state.pageVisible)
       return;
+    let frame = 0;
+    let layoutChanged = true;
+    let offsets: { identity: string; top: number }[] = [];
     const measure = () => {
-      const threshold = viewport.getBoundingClientRect().top + 96;
-      let identity: string | null = headings[0]?.identity ?? null;
-      for (const heading of headings) {
-        const element = surface.querySelector<HTMLElement>(
-          `[data-native-identity="${CSS.escape(heading.identity)}"]`,
-        );
-        if (!element?.getClientRects().length) continue;
-        if (element.getBoundingClientRect().top > threshold) break;
-        identity = heading.identity;
+      frame = 0;
+      if (layoutChanged) {
+        const top = viewport.getBoundingClientRect().top;
+        offsets = headings.flatMap((heading) => {
+          const element = surface.querySelector<HTMLElement>(
+            `[data-native-identity="${CSS.escape(heading.identity)}"]`,
+          );
+          return element?.getClientRects().length
+            ? [{ identity: heading.identity, top: element.getBoundingClientRect().top - top + viewport.scrollTop }]
+            : [];
+        });
+        offsets.sort((first, second) => first.top - second.top);
+        layoutChanged = false;
       }
+      const threshold = viewport.scrollTop + 96;
+      let lower = 0;
+      let upper = offsets.length;
+      while (lower < upper) {
+        const middle = Math.floor((lower + upper) / 2);
+        if (offsets[middle].top <= threshold) lower = middle + 1;
+        else upper = middle;
+      }
+      let identity: string | null = offsets[Math.max(0, lower - 1)]?.identity ?? null;
       if (
         viewport.scrollTop > 0 &&
         viewport.scrollTop + viewport.clientHeight >= viewport.scrollHeight - 2
@@ -77,16 +93,26 @@ export default function DocumentOutline({ active }: { active: boolean }) {
         identity = headings.at(-1)?.identity ?? null;
       setCurrent(identity);
     };
+    const schedule = () => {
+      if (!frame) frame = requestAnimationFrame(measure);
+    };
+    const invalidate = () => {
+      layoutChanged = true;
+      schedule();
+    };
     measure();
-    const observer = new ResizeObserver(measure);
+    const observer = new ResizeObserver(invalidate);
     observer.observe(surface);
     observer.observe(viewport);
-    viewport.addEventListener("scroll", measure, { passive: true });
-    surface.addEventListener("inknb-source-layout", measure);
+    viewport.addEventListener("scroll", schedule, { passive: true });
+    surface.addEventListener("inknb-source-layout", invalidate);
+    document.addEventListener("inknb-annotations-layout", invalidate);
     return () => {
+      cancelAnimationFrame(frame);
       observer.disconnect();
-      viewport.removeEventListener("scroll", measure);
-      surface.removeEventListener("inknb-source-layout", measure);
+      viewport.removeEventListener("scroll", schedule);
+      surface.removeEventListener("inknb-source-layout", invalidate);
+      document.removeEventListener("inknb-annotations-layout", invalidate);
     };
   }, [
     active,

@@ -1,4 +1,5 @@
 import { Text, ChangeSet } from "@codemirror/state";
+import { projectSourceChanges } from "./native-source-edit";
 import { EditorState, Plugin, TextSelection, NodeSelection, Selection } from "prosemirror-state";
 import type { Transaction } from "prosemirror-state";
 import type { Node as DocumentNode } from "prosemirror-model";
@@ -20,7 +21,6 @@ import {
   restoreDocument,
   projectDocument,
   captureDocument,
-  importDocument,
 } from "./native-document";
 import { documentPosition, sourcePosition } from "./native-source";
 import type { SourceProjection } from "./native-source";
@@ -458,49 +458,8 @@ export class NativeDocumentModel {
     actor = "You",
   ): Transaction {
     const changes = ChangeSet.of(edits, this.source.length);
-    const source = changes.apply(this.source).toString();
-    let next = importDocument(source, format ?? this.state.doc.attrs.format);
-    const previous: { node: DocumentNode; from: number }[] = [];
-    this.state.doc.descendants((node, position) => {
-      if (!node.isText)
-        previous.push({
-          node,
-          from: changes.mapPos(sourcePosition(this.projection, position), -1),
-        });
-    });
-    const used = new Set<string>();
-    const imported = projectDocument(next);
+    const next = projectSourceChanges(this.state.doc, this.projection, edits, format);
     const transaction = this.state.tr;
-    const rebuild = (node: DocumentNode, position: number): DocumentNode => {
-      if (node.isText) return node;
-      const from = sourcePosition(imported, position);
-      const candidates = previous.filter(
-        (entry) =>
-          entry.node.type === node.type &&
-          !used.has(String(entry.node.attrs.identity)),
-      );
-      const match =
-        candidates.find(
-          (entry) => semanticSignature(entry.node) === semanticSignature(node),
-        ) ?? candidates.find((entry) => Math.abs(entry.from - from) <= 1);
-      const identity = match?.node.attrs.identity ?? node.attrs.identity;
-      used.add(String(identity));
-      const children: DocumentNode[] = [];
-      node.forEach((child, offset) =>
-        children.push(
-          rebuild(
-            child,
-            position + offset + (node.type.name === "doc" ? 0 : 1),
-          ),
-        ),
-      );
-      return node.type.create(
-        { ...node.attrs, identity },
-        children,
-        node.marks,
-      );
-    };
-    next = rebuild(next, 0);
     transaction.replaceWith(0, transaction.doc.content.size, next.content);
     const operations = {
       ...operationSchema.parse(this.state.doc.attrs.operations),

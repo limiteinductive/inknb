@@ -209,10 +209,16 @@ export const nativeSchema = new Schema({
     }),
 });
 
+const semanticSignatures = new WeakMap<DocumentNode, string>();
+
 export function semanticSignature(node: DocumentNode): string {
-  return JSON.stringify(nativeObject(node), (name, value) =>
+  const saved = semanticSignatures.get(node);
+  if (saved !== undefined) return saved;
+  const signature = JSON.stringify(nativeObject(node), (name, value) =>
     name === "identity" ? undefined : value,
   );
+  semanticSignatures.set(node, signature);
+  return signature;
 }
 
 export function sourceFormat(

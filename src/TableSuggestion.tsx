@@ -1,4 +1,4 @@
-import { useLayoutEffect, useMemo, useState } from "react";
+import { useLayoutEffect, useMemo, useState, useSyncExternalStore } from "react";
 import { Fragment } from "prosemirror-model";
 import { ChangeSet } from "@codemirror/state";
 import { invoke } from "@tauri-apps/api/core";
@@ -11,20 +11,21 @@ import {
   Undo2,
 } from "lucide-react";
 import { useDocumentSession, useSession } from "./use-session";
+import type { TableSuggestionReview } from "./table-suggestions";
 import { currentSuggestions, reviewSuggestion } from "./suggestions";
-import { tableSuggestionGroups } from "./table-suggestions";
 import { renderFragmentsChange } from "./change-display";
 import { projectDocument } from "./native-document";
 import { documentPosition } from "./native-source";
 import IconButton from "./IconButton";
 import { LinkGesture } from "./link-gesture";
 
-export default function TableSuggestion({ identity }: { identity: string }) {
+export default function TableSuggestion({ identity, review }: { identity: string; review: TableSuggestionReview }) {
   const session = useDocumentSession();
   const state = useSession();
+  useSyncExternalStore(review.subscribe, review.getSnapshot);
   const group =
     session.model &&
-    tableSuggestionGroups(session.model, currentSuggestions(state)).find(
+    review.read(session.model, currentSuggestions(state)).find(
       (group) => group.identity === identity,
     );
   const selected =
@@ -45,7 +46,7 @@ export default function TableSuggestion({ identity }: { identity: string }) {
     [session],
   );
   useLayoutEffect(() => {
-    if (!preview || !group || !session.model) return;
+    if (!preview || !group || !session.model || review.pending) return;
     let cancelled = false;
     try {
       const proposals = [
@@ -222,13 +223,13 @@ export default function TableSuggestion({ identity }: { identity: string }) {
     return () => {
       cancelled = true;
     };
-  }, [preview, group, selected?.id, session]);
+  }, [preview, group, selected?.id, session, review.pending]);
   if (!group || !selected) return null;
   const index = group.proposals.findIndex(
     (proposal) => proposal.id === selected.id,
   );
   const decide = async (accept: boolean) => {
-    if (busy) return;
+    if (busy || review.pending) return;
     setBusy(true);
     setError(null);
     try {
@@ -256,7 +257,7 @@ export default function TableSuggestion({ identity }: { identity: string }) {
         .map((proposal) => proposal.id)
         .join(" ")}
       aria-label="Suggested table changes"
-      aria-busy={busy}
+      aria-busy={busy || review.pending}
     >
       <div
         ref={setPreview}
@@ -294,14 +295,14 @@ export default function TableSuggestion({ identity }: { identity: string }) {
           icon={Check}
           label="Accept selected change"
           agentControl={`proposal.accept:${selected.id}`}
-          disabled={busy}
+          disabled={busy || review.pending}
           onPress={() => void decide(true)}
         />
         <IconButton
           icon={X}
           label="Dismiss selected change"
           agentControl={`proposal.dismiss:${selected.id}`}
-          disabled={busy}
+          disabled={busy || review.pending}
           onPress={() => void decide(false)}
         />
         <IconButton
@@ -319,7 +320,7 @@ export default function TableSuggestion({ identity }: { identity: string }) {
           <IconButton
             icon={ChevronLeft}
             label="Previous table change"
-            disabled={busy || group.proposals.length < 2}
+            disabled={busy || review.pending || group.proposals.length < 2}
             onPress={() =>
               reviewSuggestion(
                 group.proposals[
@@ -332,7 +333,7 @@ export default function TableSuggestion({ identity }: { identity: string }) {
           <IconButton
             icon={ChevronRight}
             label="Next table change"
-            disabled={busy || group.proposals.length < 2}
+            disabled={busy || review.pending || group.proposals.length < 2}
             onPress={() =>
               reviewSuggestion(
                 group.proposals[(index + 1) % group.proposals.length].id,

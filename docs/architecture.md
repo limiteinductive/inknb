@@ -44,6 +44,8 @@ The persistent macOS identifier remains `io.github.limiteinductive.aside`. The s
 
 The design is `long-term`. The app uses Tauri 2 with React and TypeScript. ProseMirror owns structured document transactions and Undo. Writing windows own selection and composition. Immutable source projections retain the original document format. React Aria supplies accessible control behavior. Shared tokens define typography, spacing, colors, icons, and motion.
 
+The rendering design is `long-term`. Writing views classify table suggestions in a local worker. Each view retains one running job and the newest queued job. Generation checks discard stale results. Table review pauses acceptance while its classification is pending. Source edits reuse unchanged native subtrees and indexed identity matches. Unchanged file checks publish no document updates. Scroll layout runs once per animation frame. Reading positions persist after scrolling settles and during window flush. Native library saves run on the blocking task pool.
+
 Each frontend document session owns its transactions. Agent requests enter the document's dispatcher. Rust owns filesystem coordination, recovery, native dialogs, local IPC, and external command transport. The app contains no model runtime or credential store.
 
 Writing windows apply local typing immediately. ProseMirror collaboration steps reconcile each view with the app-owned document model. The host persists accepted transactions before acknowledgement. Agent reads inspect committed source. Agent mutations enter the JavaScript transaction loop with revision and expected-text preconditions. A stale mutation returns a conflict.

@@ -43,7 +43,7 @@ import { suggestionMarkers, openSuggestion } from "./suggestion-markers";
 import { currentSuggestions, visibleSuggestions } from "./suggestions";
 import { InlineSuggestion } from "./DocumentReview";
 import TableSuggestion from "./TableSuggestion";
-import { tableSuggestionGroups } from "./table-suggestions";
+import { TableSuggestionReview } from "./table-suggestions";
 import { clipboardImages, importImages, copyImage } from "./images";
 import { createElement } from "react";
 import { createRoot } from "react-dom/client";
@@ -60,14 +60,17 @@ interface PasteTarget {
   expectedText: string;
 }
 
-function suggestionWidget(position: number, identity: string, session: WindowDocument, table: boolean): Decoration {
+function suggestionWidget(position: number, identity: string, session: WindowDocument, table: TableSuggestionReview | null): Decoration {
   return Decoration.widget(position, () => {
     const element = window.document.createElement("div");
     element.className = table ? "native-table table-suggestion-host" : "inline-suggestion-host";
     element.dataset.suggestionHost = identity;
     element.contentEditable = "false";
     const root = createRoot(element);
-    root.render(createElement(SessionContext, { value: session }, createElement(table ? TableSuggestion : InlineSuggestion, { identity })));
+    const content = table
+      ? createElement(TableSuggestion, { identity, review: table })
+      : createElement(InlineSuggestion, { identity });
+    root.render(createElement(SessionContext, { value: session }, content));
     element.addEventListener("inknb-inline-destroy", () => queueMicrotask(() => root.unmount()), { once: true });
     return element;
   }, {
@@ -124,6 +127,11 @@ export class NativeEditor extends NativeDocumentModel {
   private findRanges: { from: number; to: number }[] = [];
   private focusedAside: string | null = null;
   private destroyed = false;
+  private refreshPending = false;
+  readonly tableReview = new TableSuggestionReview(
+    () => this.refresh(),
+    error => this.session.fail(error),
+  );
   private pastes = new Set<PasteTarget>();
   pasteQueue = Promise.resolve();
   private links = new LinkGesture(
@@ -138,7 +146,14 @@ export class NativeEditor extends NativeDocumentModel {
     this.focusedAside = (event as CustomEvent<{ id: string | null }>).detail.id;
     this.refresh();
   };
-  private onObjectScroll = () => this.positionRegionHighlight();
+  private objectScrollFrame = 0;
+  private onObjectScroll = () => {
+    if (this.objectScrollFrame) return;
+    this.objectScrollFrame = requestAnimationFrame(() => {
+      this.objectScrollFrame = 0;
+      this.positionRegionHighlight();
+    });
+  };
   private onGutterPointerDown = (event: Event) => {
     if (!(event instanceof PointerEvent) || event.button !== 0 || !(event.target instanceof Element)) return;
     if (!event.target.matches(".document-canvas, .document-surface-container, .workspace, .writing-region, .editor-host")) return;
@@ -270,11 +285,11 @@ export class NativeEditor extends NativeDocumentModel {
             if (to > from) ranges.push(...passageDecorations(state.doc, from, to, { class: "aside-anchor", "data-decision-anchor": decision.id }));
           }
           const visible = visibleSuggestions(current);
-          const tables = tableSuggestionGroups(this, currentSuggestions(current)).filter(table => table.proposals.some(proposal => visible.some(candidate => candidate.id === proposal.id)));
+          const tables = this.tableReview.read(this, currentSuggestions(current)).filter(table => table.proposals.some(proposal => visible.some(candidate => candidate.id === proposal.id)));
           const tableProposals = new Set(tables.flatMap(table => table.proposals.map(proposal => proposal.id)));
           for (const table of tables) {
             if (table.node) ranges.push(Decoration.node(table.position, table.position + table.node.nodeSize, { class: "suggestion-replaced" }));
-            ranges.push(suggestionWidget(table.position + (table.node?.nodeSize ?? 0), table.identity, session, true));
+            ranges.push(suggestionWidget(table.position + (table.node?.nodeSize ?? 0), table.identity, session, this.tableReview));
           }
           for (const proposal of visible) {
             if (tableProposals.has(proposal.id)) continue;
@@ -300,7 +315,7 @@ export class NativeEditor extends NativeDocumentModel {
                 return false;
               }
             });
-            ranges.push(suggestionWidget(position, proposal.id, session, false));
+            ranges.push(suggestionWidget(position, proposal.id, session, null));
           }
           ranges.push(
             ...suggestionMarkers(current, this.projection, state.doc, 0, tableProposals),
@@ -951,11 +966,15 @@ export class NativeEditor extends NativeDocumentModel {
 
 
   refresh(): void {
-    if (!this.destroyed) {
+    if (this.destroyed || this.refreshPending) return;
+    this.refreshPending = true;
+    queueMicrotask(() => {
+      this.refreshPending = false;
+      if (this.destroyed) return;
       this.editor.updateState(this.editor.state);
       this.measureTables();
       this.positionRegionHighlight();
-    }
+    });
   }
   override restoreAnchors(anchors: Record<string, Anchor>): void {
     super.restoreAnchors(anchors);
@@ -1142,6 +1161,8 @@ export class NativeEditor extends NativeDocumentModel {
     }
 
     this.destroyed = true;
+    this.tableReview.destroy();
+    cancelAnimationFrame(this.objectScrollFrame);
     this.region.stop(false);
     this.geometryObserver.disconnect();
     this.dom.removeEventListener("scroll", this.onObjectScroll, true);

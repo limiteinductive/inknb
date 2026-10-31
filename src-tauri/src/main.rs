@@ -498,11 +498,16 @@ async fn discard_recovery(app: tauri::AppHandle, document_id: String) -> Result<
 }
 
 #[tauri::command]
-fn store_library(state: State<DesktopState>, library: Value) -> Result<(), String> {
-    atomic_write(
-        &state.directory.join("library.json"),
-        &serde_json::to_vec_pretty(&library).map_err(|error| error.to_string())?,
-    )
+async fn store_library(app: tauri::AppHandle, library: Value) -> Result<(), String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let state = app.state::<DesktopState>();
+        atomic_write(
+            &state.directory.join("library.json"),
+            &serde_json::to_vec_pretty(&library).map_err(|error| error.to_string())?,
+        )
+    })
+    .await
+    .map_err(|error| error.to_string())?
 }
 
 #[tauri::command]
