@@ -453,7 +453,12 @@ export class NativeDocumentModel {
     const changes = ChangeSet.of(edits, this.source.length);
     const next = projectSourceChanges(this.state.doc, this.projection, edits, format);
     const transaction = this.state.tr;
-    transaction.replaceWith(0, transaction.doc.content.size, next.content);
+    const from = this.state.doc.content.findDiffStart(next.content);
+    if (from !== null) {
+      const end = this.state.doc.content.findDiffEnd(next.content)!;
+      const overlap = Math.max(0, from - Math.min(end.a, end.b));
+      transaction.replace(from, end.a + overlap, next.slice(from, end.b + overlap));
+    }
     const operations = {
       ...operationSchema.parse(this.state.doc.attrs.operations),
     };
@@ -463,7 +468,8 @@ export class NativeDocumentModel {
       identity: this.state.doc.attrs.identity,
       operations,
     }))
-      transaction.setDocAttribute(name, value);
+      if (JSON.stringify(transaction.doc.attrs[name]) !== JSON.stringify(value))
+        transaction.setDocAttribute(name, value);
     transaction.setMeta("sourceChanges", edits);
     transaction.setMeta("historyActor", actor);
     const selection = this.selection;
