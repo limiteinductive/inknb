@@ -13,8 +13,9 @@ import {
   selectionSchema,
   threadActivity,
 } from "./domain";
-import type { AsideReference, ConfigurationSnapshot } from "./domain";
-import { asideConnections, parseAsideLink } from "./aside-reference";
+import type { AsideReference, ConfigurationSnapshot, Metadata } from "./domain";
+import { indexAsideConnections, parseAsideLink } from "./aside-reference";
+import type { AsideConnection } from "./aside-reference";
 import { DocumentSession } from "./session";
 import type { Bootstrap, DocumentHost, LoadedDocument } from "./session";
 import { sourceFormatSchema } from "./native-schema";
@@ -109,6 +110,25 @@ export class DocumentLibrary implements DocumentHost {
     error: null,
   };
   readonly sessions = new Map<string, DocumentSession>();
+  private asideMetadata: Metadata[] = [];
+
+  private refreshAsideReferences(): void {
+    if (!this.state.ready) return;
+    const documents = [...this.sessions.values()].map(session => session.getSnapshot().metadata);
+    if (documents.length === this.asideMetadata.length && documents.every((metadata, index) => metadata === this.asideMetadata[index])) return;
+    this.asideMetadata = documents;
+    const connections = indexAsideConnections(documents);
+    for (const session of this.sessions.values()) {
+      const state = session.getSnapshot();
+      const asideReferences: Record<string, AsideConnection[]> = {};
+      for (const thread of state.metadata.threads) {
+        const references = connections.get(`${state.metadata.documentId}:${thread.id}`);
+        if (references?.length) asideReferences[thread.id] = references;
+      }
+      if (JSON.stringify(asideReferences) !== JSON.stringify(state.asideReferences))
+        session.update({ asideReferences });
+    }
+  }
 
   readAside(reference: AsideReference) {
     const session = this.sessions.get(reference.documentId);
@@ -117,17 +137,11 @@ export class DocumentLibrary implements DocumentHost {
       .metadata.threads.find((thread) => thread.id === reference.threadId);
     if (!thread) throw Error("This aside is not in the writing library.");
     if (this.state.documents.find(entry => entry.id === reference.documentId)?.trash) throw Error("This document is in Trash. Use document_restore first.");
-    const references = asideConnections(
-      [...this.sessions.values()].map(
-        (session) => session.getSnapshot().metadata,
-      ),
-      reference,
-    );
     return {
       thread,
       documentId: reference.documentId,
       title: this.documentTitle(reference.documentId),
-      references,
+      references: session!.getSnapshot().asideReferences[thread.id] ?? [],
       pendingSuggestions: pendingSuggestions(session!.getSnapshot().metadata, thread.id).map(proposal => proposal.id),
     };
   }
@@ -276,6 +290,7 @@ export class DocumentLibrary implements DocumentHost {
     patch: Partial<Library> & { ready?: boolean; error?: string | null },
   ): void {
     this.state = { ...this.state, ...patch };
+    if (patch.ready === true) this.refreshAsideReferences();
     for (const listener of this.listeners) listener();
     if (patch.asideWidth !== undefined && this.previewDocumentId)
       this.publishPreview(this.previewDocumentId);
@@ -533,6 +548,7 @@ export class DocumentLibrary implements DocumentHost {
       const current = session.getSnapshot();
       const edited = current.metadata.revision !== previousRevision;
       previousRevision = current.metadata.revision;
+      this.refreshAsideReferences();
       this.update({
         documents: this.state.documents.map((candidate) =>
           candidate.id === entry.id
@@ -554,6 +570,7 @@ export class DocumentLibrary implements DocumentHost {
         ),
       });
     });
+    this.refreshAsideReferences();
   }
   async persist(): Promise<void> {
     clearTimeout(this.timer);

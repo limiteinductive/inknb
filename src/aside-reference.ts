@@ -1,74 +1,54 @@
 import { asideReferenceSchema, messageSummary } from "./domain";
 import type { AsideReference, Metadata, Thread } from "./domain";
-import { z } from "zod";
 
-export const asideDetailsSchema = z.object({
-  references: z.array(
-    asideReferenceSchema.extend({ label: z.string(), relation: z.string() }),
-  ),
-});
+export interface AsideConnection extends AsideReference {
+  label: string;
+  relation: string;
+}
 
-export type AsideConnection = z.infer<
-  typeof asideDetailsSchema
->["references"][number];
-
-export function asideConnections(
-  documents: Metadata[],
-  reference: AsideReference,
-): AsideConnection[] {
-  const thread = documents
-    .find((document) => document.documentId === reference.documentId)
-    ?.threads.find((thread) => thread.id === reference.threadId);
-  if (!thread) return [];
-  const references: AsideConnection[] = thread.links.map((link) => {
-    const target = documents
-      .find((document) => document.documentId === link.documentId)
-      ?.threads.find((thread) => thread.id === link.threadId);
-    return {
-      ...link,
-      label:
-        documents
-          .find((document) => document.documentId === link.documentId)
-          ?.proposals.find((proposal) => proposal.threadId === link.threadId)
-          ?.explanation ||
-        messageSummary(target?.messages[0]) ||
-        target?.originalQuote ||
-        "Whole document",
-    };
-  });
-  for (const document of documents)
-    for (const source of document.threads)
-      for (const link of source.links)
-        if (
-          link.documentId === reference.documentId &&
-          link.threadId === reference.threadId
-        )
-          references.push({
-            documentId: document.documentId,
-            threadId: source.id,
-            relation:
-              link.relation === "suggestion_for"
-                ? "suggestion"
-                : link.relation === "superseded_by"
-                  ? "supersedes"
-                  : link.relation === "supersedes"
-                    ? "superseded_by"
-                    : "related",
-            label:
-              document.proposals.find(
-                (proposal) => proposal.threadId === source.id,
-              )?.explanation ||
-              messageSummary(source.messages[0]) ||
-              source.originalQuote ||
-              "Whole document",
-          });
-  const connections = new Map<string, AsideConnection>();
-  for (const reference of references) {
-    const identity = `${reference.documentId}:${reference.threadId}`;
-    if (connections.has(identity) && reference.relation === "related") continue;
-    connections.set(identity, reference);
+export function indexAsideConnections(documents: Metadata[]): Map<string, AsideConnection[]> {
+  const labels = new Map<string, string>();
+  const threads = new Map<string, { documentId: string; thread: Thread }>();
+  const connections = new Map<string, Map<string, AsideConnection>>();
+  for (const document of documents) {
+    for (const proposal of document.proposals) {
+      const identity = `${document.documentId}:${proposal.threadId}`;
+      if (!labels.has(identity)) labels.set(identity, proposal.explanation);
+    }
+    for (const thread of document.threads) {
+      const identity = `${document.documentId}:${thread.id}`;
+      threads.set(identity, { documentId: document.documentId, thread });
+      connections.set(identity, new Map());
+    }
   }
-  return [...connections.values()];
+  for (const [identity, { thread }] of threads)
+    labels.set(identity, labels.get(identity) || messageSummary(thread.messages[0]) || thread.originalQuote || "Whole document");
+  for (const [identity, { thread }] of threads)
+    for (const link of thread.links) {
+      const target = `${link.documentId}:${link.threadId}`;
+      const outgoing = connections.get(identity)!;
+      if (outgoing.has(target) && link.relation === "related") continue;
+      outgoing.set(target, { ...link, label: labels.get(target) || "Whole document" });
+    }
+  for (const [identity, { documentId, thread }] of threads)
+    for (const link of thread.links) {
+      const incoming = connections.get(`${link.documentId}:${link.threadId}`);
+      if (!incoming) continue;
+      const relation = link.relation === "suggestion_for"
+        ? "suggestion"
+        : link.relation === "superseded_by"
+          ? "supersedes"
+          : link.relation === "supersedes"
+            ? "superseded_by"
+            : "related";
+      if (incoming.has(identity) && relation === "related") continue;
+      incoming.set(identity, { documentId, threadId: thread.id, relation, label: labels.get(identity)! });
+    }
+  return new Map([...connections].map(([identity, targets]) => [identity, [...targets.values()]]));
+}
+
+export function asideConnections(documents: Metadata[], reference: AsideReference): AsideConnection[] {
+  return indexAsideConnections(documents).get(`${reference.documentId}:${reference.threadId}`) ?? [];
 }
 
 export function asideLink(reference: AsideReference): string {

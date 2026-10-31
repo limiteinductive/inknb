@@ -48,6 +48,8 @@ The rendering design is `long-term`. Writing views classify table suggestions in
 
 Immutable native documents retain their source projection, serialized snapshot, and node identity index in weak caches. Selection transactions retain passage anchors. Document transactions map and recapture those anchors against the new content.
 
+The document host indexes aside references across the library. Document snapshots carry outgoing references and backlinks. Linked labels update through document publication. Conversation cards read these references from their session state.
+
 Each frontend document session owns its transactions. Agent requests enter the document's dispatcher. Rust owns filesystem coordination, recovery, native dialogs, local IPC, and external command transport. The app contains no model runtime or credential store.
 
 Writing windows apply local typing immediately. ProseMirror collaboration steps reconcile each view with the app-owned document model. The host persists accepted transactions before acknowledgement. Agent reads inspect committed source. Agent mutations enter the JavaScript transaction loop with revision and expected-text preconditions. A stale mutation returns a conflict.

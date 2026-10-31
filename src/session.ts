@@ -154,6 +154,7 @@ export interface SessionState {
   epoch: number;
   text: string;
   metadata: Metadata;
+  asideReferences: Record<string, AsideConnection[]>;
   path: string | null;
   selection: Selection;
   preferences: Preferences;
@@ -278,6 +279,7 @@ export class DocumentSession {
     );
   }
   private state: SessionState = {
+    asideReferences: {},
     ready: false,
     epoch: 0,
     text: "",

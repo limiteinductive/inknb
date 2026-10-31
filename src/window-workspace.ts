@@ -8,7 +8,7 @@ import { LogicalSize } from "@tauri-apps/api/dpi";
 import { inspectInterface, actOnInterface } from "./ui-control";
 import { readWindowChrome } from "./window-chrome";
 import { documentScroll } from "./document-scroll";
-import { asideConnections, parseAsideLink } from "./aside-reference";
+import { parseAsideLink } from "./aside-reference";
 import { parseDocumentLink } from "./resources";
 import type { AsideReference, Preferences } from "./domain";
 import {
@@ -331,12 +331,7 @@ class WindowWorkspace implements DocumentHost {
       documentId: reference.documentId,
       title: this.documentTitle(reference.documentId),
       pendingSuggestions: pendingSuggestions(session!.getSnapshot().metadata, thread.id).map(proposal => proposal.id),
-      references: asideConnections(
-        [...this.sessions.values()].map(
-          (session) => session.getSnapshot().metadata,
-        ),
-        reference,
-      ),
+      references: session!.getSnapshot().asideReferences[thread.id] ?? [],
     };
   }
   openAside(reference: AsideReference): void {

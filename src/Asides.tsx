@@ -49,11 +49,7 @@ import {
   asideExpanded,
   resolvableAsides,
 } from "./aside-state";
-import {
-  asideDetailsSchema,
-  asideLink,
-} from "./aside-reference";
-import type { AsideConnection } from "./aside-reference";
+import { asideLink } from "./aside-reference";
 import { SessionContext, useAsideSession, useAsideState } from "./use-session";
 import {
   currentSuggestions,
@@ -365,7 +361,7 @@ export function Conversation({
   const previousMessage = useRef<{ threadId: string; messageId: string } | null>(null);
   const followMessages = useRef(true);
   const [copiedReference, setCopiedReference] = useState<string | null>(null);
-  const [references, setReferences] = useState<AsideConnection[]>([]);
+  const references = state.asideReferences[identity] ?? [];
   const thread = state.metadata.threads.find(
     (thread) => thread.id === identity,
   );
@@ -390,24 +386,6 @@ export function Conversation({
     const timer = setTimeout(() => setCopiedReference(null), 2000);
     return () => clearTimeout(timer);
   }, [copiedReference]);
-  useEffect(() => {
-    let current = true;
-    void session
-      .control("aside_read", {
-        documentId: state.metadata.documentId,
-        threadId: identity,
-      })
-      .then((details) => {
-        if (current)
-          setReferences(asideDetailsSchema.parse(details).references);
-      })
-      .catch((error) => {
-        if (current) session.fail(error);
-      });
-    return () => {
-      current = false;
-    };
-  }, [session, identity, state.metadata, state.activeThread]);
   useEffect(() => {
     const element = card.current;
     if (!element || activity === null) return;
