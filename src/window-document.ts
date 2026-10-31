@@ -1,6 +1,7 @@
 import { collab, receiveTransaction, sendableSteps } from "prosemirror-collab";
 import { Selection as NativeSelection, TextSelection } from "prosemirror-state";
-import { Step } from "prosemirror-transform";
+import { Step, Transform } from "prosemirror-transform";
+import type { Node as DocumentNode } from "prosemirror-model";
 import { z } from "zod";
 import { resolvedAsideView } from "./aside-state";
 import { DocumentSession } from "./session";
@@ -14,6 +15,7 @@ import { documentViewSchema } from "./spaces";
 import type { DocumentViewState } from "./spaces";
 import type { NativeUpdate } from "./native-model";
 import { NativeDocumentModel } from "./native-model";
+import { captureDocument } from "./native-document";
 import { save } from "@tauri-apps/plugin-dialog";
 
 export class WindowDocument extends DocumentSession {
@@ -26,10 +28,11 @@ export class WindowDocument extends DocumentSession {
   private sourceChanged = false;
   private sendingSelection = false;
   private confirmed: SessionState;
+  private confirmedDocument: DocumentNode;
 
   constructor(
     host: DocumentHost,
-    exchange: DocumentExchange,
+    exchange: Extract<DocumentExchange, { reset: true }>,
     view: DocumentViewState,
     clientId: string,
     readonly request: (request: HostRequest) => Promise<unknown>,
@@ -56,6 +59,7 @@ export class WindowDocument extends DocumentSession {
       dirty: false,
     });
     this.prepareModel();
+    this.confirmedDocument = this.model!.state.doc;
     const pending = this.getSnapshot().pendingSource;
     if (!pending || !this.model) return;
     if (pending.text === this.confirmed.text) {
@@ -88,7 +92,7 @@ export class WindowDocument extends DocumentSession {
 
   receive(exchange: DocumentExchange): void {
     const current = this.getWorkingSnapshot();
-    if (exchange.epoch !== this.epochIdentity) {
+    if (exchange.reset) {
       if (this.model && sendableSteps(this.model.state)) {
         this.sourceChanged = true;
         this.fail(
@@ -108,42 +112,56 @@ export class WindowDocument extends DocumentSession {
         epoch: current.epoch + 1,
       });
       this.prepareModel();
-
+      this.confirmedDocument = this.model!.state.doc;
       return;
     }
+    if (exchange.epoch !== this.epochIdentity)
+      throw Error("A new document epoch requires a full snapshot.");
     if (exchange.version < this.version) return;
     this.receiving = true;
     try {
-      if (exchange.steps.length && this.model) {
+      const steps = exchange.steps.map((step) =>
+        Step.fromJSON(this.confirmedDocument.type.schema, step),
+      );
+      if (steps.length && this.model) {
         const transaction = receiveTransaction(
           this.model.state,
-          exchange.steps.map((step) =>
-            Step.fromJSON(this.model!.state.schema, step),
-          ),
+          steps,
           exchange.clients,
         );
         this.model.commit(transaction);
       }
-      this.version = exchange.version;
-      this.confirmedPublication = exchange.publication;
-      this.confirmed = exchange.state;
       const local = this.getWorkingSnapshot();
-      const source = this.model?.source.toString() ?? exchange.state.text;
+      const pending = this.model ? sendableSteps(this.model.state) : null;
+      let confirmedDocument = this.model?.state.doc ?? this.confirmedDocument;
+      if (pending || !this.model) {
+        const confirmed = new Transform(this.confirmedDocument);
+        for (const step of steps) confirmed.step(step);
+        confirmedDocument = confirmed.doc;
+      }
+      const state: SessionState = {
+        ...exchange.state,
+        metadata: {
+          ...exchange.state.metadata,
+          nativeDocument: captureDocument(confirmedDocument, exchange.state.text),
+        },
+      };
+      const source = this.model?.source.toString() ?? state.text;
       let anchors = Object.fromEntries(
-        exchange.state.metadata.threads.flatMap((thread) =>
+        state.metadata.threads.flatMap((thread) =>
           thread.anchor ? [[thread.id, thread.anchor]] : [],
         ),
       );
-      const pending = this.model ? sendableSteps(this.model.state) : null;
       if (pending) {
         const projected = new NativeDocumentModel(
           {
-            getWorkingSnapshot: () => exchange.state,
+            getWorkingSnapshot: () => state,
             onEditorUpdate: (update) => {
               anchors = update.anchors;
             },
           },
           [],
+          confirmedDocument,
         );
         const transaction = projected.state.tr;
         for (const step of pending.steps) transaction.step(step);
@@ -153,19 +171,23 @@ export class WindowDocument extends DocumentSession {
             "The pending window steps do not match its visible source.",
           );
       }
+      this.version = exchange.version;
+      this.confirmedPublication = exchange.publication;
+      this.confirmed = state;
+      this.confirmedDocument = confirmedDocument;
       this.update({
-        ...exchange.state,
+        ...state,
         ...documentViewSchema.parse(local),
         asideNarrow: local.asideNarrow,
-        ...resolvedAsideView(local, exchange.state.metadata.threads
+        ...resolvedAsideView(local, state.metadata.threads
           .filter((thread) => thread.resolved && local.metadata.threads.some((previous) => previous.id === thread.id && !previous.resolved))
           .map((thread) => thread.id)),
         text: source,
         metadata: {
-          ...exchange.state.metadata,
+          ...state.metadata,
           nativeDocument: local.metadata.nativeDocument,
-          decisions: exchange.state.metadata.decisions.map((decision) => ({ ...decision, anchor: anchors[decision.id] ?? decision.anchor })),
-          threads: exchange.state.metadata.threads.map((thread) => ({
+          decisions: state.metadata.decisions.map((decision) => ({ ...decision, anchor: anchors[decision.id] ?? decision.anchor })),
+          threads: state.metadata.threads.map((thread) => ({
             ...thread,
             anchor: anchors[thread.id] ?? thread.anchor,
           })),

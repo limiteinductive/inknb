@@ -160,6 +160,8 @@ class WindowWorkspace implements DocumentHost {
             const existing = this.sessions.get(identity);
             if (existing) existing.receive(exchange);
             else {
+              if (!exchange.reset)
+                throw Error("Opening a document requires a full snapshot.");
               const session = new WindowDocument(
                 this,
                 exchange,

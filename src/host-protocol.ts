@@ -1,5 +1,6 @@
 import { z } from "zod";
-import type { Preferences } from "./domain";
+import type { Metadata, Preferences } from "./domain";
+import type { NativeDocument } from "./native-schema";
 import type { SessionState } from "./session";
 import type { LibraryEntry, LibraryNode } from "./workspace";
 import { spaceWindowSchema } from "./spaces";
@@ -103,15 +104,26 @@ export const hostRequestSchema = z.discriminatedUnion("kind", [
   z.object({ kind: z.literal("quit") }),
 ]);
 export type HostRequest = z.infer<typeof hostRequestSchema>;
-export interface DocumentExchange {
-  state: SessionState;
+export type DocumentExchange = {
   publication: number;
   epoch: string;
   version: number;
   steps: unknown[];
   clients: string[];
-  reset: boolean;
-}
+} & (
+  | {
+      reset: true;
+      state: SessionState & {
+        metadata: Metadata & { nativeDocument: NativeDocument };
+      };
+    }
+  | {
+      reset: false;
+      state: Omit<SessionState, "metadata"> & {
+        metadata: Omit<Metadata, "nativeDocument">;
+      };
+    }
+);
 export interface HostSnapshot {
   spaces: SpacesState;
   windowId: string;

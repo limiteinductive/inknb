@@ -121,10 +121,11 @@ export class NativeDocumentModel {
       "getWorkingSnapshot" | "onEditorUpdate"
     >,
     plugins: Plugin[] = [history()],
+    document?: DocumentNode,
   ) {
     const snapshot = session.getWorkingSnapshot();
     this.documentId = snapshot.metadata.documentId;
-    let document = restoreDocument(
+    document ??= restoreDocument(
       snapshot.text,
       snapshot.path,
       snapshot.metadata.nativeDocument,
@@ -134,11 +135,19 @@ export class NativeDocumentModel {
         .filter((proposal) => proposal.status === "applied")
         .map((proposal) => [proposal.id, "applied"]),
     );
-    document = document.type.create(
-      { ...document.attrs, operations },
-      document.content,
-    );
+    const recorded = operationSchema.safeParse(document.attrs.operations);
+    if (
+      !recorded.success ||
+      Object.keys(recorded.data).length !== Object.keys(operations).length ||
+      Object.entries(operations).some(([identity, status]) => recorded.data[identity] !== status)
+    )
+      document = document.type.create(
+        { ...document.attrs, operations },
+        document.content,
+      );
     this.projection = projectDocument(document);
+    if (this.projection.text !== snapshot.text)
+      throw Error("The native document does not match its source.");
     this.source = Text.of(snapshot.text.split("\n"));
     const identities = new Plugin({
       appendTransaction(transactions, _previous, state) {

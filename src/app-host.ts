@@ -19,6 +19,7 @@ import type { Bootstrap } from "./session";
 import { linkedResourceSchema, parseDocumentLink, resourceActionSchema } from "./resources";
 import type { ResourceAction, ResourceState } from "./resources";
 import { nativeSchema } from "./native-schema";
+import { captureDocument } from "./native-document";
 
 class AppHost {
   private spaces!: Spaces;
@@ -351,15 +352,30 @@ class AppHost {
       )
         continue;
       const changes = reset ? [] : journal.changes.slice(previous.version - (journal.version - journal.changes.length));
-      documents[identity] = {
-        state: session.getSnapshot(),
+      const state = session.getSnapshot();
+      const metadata = { ...state.metadata };
+      delete metadata.nativeDocument;
+      const exchange = {
+        state: { ...state, metadata },
         publication: session.publication,
         epoch: journal.epoch,
         version: journal.version,
         steps: changes.map((change) => change.step),
         clients: changes.map((change) => change.clientId),
-        reset,
       };
+      documents[identity] = reset
+        ? {
+            ...exchange,
+            reset: true,
+            state: {
+              ...exchange.state,
+              metadata: {
+                ...metadata,
+                nativeDocument: captureDocument(session.model.state.doc, state.text),
+              },
+            },
+          }
+        : { ...exchange, reset: false };
     }
     const library = this.documents.getSnapshot();
     const folders = new Set<string>();
