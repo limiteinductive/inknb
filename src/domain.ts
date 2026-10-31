@@ -228,10 +228,16 @@ export const proposalSchema = z.object({
     "rejected",
     "conflict",
     "superseded",
+    "withdrawn",
   ]),
   createdAt: z.string(),
   replaces: z.string().uuid().nullable().default(null),
   creator: agentIdentitySchema.optional(),
+  withdrawal: z.object({
+    reason: z.string().min(1),
+    agent: agentIdentitySchema,
+    createdAt: z.string(),
+  }).optional(),
 });
 
 export const metadataSchema = z

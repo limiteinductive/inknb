@@ -8,6 +8,8 @@ Direct edits require a connected agent and document edit access. Each change car
 
 Agents create comments with `annotation_create`. They attach suggestions with `edit_propose` and the returned thread identity. A human request is optional. The proposed passage can differ from the discussion passage. Suggestions require human acceptance. Legacy request permission fields remain historical metadata. `requests_list` reports the document's current access in its permission field.
 
+Suggestion corrections use an atomic `edit_propose` replacement. Pending and outdated proposals can be superseded in their existing suggestion aside. Superseded versions cannot be accepted. `edit_withdraw` cancels an unaccepted proposal with an attributed reason. Withdrawal preserves source text and proposal history. Superseding reference links reject targets with actionable suggestions.
+
 Accept all asides applies the current document's valid, non-overlapping suggestions in one Undo transaction. Existing suggestion lifecycle rules resolve the linked asides. Conflicting suggestions remain open.
 
 Table suggestions use one native table projection and one review bar. Structural comparison associates each proposal with its table. Projected source ranges identify changed cells. Preview transactions leave the document unchanged. Each acceptance uses the existing proposal revision and text checks.

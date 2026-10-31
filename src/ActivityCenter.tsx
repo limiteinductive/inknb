@@ -149,6 +149,7 @@ export default function ActivityCenter() {
         undone: "Undone",
         conflict: "Out of date",
         superseded: "Superseded",
+        withdrawn: "Withdrawn",
       }[proposal.status]
     : thread?.resolution?.outcome === "superseded"
       ? "Superseded"

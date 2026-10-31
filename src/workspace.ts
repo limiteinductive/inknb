@@ -19,6 +19,7 @@ import { DocumentSession } from "./session";
 import type { Bootstrap, DocumentHost, LoadedDocument } from "./session";
 import { sourceFormatSchema } from "./native-schema";
 import type { SourceFormat } from "./native-schema";
+import { pendingSuggestions } from "./suggestions";
 
 import { draftSchema } from "./images";
 const nodeSchema = z.object({
@@ -127,6 +128,7 @@ export class DocumentLibrary implements DocumentHost {
       documentId: reference.documentId,
       title: this.documentTitle(reference.documentId),
       references,
+      pendingSuggestions: pendingSuggestions(session!.getSnapshot().metadata, thread.id).map(proposal => proposal.id),
     };
   }
 

@@ -1,9 +1,20 @@
 import type { SessionState } from "./session";
-import type { Anchor, Proposal } from "./domain";
+import type { Anchor, Metadata, Proposal } from "./domain";
 import { relocateAnchor } from "./domain";
 import type { PreviewInfo } from "./preview-model";
 import type { DocumentSession } from "./session";
 import { asideExpanded } from "./aside-state";
+
+export function pendingSuggestions(metadata: Metadata, threadId: string): Proposal[] {
+  return metadata.proposals.filter(proposal =>
+    ["pending", "conflict"].includes(proposal.status) && (
+      proposal.threadId === threadId ||
+      metadata.threads.find(thread => thread.id === proposal.threadId)?.links.some(
+        link => link.relation === "suggestion_for" && link.documentId === metadata.documentId && link.threadId === threadId,
+      )
+    ),
+  );
+}
 
 export function currentSuggestions(state: SessionState): Proposal[] {
   return state.metadata.proposals

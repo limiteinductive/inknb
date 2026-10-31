@@ -77,17 +77,18 @@ export function planAutomation(
       if (!proposal || before?.status === proposal.status) return thread;
       if (proposal.status === "undone")
         return { ...thread, resolved: false, resolution: null };
-      if (!["applied", "rejected"].includes(proposal.status)) return thread;
+      if (!["applied", "rejected", "withdrawn"].includes(proposal.status)) return thread;
       return {
         ...thread,
         resolved: true,
         resolution: {
           reason:
-            proposal.status === "applied"
+            proposal.withdrawal?.reason ??
+            (proposal.status === "applied"
               ? "Suggestion applied."
-              : "Suggestion dismissed.",
+              : "Suggestion dismissed."),
           outcome: "done" as const,
-          actor,
+          actor: proposal.withdrawal ? agentAttribution(proposal.withdrawal.agent) : actor,
           createdAt: new Date().toISOString(),
           lastMessageId: thread.messages.at(-1)?.id ?? null,
         },
@@ -433,6 +434,8 @@ export function planAutomation(
         if (thread?.resolved) return { ...request, state: "answered" as const };
         const trigger = request.trigger;
         let superseded = false;
+        if (trigger.kind === "proposal_stale")
+          superseded = !next.proposals.some(proposal => proposal.id === trigger.proposalId && proposal.status === "conflict");
         if (trigger.kind === "source_changed") {
           const source = next.threads
             .flatMap((thread) => thread.messages)

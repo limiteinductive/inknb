@@ -23,7 +23,7 @@ import type { HostRequest, HostSnapshot } from "./host-protocol";
 import type { DocumentHost } from "./session";
 import type { Library, LibraryNode } from "./workspace";
 import { WindowDocument } from "./window-document";
-import { currentSuggestions, reviewSuggestion } from "./suggestions";
+import { currentSuggestions, pendingSuggestions, reviewSuggestion } from "./suggestions";
 
 export const compactLibraryWidth = 980;
 
@@ -326,6 +326,7 @@ class WindowWorkspace implements DocumentHost {
       thread,
       documentId: reference.documentId,
       title: this.documentTitle(reference.documentId),
+      pendingSuggestions: pendingSuggestions(session!.getSnapshot().metadata, thread.id).map(proposal => proposal.id),
       references: asideConnections(
         [...this.sessions.values()].map(
           (session) => session.getSnapshot().metadata,

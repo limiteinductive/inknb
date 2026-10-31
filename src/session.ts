@@ -12,7 +12,7 @@ import {
 import type { HistoryChange } from "./history";
 import { documentScroll } from "./document-scroll";
 import { revealAsideComposer } from "./aside-focus";
-import { nonOverlappingSuggestions } from "./suggestions";
+import { nonOverlappingSuggestions, pendingSuggestions } from "./suggestions";
 import type { WritingSurface } from "./document-surface";
 import type { PageDraft } from "./document-page";
 import { invoke } from "@tauri-apps/api/core";
@@ -254,6 +254,7 @@ export interface DocumentHost {
     documentId: string;
     title: string;
     references: AsideConnection[];
+    pendingSuggestions: string[];
   };
   openAside(reference: AsideReference): void;
 }
@@ -2789,14 +2790,16 @@ export class DocumentSession {
         parsed.target.threadId === parsed.threadId
       )
         throw Error("An aside cannot link to itself.");
-      if (this.host) this.host.readAside(parsed.target);
-      else if (
+      const target = this.host?.readAside(parsed.target);
+      if (!this.host && (
         parsed.target.documentId !== parsed.documentId ||
         !this.state.metadata.threads.some(
           (thread) => thread.id === parsed.target.threadId,
         )
-      )
-        throw Error("The target aside is unavailable.");
+      )) throw Error("The target aside is unavailable.");
+      const pendingSuggestionIds = target?.pendingSuggestions ?? pendingSuggestions(this.state.metadata, parsed.target.threadId).map(proposal => proposal.id);
+      if (parsed.relation === "supersedes" && pendingSuggestionIds.length)
+        throw Error(`This link cannot retire pending suggestions (${pendingSuggestionIds.join(", ")}). Use edit_propose with replaces, or edit_withdraw first.`);
       if (
         !thread.links.some(
           (link) =>
@@ -3621,6 +3624,36 @@ export class DocumentSession {
         { status: parsed.status, continuedIn: parsed.continuedIn, references: parsed.references, annotations: parsed.annotations },
       );
     }
+    if (method === "edit_withdraw") {
+      const parsed = z.object({
+        documentId: z.string().uuid(),
+        proposalId: z.string().uuid(),
+        reason: z.string().trim().min(1),
+      }).strict().parse(parameters);
+      if (parsed.documentId !== this.state.metadata.documentId)
+        throw Error("The document identity changed. Read document_read again.");
+      const proposal = this.state.metadata.proposals.find(candidate => candidate.id === parsed.proposalId);
+      if (!proposal) throw Error("This suggestion is unavailable.");
+      const agent = this.agent();
+      if (!agent) throw Error("Connect an agent before withdrawing a suggestion.");
+      if (proposal.status === "withdrawn") {
+        if (proposal.withdrawal?.reason !== parsed.reason)
+          throw Error("This suggestion was already withdrawn with another reason.");
+        return { proposalId: proposal.id, threadId: proposal.threadId, status: proposal.status };
+      }
+      if (!["pending", "conflict"].includes(proposal.status))
+        throw Error("Only pending or outdated suggestions can be withdrawn. Applied edits require a new suggestion.");
+      this.changed({
+        ...this.state.metadata,
+        proposals: this.state.metadata.proposals.map(candidate => candidate.id === proposal.id ? {
+          ...candidate,
+          status: "withdrawn" as const,
+          withdrawal: { reason: parsed.reason, agent, createdAt: new Date().toISOString() },
+        } : candidate),
+      });
+      await this.recover();
+      return { proposalId: proposal.id, threadId: proposal.threadId, status: "withdrawn" };
+    }
     if (method === "edit_propose" || method === "edit_apply") {
       const parsed = editSchema.parse(parameters);
       const annotation = parsed.annotationId ? this.state.metadata.annotations.find(annotation => annotation.id === parsed.annotationId) : null;
@@ -3651,21 +3684,22 @@ export class DocumentSession {
         parsed.threadId ?? null,
       );
       const creator = this.agent(request?.id);
+      const replaces = parsed.replaces ?? proposal.replaces;
       if (annotation) proposal.annotationId = annotation.id;
       if (creator) proposal.creator = creator;
       if (method === "edit_propose")
         this.model.sourceTransaction([{ from: proposal.from, to: proposal.to, insert: proposal.replacement }]);
       let threads = this.state.metadata.threads;
-      if (parsed.replaces) {
+      if (replaces) {
         const previous = this.state.metadata.proposals.find(
-          (candidate) => candidate.id === parsed.replaces,
+          (candidate) => candidate.id === replaces,
         );
         const owner = threads.find(
           (thread) => thread.id === previous?.threadId,
         );
         if (
           !previous ||
-          previous.status !== "conflict" ||
+          !["pending", "conflict"].includes(previous.status) ||
           !owner ||
           (owner.id !== proposal.threadId &&
             !owner.links.some(
@@ -3675,9 +3709,10 @@ export class DocumentSession {
                 link.threadId === proposal.threadId,
             ))
         )
-          throw Error("The outdated suggestion belongs to another discussion.");
+          throw Error("Replace a pending or outdated suggestion from the same discussion. Read aside_read for its current proposalId.");
         proposal.threadId = owner.id;
         proposal.turnId = proposalTurnId(this.state.metadata, previous, owner);
+        proposal.annotationId ??= previous.annotationId;
       }
       if (method === "edit_propose") {
         const thread = this.state.metadata.threads.find(
@@ -3689,7 +3724,7 @@ export class DocumentSession {
           );
         if (thread?.resolved)
           throw Error("Reopen the aside before adding a suggestion.");
-        if (thread?.kind === "suggestion" && parsed.replaces) {
+        if (thread?.kind === "suggestion" && replaces) {
           const anchor = captureAnchor(this.state.text, parsed);
           threads = threads.map((candidate) =>
             candidate.id === thread.id
@@ -3725,25 +3760,14 @@ export class DocumentSession {
           this.model.restoreAnchors({ [suggestion.id]: suggestion.anchor! });
         }
       }
-      if (parsed.replaces) {
-        proposal.replaces = parsed.replaces;
-        const previous = this.state.metadata.proposals.find(
-          (candidate) => candidate.id === parsed.replaces,
-        );
-        if (
-          !previous ||
-          previous.threadId !== proposal.threadId ||
-          previous.status !== "conflict"
-        )
-          throw new Error("The stale proposal no longer needs a replacement.");
-      }
+      proposal.replaces = replaces;
       this.changed({
         ...this.state.metadata,
         threads,
         annotations: this.state.metadata.annotations.map(candidate => candidate.id === annotation?.id && method === "edit_propose" ? { ...candidate, status: "waiting", continuedIn: { documentId: this.state.metadata.documentId, threadId: proposal.threadId! } } : candidate),
         proposals: [
           ...this.state.metadata.proposals.map((candidate) =>
-            candidate.id === parsed.replaces
+            candidate.id === replaces
               ? { ...candidate, status: "superseded" as const }
               : candidate,
           ),

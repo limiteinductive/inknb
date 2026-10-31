@@ -736,9 +736,9 @@ export function Conversation({
           <details className="turn-edits" data-turn-id={turn.id ?? "earlier-edits"}>
             <summary data-inknb-control={`turn.edits:${identity}:${turn.id ?? "earlier"}`}>
               {turn.id === null && thread.messages.length > 0 && "Earlier edits · "}
-              {(["applied", "pending", "conflict", "rejected", "undone"] as const).map((status) => {
+              {(["applied", "pending", "conflict", "rejected", "undone", "withdrawn"] as const).map((status) => {
                 const count = turn.proposals.filter((proposal) => proposal.status === status).length;
-                const label = { applied: "applied", pending: "pending", conflict: "out of date", rejected: "dismissed", undone: "undone" }[status];
+                const label = { applied: "applied", pending: "pending", conflict: "out of date", rejected: "dismissed", undone: "undone", withdrawn: "withdrawn" }[status];
                 return count ? `${count} ${count === 1 ? "edit" : "edits"} ${label}` : null;
               }).filter(Boolean).join(" · ")}
             </summary>
