@@ -15,10 +15,10 @@ interface PaletteCommand {
   label: string;
   shortcut?: string;
   disabled?: boolean;
+  detail?: string;
 }
 
 interface PaletteOption extends PaletteCommand {
-  detail?: string;
   select: () => Promise<void>;
 }
 
@@ -51,7 +51,7 @@ export default function CommandPalette({ session }: { session?: WindowDocument }
       { id: "comment", label: "Add aside" },
       { id: "asides", label: state.asidesOpen && !state.focus ? "Hide asides" : "Show asides" },
       { id: "review", label: `Review suggestions${proposals.length ? ` (${proposals.length})` : ""}`, disabled: !proposals.length },
-      { id: "accept-asides", label: `Accept all asides${acceptable.length ? ` (${acceptable.length})` : ""}`, disabled: !acceptable.length },
+      { id: "accept-asides", label: `Accept all suggestions${acceptable.length ? ` (${acceptable.length})` : ""}`, disabled: !acceptable.length, detail: proposals.length > acceptable.length ? `${proposals.length - acceptable.length} overlapping suggestions need individual review.` : undefined },
       { id: "resolve-asides", label: `Resolve all asides${resolvable.length ? ` (${resolvable.length})` : ""}`, disabled: !resolvable.length },
       { id: "outline", label: state.outlineOpen ?? state.preferences.document_outline ? "Hide document outline" : "Show document outline" },
       { id: "history", label: "Document history" },

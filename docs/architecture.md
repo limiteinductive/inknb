@@ -10,7 +10,7 @@ Agents create comments with `annotation_create`. They attach suggestions with `e
 
 Suggestion corrections use an atomic `edit_propose` replacement. Pending and outdated proposals can be superseded in their existing suggestion aside. Superseded versions cannot be accepted. `edit_withdraw` cancels an unaccepted proposal with an attributed reason. Withdrawal preserves source text and proposal history. Superseding reference links reject targets with actionable suggestions.
 
-Accept all asides applies the current document's valid, non-overlapping suggestions in one Undo transaction. Existing suggestion lifecycle rules resolve the linked asides. Conflicting suggestions remain open.
+Accept all suggestions applies the current document's valid, non-overlapping changes in one Undo transaction. Identical suggestions at the same source range apply once and all receive the applied status. Existing suggestion lifecycle rules resolve the linked asides. Distinct overlapping suggestions remain open. The palette reports how many need individual review. The existing `accept-asides` shortcut identity remains valid.
 
 Table suggestions use one native table projection and one review bar. Structural comparison associates each proposal with its table. Projected source ranges identify changed cells. Preview transactions leave the document unchanged. Each acceptance uses the existing proposal revision and text checks.
 

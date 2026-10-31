@@ -34,9 +34,14 @@ export function currentSuggestions(state: SessionState): Proposal[] {
 export function nonOverlappingSuggestions(state: SessionState): Proposal[] {
   const proposals = currentSuggestions(state);
   return proposals.filter((proposal) => !proposals.some((other) =>
-    other.id !== proposal.id && (other.from === proposal.from ||
+    other.id !== proposal.id && !sameSuggestionChange(other, proposal) && (other.from === proposal.from ||
       (other.from < proposal.to && proposal.from < other.to)),
   ));
+}
+
+export function sameSuggestionChange(first: Proposal, second: Proposal): boolean {
+  return first.from === second.from && first.to === second.to &&
+    first.expectedText === second.expectedText && first.replacement === second.replacement;
 }
 
 export function earlierSuggestions(state: SessionState): Proposal[] {

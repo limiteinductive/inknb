@@ -14,7 +14,7 @@
   {"id": "selection-comment","label": "Send selection as aside","scope": "application","defaults": ["Mod+Shift+Enter"],"repeat": false},
   {"id": "comment-region","label": "Comment on region","scope": "application","defaults": []},
   {"id": "resolve-asides","label": "Resolve all asides","scope": "application","defaults": []},
-  {"id": "accept-asides","label": "Accept all asides","scope": "application","defaults": []},
+  {"id": "accept-asides","label": "Accept all suggestions","scope": "application","defaults": []},
   {"id": "focus","label": "Toggle focus mode","scope": "application","defaults": ["Mod+Shift+KeyF"]},
   {"id": "find","label": "Find in document","scope": "application","defaults": ["Mod+KeyF"]},
   {"id": "preview","label": "Open published output","scope": "application","defaults": ["Mod+Shift+KeyP"]},

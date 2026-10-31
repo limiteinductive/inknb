@@ -1807,7 +1807,7 @@ fn main() {
                 .item(&MenuItem::with_id(app, "comment-document", "Add file aside", true, None::<&str>)?)
                 .item(&MenuItem::with_id(app, "comment-region", "Comment on Region…", true, None::<&str>)?)
                 .item(&MenuItem::with_id(app, "resolve-asides", "Resolve All Asides", true, None::<&str>)?)
-                .item(&MenuItem::with_id(app, "accept-asides", "Accept All Asides", true, None::<&str>)?)
+                .item(&MenuItem::with_id(app, "accept-asides", "Accept All Suggestions", true, None::<&str>)?)
                 .build()?;
             let view = SubmenuBuilder::new(app, "View")
                 .item(&MenuItem::with_id(app, "commands", "Commands…", true, None::<&str>)?)

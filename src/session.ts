@@ -12,7 +12,7 @@ import {
 import type { HistoryChange } from "./history";
 import { documentScroll } from "./document-scroll";
 import { revealAsideComposer } from "./aside-focus";
-import { nonOverlappingSuggestions, pendingSuggestions } from "./suggestions";
+import { nonOverlappingSuggestions, pendingSuggestions, sameSuggestionChange } from "./suggestions";
 import type { WritingSurface } from "./document-surface";
 import type { PageDraft } from "./document-page";
 import { invoke } from "@tauri-apps/api/core";
@@ -1896,7 +1896,10 @@ export class DocumentSession {
     const accepted = nonOverlappingSuggestions(this.state);
     if (!accepted.length) return [];
     if (!this.model) throw Error("The document model is not ready.");
-    const transaction = this.model.sourceTransaction(accepted.map((proposal) => ({
+    const changes = accepted.filter((proposal, index) =>
+      accepted.findIndex(candidate => sameSuggestionChange(candidate, proposal)) === index,
+    );
+    const transaction = this.model.sourceTransaction(changes.map((proposal) => ({
       from: proposal.from, to: proposal.to, insert: proposal.replacement,
     })));
     const operations = z.record(z.string(), z.literal("applied")).parse(transaction.doc.attrs.operations);
