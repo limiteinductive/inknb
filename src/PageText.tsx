@@ -36,6 +36,7 @@ export default function PageText({ bounds, assets }: { bounds: PageNodeBounds; a
     let receiving = false;
     const shortcuts = new ShortcutResolver();
     const view = new EditorView(host.current, {
+      editable: () => session.getWorkingSnapshot().editorMode === "edit",
       handleKeyDown: (view, event) => shortcuts.handle(event, session.getSnapshot().preferences, "editor", identity => {
         if (identity === "editor.bold") return toggleMark(nativeSchema.marks.strong)(view.state, view.dispatch, view);
         if (identity === "editor.italic") return toggleMark(nativeSchema.marks.em)(view.state, view.dispatch, view);
@@ -50,7 +51,7 @@ export default function PageText({ bounds, assets }: { bounds: PageNodeBounds; a
         doc: initial,
         plugins: [keymap(baseKeymap), new Plugin({ props: { decorations: (local) => DecorationSet.create(local.doc, suggestionMarkers(session.getWorkingSnapshot(), model.projection, local.doc, model.node(identity).position)) } })],
       }),
-      attributes: { class: "page-region-content", "data-shortcut-scope": "editor", "aria-label": target.node.textContent ? `Edit ${target.node.textContent.slice(0, 80)}` : "New note", spellcheck: "true" },
+      attributes: () => ({ class: "page-region-content", "data-shortcut-scope": "editor", "aria-label": target.node.textContent.slice(0, 80) || "New note", "aria-readonly": String(session.getWorkingSnapshot().editorMode !== "edit"), role: "textbox", tabindex: "0", spellcheck: "true" }),
       markViews: { link: linkMarkView },
       nodeViews: {
         image: (node) => {
@@ -83,8 +84,12 @@ export default function PageText({ bounds, assets }: { bounds: PageNodeBounds; a
       },
       dispatchTransaction: (transaction) => {
         if (receiving) return;
+        if (transaction.docChanged || transaction.storedMarksSet) {
+          try { session.requireEditMode(); } catch (error) { session.fail(error); return; }
+        }
         const next = view.state.apply(transaction);
         const pending = session.getWorkingSnapshot().pageDrafts[identity];
+        if (pending && session.getWorkingSnapshot().editorMode !== "edit") { view.updateState(next); return; }
         const expected = pending?.expectedContent ?? nativeObject(view.state.doc.firstChild!);
         try {
           const current = model.node(identity);
@@ -116,7 +121,7 @@ export default function PageText({ bounds, assets }: { bounds: PageNodeBounds; a
     });
     editor.current = view;
     const synchronize = () => {
-      if (session.getWorkingSnapshot().pageDrafts[identity]) return;
+      if (session.getWorkingSnapshot().pageDrafts[identity]) { view.updateState(view.state); return; }
       let present = false;
       model.state.doc.descendants((node) => { if (node.attrs.identity === identity) present = true; });
       if (!present) return;

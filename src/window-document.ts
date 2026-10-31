@@ -261,8 +261,15 @@ export class WindowDocument extends DocumentSession {
     return this.sending;
   }
 
+  requireEditMode(): void {
+    if (this.getWorkingSnapshot().editorMode !== "edit")
+      throw Error("Switch to Edit mode to change the manuscript.");
+  }
+
   async undoNative(): Promise<void> {
+    this.requireEditMode();
     await this.flush();
+    this.requireEditMode();
     await this.request({
       kind: "undo",
       documentId: this.confirmed.metadata.documentId,
@@ -270,7 +277,9 @@ export class WindowDocument extends DocumentSession {
     await this.refreshHost();
   }
   async redoNative(): Promise<void> {
+    this.requireEditMode();
     await this.flush();
+    this.requireEditMode();
     await this.request({
       kind: "redo",
       documentId: this.confirmed.metadata.documentId,
@@ -280,6 +289,7 @@ export class WindowDocument extends DocumentSession {
 
   private async action(action: AsideAction): Promise<unknown> {
     await this.flush();
+    if (action.kind === "accept-all" || (action.kind === "proposal" && action.accept)) this.requireEditMode();
     const result = await this.request({
       kind: "aside",
       documentId: this.confirmed.metadata.documentId,
@@ -381,6 +391,7 @@ export class WindowDocument extends DocumentSession {
     return z.array(z.string().uuid()).parse(await this.action({ kind: "resolve-all" }));
   }
   override async acceptAllProposals(): Promise<string[]> {
+    this.requireEditMode();
     return z.array(z.string().uuid()).parse(await this.action({ kind: "accept-all" }));
   }
   override reanchor(
@@ -392,6 +403,7 @@ export class WindowDocument extends DocumentSession {
     );
   }
   override async proposal(proposalId: string, accept: boolean): Promise<void> {
+    if (accept) this.requireEditMode();
     await this.action({ kind: "proposal", proposalId, accept });
   }
   override hideComponent(componentId: string): void {
@@ -473,6 +485,15 @@ export class WindowDocument extends DocumentSession {
     return result;
   }
   override async command(command: string): Promise<void> {
+    if (command === "editor-mode") {
+      if (this.view?.editor.composing)
+        throw Error("Finish composing text before switching modes.");
+      await this.view?.pasteQueue;
+      const mode = this.getWorkingSnapshot().editorMode;
+      this.update({ editorMode: mode === "edit" ? "render" : "edit" });
+      this.view?.refresh();
+      return;
+    }
     if (command === "selection-comment") {
       if (this.sendingSelection) return;
       const model = this.model;

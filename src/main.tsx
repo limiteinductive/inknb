@@ -55,6 +55,7 @@ function DocumentApp({ active }: { active: boolean }) {
   const state = useSession();
   const historyOpen = active && library.commandSurface === "history";
   const editorHost = useRef<HTMLDivElement>(null);
+  const modeFocus = useRef<HTMLElement | null>(null);
   useLayoutEffect(() => {
     if (!state.ready || !editorHost.current) return;
     let view: NativeEditor;
@@ -112,6 +113,19 @@ function DocumentApp({ active }: { active: boolean }) {
         <AgentConnections open={library.commandSurface === "agents"} onOpenChange={open => workspace.update({ commandSurface: open ? "agents" : null })} />
         <LinkedResources open={library.commandSurface === "resources"} onOpenChange={open => workspace.update({ commandSurface: open ? "resources" : null })} />
       </>}
+      {active && <div className="manuscript-mode">
+        <Button className="text-button" aria-label={shortcutTooltip(`Switch to ${state.editorMode === "edit" ? "Render" : "Edit"} mode`, "editor-mode", state.preferences)} aria-pressed={state.editorMode === "edit"} data-inknb-control="document.mode" onPointerDown={() => {
+          const target = document.activeElement;
+          modeFocus.current = target instanceof HTMLElement && session.surface?.dom.contains(target) ? target : null;
+        }} onPress={() => void session.command("editor-mode").then(() => {
+          const target = modeFocus.current;
+          modeFocus.current = null;
+          if (target?.isConnected) target.focus({ preventScroll: true });
+          else session.surface?.focus();
+        }).catch(error => session.fail(error))}>
+          {state.editorMode === "edit" ? "Edit" : "Render"}
+        </Button>
+      </div>}
       {active && <DocumentHistory active open={historyOpen} presentation="modal" onOpenChange={open => workspace.update({ commandSurface: open ? "history" : null })} />}
       <AsideLayout
         active={active}

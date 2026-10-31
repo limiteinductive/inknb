@@ -181,7 +181,7 @@ export function InlineSuggestion({ identity }: { identity: string }) {
       <div className="inline-suggestion-actions">
         <Button
           className="primary-button"
-          isDisabled={busy}
+          isDisabled={busy || state.editorMode !== "edit"}
           onPress={() => void decide(true)}
           data-inknb-control={`proposal.accept:${identity}`}
         >

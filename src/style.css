@@ -2192,3 +2192,13 @@ del[data-change="removed"] {
 .library-heading .history-controls {
   margin-inline-end: auto;
 }
+
+.manuscript-mode {
+  position: absolute;
+  top: 0;
+  right: var(--space-4);
+  height: var(--toolbar-height, 52px);
+  display: flex;
+  align-items: center;
+  z-index: 9;
+}

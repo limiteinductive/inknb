@@ -1,4 +1,5 @@
 [
+  {"id": "editor-mode","label": "Toggle Edit and Render modes","scope": "application","defaults": ["Mod+KeyM"],"repeat": false},
   {"id": "commands","label": "Commands","scope": "application","defaults": ["Mod+KeyP"]},
   {"id": "project-search","label": "Search project","scope": "application","defaults": ["Mod+KeyK"]},
   {"id": "sidebar","label": "Toggle library","scope": "application","defaults": ["Mod+Backslash"]},

@@ -125,6 +125,7 @@ export class NativeEditor extends NativeDocumentModel {
   private focusedAside: string | null = null;
   private destroyed = false;
   private pastes = new Set<PasteTarget>();
+  private equations = new Set<MathfieldElement>();
   pasteQueue = Promise.resolve();
   private links = new LinkGesture(
     () => this.session.getWorkingSnapshot().path,
@@ -329,6 +330,7 @@ export class NativeEditor extends NativeDocumentModel {
     MathfieldElement.fontsDirectory = null;
     const shortcuts = new ShortcutResolver();
     this.editor = new EditorView(host, {
+      editable: () => session.getWorkingSnapshot().editorMode === "edit",
       handleKeyDown: (view, event) => shortcuts.handle(event, session.getSnapshot().preferences, "editor", identity => {
         if (identity.startsWith("editor.heading-")) return setBlockType(nativeSchema.nodes.heading, { level: Number(identity.slice(-1)) })(view.state, view.dispatch, view);
         const commands: Record<string, Command> = {
@@ -354,6 +356,9 @@ export class NativeEditor extends NativeDocumentModel {
         class: "native-content",
         "data-shortcut-scope": "editor",
         "aria-label": "Document",
+        "aria-readonly": String(session.getWorkingSnapshot().editorMode !== "edit"),
+        role: "textbox",
+        tabindex: "0",
         spellcheck: "true",
         "data-inknb-control": "manuscript",
         "data-native-identity": String(document.attrs.identity),
@@ -362,6 +367,7 @@ export class NativeEditor extends NativeDocumentModel {
       }),
       dispatchTransaction: (transaction) => {
         try {
+          if (transaction.docChanged || transaction.storedMarksSet) session.requireEditMode();
           this.commit(transaction);
         } catch (error) {
           session.fail(error);
@@ -444,6 +450,10 @@ export class NativeEditor extends NativeDocumentModel {
       },
       handleDOMEvents: {
         drop: (_view, event) => {
+          if (session.getWorkingSnapshot().editorMode !== "edit") {
+            event.preventDefault();
+            return true;
+          }
           if (!event.dataTransfer?.types.includes(annotationTransferType)) return false;
           event.preventDefault();
           return true;
@@ -475,6 +485,10 @@ export class NativeEditor extends NativeDocumentModel {
           return true;
         },
         paste: (_view, event) => {
+          if (session.getWorkingSnapshot().editorMode !== "edit") {
+            event.preventDefault();
+            return true;
+          }
           const files = clipboardImages(event.clipboardData);
           if (!files.length) return false;
           event.preventDefault();
@@ -511,6 +525,7 @@ export class NativeEditor extends NativeDocumentModel {
                   documentPosition(this.projection, target.anchor.to, -1),
                 ),
               );
+              session.requireEditMode();
               this.applyAtomic(
                 state.tr
                   .setSelection(selection)
@@ -679,6 +694,8 @@ export class NativeEditor extends NativeDocumentModel {
     element.contentEditable = "false";
     const field = new MathfieldElement();
     element.append(field);
+    this.equations.add(field);
+    field.readOnly = this.session.getWorkingSnapshot().editorMode !== "edit";
     field.setAttribute("value", String(node.attrs.value));
     field.mathVirtualKeyboardPolicy = "manual";
     field.setAttribute(
@@ -690,6 +707,10 @@ export class NativeEditor extends NativeDocumentModel {
         ? "native-equation"
         : "native-equation native-equation-block";
     field.addEventListener("input", () => {
+      if (this.session.getWorkingSnapshot().editorMode !== "edit") {
+        field.setValue(String(node.attrs.value), { silenceNotifications: true });
+        return;
+      }
       const position = getPosition();
       if (position === undefined) return;
       const current = view.state.doc.nodeAt(position);
@@ -718,10 +739,12 @@ export class NativeEditor extends NativeDocumentModel {
     });
     return {
       dom: element,
+      destroy: () => this.equations.delete(field),
       stopEvent: () => true,
       ignoreMutation: () => true,
       update: (next: DocumentNode) => {
         if (next.type !== node.type) return false;
+        node = next;
         if (field.value !== next.attrs.value)
           field.setValue(String(next.attrs.value), {
             silenceNotifications: true,
@@ -793,11 +816,11 @@ export class NativeEditor extends NativeDocumentModel {
           if (path) await invoke("image_export", { data, path });
         } },
         { text: "Open Image", action: () => invoke<void>("open_reference", { documentPath, reference }) },
-        { text: "Delete Image", action: () => {
+        ...(this.session.getWorkingSnapshot().editorMode === "edit" ? [{ text: "Delete Image", action: () => {
           select();
           this.editor.dispatch(this.editor.state.tr.deleteSelection().scrollIntoView());
           this.editor.focus();
-        } },
+        } }] : []),
       ],
       aside: () => { select(); this.session.startComment(); },
       region: () => { select(); this.region.start(); },
@@ -817,16 +840,17 @@ export class NativeEditor extends NativeDocumentModel {
     return {
       actions: [
         { text: "Select table", action: select },
-        { text: "Delete table", action: () => {
+        ...(this.session.getWorkingSnapshot().editorMode === "edit" ? [{ text: "Delete table", action: () => {
           select();
           this.editor.dispatch(this.editor.state.tr.deleteSelection().scrollIntoView());
-        } },
+        } }] : []),
       ],
       aside: () => { select(); this.session.startComment(); },
     };
   }
 
   contextActions(): { text: string; action: () => void }[] {
+    if (this.session.getWorkingSnapshot().editorMode !== "edit") return [];
     const state = this.editor.state;
     const commands = [
       { text: "Bold", command: toggleMark(nativeSchema.marks.strong) },
@@ -952,6 +976,8 @@ export class NativeEditor extends NativeDocumentModel {
 
   refresh(): void {
     if (!this.destroyed) {
+      const readOnly = this.session.getWorkingSnapshot().editorMode !== "edit";
+      for (const field of this.equations) field.readOnly = readOnly;
       this.editor.updateState(this.editor.state);
       this.measureTables();
       this.positionRegionHighlight();

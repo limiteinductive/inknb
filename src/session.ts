@@ -149,6 +149,7 @@ interface SavedDocument {
   sidecarHash: string;
 }
 export interface SessionState {
+  editorMode: "render" | "edit";
   profile: string | null;
   ready: boolean;
   epoch: number;
@@ -277,6 +278,7 @@ export class DocumentSession {
     );
   }
   private state: SessionState = {
+    editorMode: "edit",
     ready: false,
     epoch: 0,
     text: "",
@@ -409,6 +411,7 @@ export class DocumentSession {
     if (
       this.view &&
       (patch.metadata ||
+        patch.editorMode !== undefined ||
         patch.threadReads ||
         patch.threadExpansions ||
         patch.asidesOpen !== undefined ||
@@ -3513,6 +3516,7 @@ export class DocumentSession {
         placement: this.state.preferences.placement,
         preferences: this.state.preferences,
         focusMode: this.state.focus,
+        editorMode: this.state.editorMode,
         asidesOpen: this.state.asidesOpen,
         asideReader: this.state.asideReader,
         asideNarrow: this.state.asideNarrow,

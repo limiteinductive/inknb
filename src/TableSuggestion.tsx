@@ -294,7 +294,7 @@ export default function TableSuggestion({ identity }: { identity: string }) {
           icon={Check}
           label="Accept selected change"
           agentControl={`proposal.accept:${selected.id}`}
-          disabled={busy}
+          disabled={busy || state.editorMode !== "edit"}
           onPress={() => void decide(true)}
         />
         <IconButton

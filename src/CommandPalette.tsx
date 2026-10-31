@@ -48,10 +48,11 @@ export default function CommandPalette({ session }: { session?: WindowDocument }
     { id: "activity", label: "Notifications" },
     { id: "decisions", label: "Decisions" },
     ...(state ? [
+      { id: "editor-mode", label: state.editorMode === "edit" ? "Switch to Render mode" : "Switch to Edit mode" },
       { id: "comment", label: "Add aside" },
       { id: "asides", label: state.asidesOpen && !state.focus ? "Hide asides" : "Show asides" },
       { id: "review", label: `Review suggestions${proposals.length ? ` (${proposals.length})` : ""}`, disabled: !proposals.length },
-      { id: "accept-asides", label: `Accept all asides${acceptable.length ? ` (${acceptable.length})` : ""}`, disabled: !acceptable.length },
+      { id: "accept-asides", label: `Accept all asides${acceptable.length ? ` (${acceptable.length})` : ""}`, disabled: state.editorMode !== "edit" || !acceptable.length },
       { id: "resolve-asides", label: `Resolve all asides${resolvable.length ? ` (${resolvable.length})` : ""}`, disabled: !resolvable.length },
       { id: "outline", label: state.outlineOpen ?? state.preferences.document_outline ? "Hide document outline" : "Show document outline" },
       { id: "history", label: "Document history" },

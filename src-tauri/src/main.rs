@@ -1810,6 +1810,7 @@ fn main() {
                 .item(&MenuItem::with_id(app, "accept-asides", "Accept All Asides", true, None::<&str>)?)
                 .build()?;
             let view = SubmenuBuilder::new(app, "View")
+                .item(&MenuItem::with_id(app, "editor-mode", "Toggle Edit and Render Modes", true, None::<&str>)?)
                 .item(&MenuItem::with_id(app, "commands", "Commands…", true, None::<&str>)?)
                 .item(&MenuItem::with_id(app, "project-search", "Search Project…", true, None::<&str>)?)
                 .item(&MenuItem::with_id(app, "sidebar", "Toggle Library", true, None::<&str>)?)
@@ -1835,7 +1836,7 @@ fn main() {
                     if let Some(window) = app.webview_windows().into_values().find(|window|window.is_focused().unwrap_or(false)) { let _ = editing_action(window, action); }
                     return;
                 }
-                if ["comment", "comment-document", "resolve-asides", "window-close", "undo", "redo", "find"].contains(&event.id().as_ref()) {
+                if ["comment", "comment-document", "resolve-asides", "window-close", "undo", "redo", "find", "editor-mode"].contains(&event.id().as_ref()) {
                     if let Some(window) = app.webview_windows().values().find(|window| window.label() == "preview" && window.is_focused().unwrap_or(false)) {
                         let _ = window.emit_to(window.label(), "inknb-preview-menu", event.id().as_ref());
                         return;
