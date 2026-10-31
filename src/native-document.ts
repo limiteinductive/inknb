@@ -1,5 +1,5 @@
 import { z } from "zod";
-import type { Node as DocumentNode } from "prosemirror-model";
+import { Fragment, type Node as DocumentNode } from "prosemirror-model";
 import { importMarkdown } from "./native-markdown";
 import { importHtml } from "./native-html";
 import { importLatex } from "./native-latex";
@@ -33,6 +33,21 @@ interface ContentRange {
 
 const sourceProjections = new WeakMap<DocumentNode, SourceProjection>();
 const capturedDocuments = new WeakMap<DocumentNode, NativeDocument>();
+const capturedContent = new WeakMap<DocumentNode, NativeDocument["content"]>();
+const contentSchema = z.record(z.string(), z.json());
+
+function captureContent(document: DocumentNode): NativeDocument["content"] {
+  const saved = capturedContent.get(document);
+  if (saved) return saved;
+  const captured = contentSchema.parse(document.copy(Fragment.empty).toJSON());
+  if (document.childCount) {
+    const children: NativeDocument["content"][] = [];
+    document.forEach((child) => children.push(captureContent(child)));
+    captured.content = children;
+  }
+  capturedContent.set(document, captured);
+  return captured;
+}
 
 export function contentRanges(document: DocumentNode): {
   text: string;
@@ -244,12 +259,12 @@ export function captureDocument(
   if ((saved?.source ?? projectDocument(document).text) !== source)
     throw Error("The native document does not match its source projection.");
   if (saved) return saved;
-  const captured = nativeDocumentSchema.parse({
+  const captured: NativeDocument = {
     version: 3,
     format: sourceFormatSchema.parse(document.attrs.format),
     source,
-    content: z.json().parse(document.toJSON()),
-  });
+    content: captureContent(document),
+  };
   capturedDocuments.set(document, captured);
   return captured;
 }

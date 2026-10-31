@@ -48,6 +48,8 @@ The rendering design is `long-term`. Writing views classify table suggestions in
 
 Immutable native documents retain their source projection, serialized snapshot, and node identity index in weak caches. Selection transactions retain passage anchors. Document transactions map and recapture those anchors against the new content.
 
+Serialized snapshots reuse immutable node content. Each node validates its own attributes and marks once. Imported snapshots retain full schema validation.
+
 The document host indexes aside references across the library. Document snapshots carry outgoing references and backlinks. Linked labels update through document publication. Conversation cards read these references from their session state.
 
 Each immutable session snapshot owns shared current, visible, and earlier suggestion queues. The queue arrays are read-only. Marker decoration passes build one visibility set.
