@@ -103,3 +103,7 @@ Build checks verify component contracts. Screenshot inspection verifies composit
 
 
 Passage annotations use the shared note material, control radius, spacing, and elevation. The comment field grows from one line. The field has no border or focus perimeter. The caret shows text focus. An annotation reserves space above its source paragraph. Multiple annotations on one paragraph stack in that space. The reservation changes no document content. Clicking an annotation adds context to the active reply. Dragging is optional. Written annotations remain visible when focus changes. Passage context sits above the reply, with the comment above its source excerpt. Citation text remains selectable. Reply citations remain editable.
+
+A text button in the writing window's upper-right corner names its current Render or Edit mode. Its accessible label names the destination mode and configured shortcut; its pressed state identifies Edit. The control remains visible when the library or asides are hidden and does not add a manuscript toolbar. Review acceptance is disabled in Render while review, dismissal, and aside controls remain available.
+
+Edit displays literal source in a monospaced editor with line numbers and wrapped long lines. Its text, selection, active line, gutters, and spacing use the shared tokens in both appearances. Render displays the read-only formatted document. The same mode button and Command+M shortcut switch between these surfaces without adding a second toolbar.

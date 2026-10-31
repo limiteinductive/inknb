@@ -106,20 +106,19 @@ export default function PassageAnnotations({ active }: { active: boolean }) {
           quote,
         };
       } else if (
-        session.view?.dom.contains(container) &&
+        session.surface?.dom.contains(container) &&
         !element?.closest(".margin-note")
       ) {
-        const selection = session.view.selection;
+        const selection = current.editorMode === "edit" ? current.selection : session.view!.selection;
         if (selection.to > selection.from) {
-          const anchor = session.model!.capture(
-            captureAnchor(current.text, selection),
-          );
+          const sourceAnchor = captureAnchor(current.text, selection);
+          const anchor = current.editorMode === "edit" ? sourceAnchor : session.model!.capture(sourceAnchor);
           source = {
             kind: "document",
             documentId: current.metadata.documentId,
             revision: current.metadata.revision,
             anchor,
-            quote: session.view.passageText(anchor),
+            quote: current.editorMode === "edit" ? current.text.slice(selection.from, selection.to) : session.view!.passageText(anchor),
           };
         }
       }

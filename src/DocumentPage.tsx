@@ -130,7 +130,9 @@ export default function DocumentPage() {
   }, [geometry, focusIdentity, session]);
   const move = async (identity: string, container: string, beforeIdentity: string | null) => {
     try {
+      session.requireEditMode();
       await session.flush();
+      session.requireEditMode();
       await session.request({ kind: "move-node", documentId: state.metadata.documentId, revision: session.getWorkingSnapshot().metadata.revision, identity, parentIdentity: container, beforeIdentity });
       await session.refreshHost();
     } catch (error) { setError(String(error)); session.fail(error); }
@@ -172,13 +174,13 @@ export default function DocumentPage() {
       if (target.node.isTextblock) return <PageText key={bounds.identity} bounds={bounds} assets={assets} />;
       return <div key={bounds.identity} data-page-identity={bounds.identity} className={`page-bound-region ${destination === bounds.identity ? "page-drop-target" : ""}`} style={{ left: bounds.left, top: bounds.top, width: bounds.width, height: bounds.height }} />;
     })}
-    {containers.map((container) => <Button className="page-add-note text-button" key={container.identity} aria-label={`Add note to ${container.label || "container"}`} style={{ left: container.left, top: container.top + container.height + 6 }} onPress={() => {
-      void session.flush().then(() => session.request({ kind: "insert-note", documentId: state.metadata.documentId, revision: session.getWorkingSnapshot().metadata.revision, parentIdentity: container.identity })).then((result) => {
+    {state.editorMode === "edit" && containers.map((container) => <Button className="page-add-note text-button" key={container.identity} aria-label={`Add note to ${container.label || "container"}`} style={{ left: container.left, top: container.top + container.height + 6 }} onPress={() => {
+      void session.flush().then(() => { session.requireEditMode(); return session.request({ kind: "insert-note", documentId: state.metadata.documentId, revision: session.getWorkingSnapshot().metadata.revision, parentIdentity: container.identity }); }).then((result) => {
         setFocusIdentity(z.object({ textIdentity: z.string().uuid() }).passthrough().parse(result).textIdentity);
         return session.refreshHost();
       }).catch((error) => { setError(String(error)); session.fail(error); });
     }}><Plus size={14} aria-hidden="true" />Add note</Button>)}
-    {items.map((item) => <button key={item.identity} type="button" className="page-move-handle icon-button" aria-label={`Move ${nodes.get(item.identity)?.node.textContent.slice(0, 80) || "note"}`} style={{ left: item.left - 20, top: item.top }}
+    {state.editorMode === "edit" && items.map((item) => <button key={item.identity} type="button" className="page-move-handle icon-button" aria-label={`Move ${nodes.get(item.identity)?.node.textContent.slice(0, 80) || "note"}`} style={{ left: item.left - 20, top: item.top }}
       onPointerDown={(event) => {
         if (event.button !== 0) return;
         suppressClick.current = false;

@@ -25,6 +25,7 @@ import { getCurrentWindow } from "@tauri-apps/api/window";
 import AsideLayout from "./AsideLayout";
 import DocumentHistory from "./DocumentHistory";
 import { NativeEditor } from "./native-editor";
+import { SourceEditor } from "./source-editor";
 import { SessionContext, useDocumentSession, useSession } from "./use-session";
 import { appHost } from "./app-host";
 import { compactLibraryWidth, workspace } from "./window-workspace";
@@ -55,16 +56,20 @@ function DocumentApp({ active }: { active: boolean }) {
   const state = useSession();
   const historyOpen = active && library.commandSurface === "history";
   const editorHost = useRef<HTMLDivElement>(null);
+  const sourceHost = useRef<HTMLDivElement>(null);
   useLayoutEffect(() => {
-    if (!state.ready || !editorHost.current) return;
+    if (!state.ready || !editorHost.current || !sourceHost.current) return;
     let view: NativeEditor;
     try {
       view = new NativeEditor(editorHost.current, session);
+      session.sourceView = new SourceEditor(sourceHost.current, session);
     } catch (error) {
       session.fail(error);
       return;
     }
     return () => {
+      session.sourceView?.destroy();
+      session.sourceView = null;
       session.view = null;
       view.destroy();
     };
@@ -86,7 +91,7 @@ function DocumentApp({ active }: { active: boolean }) {
   }, [state.ready, state.epoch]);
   useLayoutEffect(() => {
     if (active && state.ready) session.restoreFocus();
-  }, [active, state.ready, state.epoch, state.composer]);
+  }, [active, state.ready, state.epoch, state.composer, state.editorMode]);
   useEffect(() => {
     if (!active) return;
     const name =
@@ -112,6 +117,11 @@ function DocumentApp({ active }: { active: boolean }) {
         <AgentConnections open={library.commandSurface === "agents"} onOpenChange={open => workspace.update({ commandSurface: open ? "agents" : null })} />
         <LinkedResources open={library.commandSurface === "resources"} onOpenChange={open => workspace.update({ commandSurface: open ? "resources" : null })} />
       </>}
+      {active && <div className="manuscript-mode">
+        <Button className="text-button" aria-label={shortcutTooltip(`Switch to ${state.editorMode === "edit" ? "Render" : "Edit"} mode`, "editor-mode", state.preferences)} aria-pressed={state.editorMode === "edit"} data-inknb-control="document.mode" onPress={() => void session.command("editor-mode").catch(error => session.fail(error))}>
+          {state.editorMode === "edit" ? "Edit" : "Render"}
+        </Button>
+      </div>}
       {active && <DocumentHistory active open={historyOpen} presentation="modal" onOpenChange={open => workspace.update({ commandSurface: open ? "history" : null })} />}
       <AsideLayout
         active={active}
@@ -122,8 +132,9 @@ function DocumentApp({ active }: { active: boolean }) {
         <main className="workspace">
           <DocumentOutline active={active} />
           <div className="writing-region">
-            <div className="editor-host" ref={editorHost} hidden={state.pageVisible && Boolean(state.metadata.page)} />
-            {state.pageVisible && state.metadata.page && <Suspense fallback={<p className="preview-placeholder">Opening page…</p>}><DocumentPage /></Suspense>}
+            <div className="source-editor-host" ref={sourceHost} hidden={state.editorMode !== "edit"} />
+            <div className="editor-host" ref={editorHost} hidden={state.editorMode === "edit" || (state.pageVisible && Boolean(state.metadata.page))} />
+            {state.editorMode === "render" && state.pageVisible && state.metadata.page && <Suspense fallback={<p className="preview-placeholder">Opening page…</p>}><DocumentPage /></Suspense>}
           </div>
         </main>
       </AsideLayout>
@@ -145,6 +156,8 @@ function App() {
     (error) => workspace.fail(error),
     () => {
       const view = workspace.active?.view;
+      if (view && workspace.active?.getSnapshot().editorMode === "edit")
+        return { undo: () => view.undo(), redo: () => view.redo(), actions: [], image: () => undefined, table: () => undefined };
       return view
         ? {
             undo: () => view.undo(),

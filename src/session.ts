@@ -14,6 +14,7 @@ import { documentScroll } from "./document-scroll";
 import { revealAsideComposer } from "./aside-focus";
 import { nonOverlappingSuggestions, pendingSuggestions } from "./suggestions";
 import type { WritingSurface } from "./document-surface";
+import type { SourceEditor } from "./source-editor";
 import type { PageDraft } from "./document-page";
 import { invoke } from "@tauri-apps/api/core";
 import type { AsideDraft } from "./images";
@@ -149,6 +150,7 @@ interface SavedDocument {
   sidecarHash: string;
 }
 export interface SessionState {
+  editorMode: "render" | "edit";
   profile: string | null;
   ready: boolean;
   epoch: number;
@@ -268,8 +270,9 @@ interface ReadSnapshot {
 export class DocumentSession {
   constructor(readonly host?: DocumentHost) {}
   writingSurface: WritingSurface | null = null;
+  sourceView: SourceEditor | null = null;
   get surface(): WritingSurface | null {
-    return this.writingSurface ?? this.view;
+    return this.state.editorMode === "edit" && this.sourceView ? this.sourceView : this.writingSurface ?? this.view;
   }
   get agentAccess(): "read" | "edit" {
     return (
@@ -278,6 +281,7 @@ export class DocumentSession {
     );
   }
   private state: SessionState = {
+    editorMode: "edit",
     ready: false,
     epoch: 0,
     text: "",
@@ -410,6 +414,7 @@ export class DocumentSession {
     if (
       this.view &&
       (patch.metadata ||
+        patch.editorMode !== undefined ||
         patch.threadReads ||
         patch.threadExpansions ||
         patch.asidesOpen !== undefined ||
@@ -2105,7 +2110,10 @@ export class DocumentSession {
   async command(command: string): Promise<void> {
     try {
       if (command === "comment-region") this.view?.region.start();
-      if (command === "find") this.view?.openFind();
+      if (command === "find") {
+        if (this.state.editorMode === "edit" && this.sourceView) this.sourceView.openFind();
+        else this.view?.openFind();
+      }
       if (command === "undo" || command === "redo") {
         const active = document.activeElement;
         if (active && this.surface?.dom.contains(active)) this.view?.[command]();
@@ -3516,6 +3524,7 @@ export class DocumentSession {
         placement: this.state.preferences.placement,
         preferences: this.state.preferences,
         focusMode: this.state.focus,
+        editorMode: this.state.editorMode,
         asidesOpen: this.state.asidesOpen,
         asideReader: this.state.asideReader,
         asideNarrow: this.state.asideNarrow,

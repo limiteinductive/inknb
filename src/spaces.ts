@@ -9,6 +9,7 @@ export const asideReaderSchema = z.object({
 });
 
 export const documentViewSchema = z.object({
+  editorMode: z.enum(["render", "edit"]).default("render"),
   selection: selectionSchema.default({ from: 0, to: 0 }),
   scrollTop: z.number().nonnegative().default(0),
   activeThread: z.string().uuid().nullable().default(null),

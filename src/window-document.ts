@@ -17,6 +17,7 @@ import { NativeDocumentModel } from "./native-model";
 import { save } from "@tauri-apps/plugin-dialog";
 
 export class WindowDocument extends DocumentSession {
+  private renderSelection: { from: number; to: number } | null = null;
   epochIdentity: string;
   version: number;
   confirmedPublication: number;
@@ -261,8 +262,15 @@ export class WindowDocument extends DocumentSession {
     return this.sending;
   }
 
+  requireEditMode(): void {
+    if (this.getWorkingSnapshot().editorMode !== "edit")
+      throw Error("Switch to Edit mode to change the manuscript.");
+  }
+
   async undoNative(): Promise<void> {
+    this.requireEditMode();
     await this.flush();
+    this.requireEditMode();
     await this.request({
       kind: "undo",
       documentId: this.confirmed.metadata.documentId,
@@ -270,7 +278,9 @@ export class WindowDocument extends DocumentSession {
     await this.refreshHost();
   }
   async redoNative(): Promise<void> {
+    this.requireEditMode();
     await this.flush();
+    this.requireEditMode();
     await this.request({
       kind: "redo",
       documentId: this.confirmed.metadata.documentId,
@@ -280,6 +290,7 @@ export class WindowDocument extends DocumentSession {
 
   private async action(action: AsideAction): Promise<unknown> {
     await this.flush();
+    if (action.kind === "accept-all" || (action.kind === "proposal" && action.accept)) this.requireEditMode();
     const result = await this.request({
       kind: "aside",
       documentId: this.confirmed.metadata.documentId,
@@ -381,6 +392,7 @@ export class WindowDocument extends DocumentSession {
     return z.array(z.string().uuid()).parse(await this.action({ kind: "resolve-all" }));
   }
   override async acceptAllProposals(): Promise<string[]> {
+    this.requireEditMode();
     return z.array(z.string().uuid()).parse(await this.action({ kind: "accept-all" }));
   }
   override reanchor(
@@ -392,6 +404,7 @@ export class WindowDocument extends DocumentSession {
     );
   }
   override async proposal(proposalId: string, accept: boolean): Promise<void> {
+    if (accept) this.requireEditMode();
     await this.action({ kind: "proposal", proposalId, accept });
   }
   override hideComponent(componentId: string): void {
@@ -473,14 +486,34 @@ export class WindowDocument extends DocumentSession {
     return result;
   }
   override async command(command: string): Promise<void> {
+    if (command === "editor-mode") {
+      if (this.view?.editor.composing || this.sourceView?.editor.composing)
+        throw Error("Finish composing text before switching modes.");
+      await this.view?.pasteQueue;
+      const { editorMode: mode, selection } = this.getWorkingSnapshot();
+      this.update({ editorMode: mode === "edit" ? "render" : "edit" });
+      if (mode === "edit" && this.sourceView) {
+        const { from, to } = this.sourceView.selection;
+        this.view?.selectSource(from, to);
+        this.renderSelection = this.getWorkingSnapshot().selection;
+      } else if (this.sourceView && (!this.renderSelection || selection.from !== this.renderSelection.from || selection.to !== this.renderSelection.to)) {
+        this.sourceView.selectSource(selection.from, selection.to);
+      }
+      this.view?.refresh();
+      return;
+    }
     if (command === "selection-comment") {
       if (this.sendingSelection) return;
       const model = this.model;
       const selected = model?.state.selection;
-      if (!model || !(selected instanceof TextSelection) || selected.empty || !this.surface?.dom.contains(document.activeElement))
-        throw Error("Select text in the document to send as an aside.");
       const snapshot = this.getWorkingSnapshot();
-      const anchor = model.capture(captureAnchor(snapshot.text, snapshot.selection));
+      const empty = snapshot.editorMode === "edit"
+        ? snapshot.selection.from === snapshot.selection.to
+        : !(selected instanceof TextSelection) || selected.empty;
+      if (!model || empty || !this.surface?.dom.contains(document.activeElement))
+        throw Error("Select text in the document to send as an aside.");
+      const sourceAnchor = captureAnchor(snapshot.text, snapshot.selection);
+      const anchor = snapshot.editorMode === "edit" ? sourceAnchor : model.capture(sourceAnchor);
       this.sendingSelection = true;
       try {
         const receipt = z.object({ threadId: z.string().uuid() }).parse(await this.action({ kind: "selection-comment", anchor }));
