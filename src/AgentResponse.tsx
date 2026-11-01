@@ -27,7 +27,7 @@ export function ResponseBody({
   content,
   assets,
   onReference,
-  references = [],
+  references,
   field = "content",
   messageId,
 }: {
@@ -40,10 +40,12 @@ export function ResponseBody({
 }) {
   const session = useAsideSession();
   const identity = useId();
+  const imageAssets = Object.keys(assets).length ? assets : undefined;
+  const citations = references?.length ? references : undefined;
   const html = useMemo(
     () => {
       const element = document.createElement("div");
-      element.innerHTML = renderMarkdown(content, assets).html.replaceAll(
+      element.innerHTML = renderMarkdown(content, imageAssets).html.replaceAll(
         'id="source-',
         `id="${identity}-source-`,
       );
@@ -58,7 +60,7 @@ export function ResponseBody({
         offset += node.length;
         const fragment = document.createDocumentFragment();
         let from = 0;
-        for (const reference of references) {
+        for (const reference of citations ?? []) {
           const label = content.slice(reference.from, reference.to);
           const position = text.indexOf(label);
           const begin = Math.max(from, position - start);
@@ -78,7 +80,7 @@ export function ResponseBody({
       }
       return element.innerHTML;
     },
-    [content, assets, identity, references],
+    [content, imageAssets, identity, citations],
   );
   return (
     <div
@@ -89,7 +91,7 @@ export function ResponseBody({
         if (!(event.target instanceof Element)) return;
         if (!window.getSelection()?.isCollapsed) { event.preventDefault(); return; }
         const citation = event.target.closest<HTMLElement>("[data-passage-citation]");
-        const reference = references.find(reference => reference.id === citation?.dataset.passageCitation);
+        const reference = citations?.find(reference => reference.id === citation?.dataset.passageCitation);
         if (reference) { event.preventDefault(); void session.control("passage_reveal", reference.source).catch(error => session.fail(error)); return; }
         const link = event.target.closest<HTMLAnchorElement>(
           "a[data-inknb-reference]",

@@ -50,6 +50,8 @@ Immutable native documents retain their source projection, serialized snapshot, 
 
 Serialized snapshots reuse immutable node content. Each node validates its own attributes and marks once. Imported snapshots retain full schema validation.
 
+Response HTML retains its markup for stable text, asset, and citation inputs. Empty assets and citations use stable memo keys.
+
 The document host indexes aside references across the library. Document snapshots carry outgoing references and backlinks. Linked labels update through document publication. Conversation cards read these references from their session state.
 
 Each immutable session snapshot owns shared current, visible, and earlier suggestion queues. The queue arrays are read-only. Marker decoration passes build one visibility set.
