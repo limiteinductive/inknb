@@ -32,6 +32,10 @@ export const draftSchema = z.object({
 });
 export type AsideDraft = z.infer<typeof draftSchema>;
 
+export function draftSnapshot(draft: AsideDraft | undefined): string | undefined {
+  return JSON.stringify(draft && draftSchema.parse(draft));
+}
+
 export function clipboardImages(data: DataTransfer | null): File[] {
   return Array.from(data?.files ?? []).filter((file) =>
     file.type.startsWith("image/"),

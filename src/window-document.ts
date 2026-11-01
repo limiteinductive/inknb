@@ -17,6 +17,7 @@ import type { NativeUpdate } from "./native-model";
 import { NativeDocumentModel } from "./native-model";
 import { captureDocument } from "./native-document";
 import { save } from "@tauri-apps/plugin-dialog";
+import { draftSnapshot } from "./images";
 
 export class WindowDocument extends DocumentSession {
   epochIdentity: string;
@@ -333,8 +334,8 @@ export class WindowDocument extends DocumentSession {
     content: string,
     threadId?: string,
   ): Promise<CommentReceipt> {
-    const before = this.getWorkingSnapshot();
     const draftKey = threadId ?? "new";
+    const before = draftSnapshot(this.getWorkingSnapshot().drafts[draftKey]);
     const receipt = z
       .object({ threadId: z.string().uuid() })
       .parse(await this.action({ kind: "comment", content, threadId }));
@@ -348,18 +349,18 @@ export class WindowDocument extends DocumentSession {
       composerAnchor: null,
       composerPreviewAnchor: null,
       drafts:
-        JSON.stringify(state.drafts[draftKey]) === JSON.stringify(before.drafts[draftKey])
+        draftSnapshot(state.drafts[draftKey]) === before
           ? { ...state.drafts, [draftKey]: { content: "", images: [] } }
           : state.drafts,
     });
     return receipt;
   }
   async commitAnnotation(key: string): Promise<void> {
-    const before = this.getWorkingSnapshot().drafts[key];
+    const before = draftSnapshot(this.getWorkingSnapshot().drafts[key]);
     await this.action({ kind: "annotation-commit", key });
     const state = this.getWorkingSnapshot();
     const drafts = { ...state.drafts };
-    if (JSON.stringify(state.drafts[key]) === JSON.stringify(before)) delete drafts[key];
+    if (draftSnapshot(state.drafts[key]) === before) delete drafts[key];
     this.update({ drafts });
   }
   async dismissAnnotation(annotationId: string): Promise<void> {
@@ -369,11 +370,11 @@ export class WindowDocument extends DocumentSession {
     this.update({ drafts });
   }
   async sendAnnotation(key: string): Promise<CommentReceipt> {
-    const before = this.getWorkingSnapshot().drafts[key];
+    const before = draftSnapshot(this.getWorkingSnapshot().drafts[key]);
     const receipt = z.object({ threadId: z.string().uuid() }).parse(await this.action({ kind: "annotation-send", key }));
     const state = this.getWorkingSnapshot();
     const drafts = { ...state.drafts };
-    if (JSON.stringify(state.drafts[key]) === JSON.stringify(before)) delete drafts[key];
+    if (draftSnapshot(state.drafts[key]) === before) delete drafts[key];
     this.update({ asidesOpen: true, focus: false, drafts });
     this.selectThread(receipt.threadId);
     return receipt;
