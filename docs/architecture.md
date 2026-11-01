@@ -72,7 +72,9 @@ Writing windows apply local typing immediately. ProseMirror collaboration steps 
 
 The document session owns the synchronization journal and its absolute version. Writing windows acknowledge applied versions. The journal releases steps acknowledged by every subscribed window. Closed windows and removed document subscriptions release their claims. Undo history and pending-window recovery retain their separate state.
 
-Reset exchanges carry a full native document. Each writing window retains its confirmed native document and applies subsequent journal steps to it. Incremental exchanges carry steps and document metadata. Pending input rebases against the confirmed document.
+Document owners and writing windows share reading and navigation behavior through DocumentReader. DocumentSession owns agent mutations, file persistence, recovery, and the synchronization journal. WindowDocument owns local editing, selection, drafts, and view state. It sends explicit host actions for document mutations and permissions.
+
+Reset exchanges carry a full native document and published document data. Each writing window retains its confirmed native document and applies subsequent journal steps to it. Published document data excludes window-owned drafts, selection, and review state. Incremental publications carry source changes, metadata fields, and changed records. Message changes retain their individual identities. A publication names its base version. Each window has an independent publication baseline. An unavailable baseline sends replacement document data without resetting the native editor or pending input. Closing a window or removing its document releases the baseline. Pending input rebases against the confirmed document. Rebased recovery records persist after background synchronization.
 
 Source transactions replace the differing native content range and changed document attributes. Unchanged document content retains its identity through synchronization.
 

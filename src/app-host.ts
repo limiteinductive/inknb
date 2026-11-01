@@ -20,6 +20,8 @@ import { linkedResourceSchema, parseDocumentLink, resourceActionSchema } from ".
 import type { ResourceAction, ResourceState } from "./resources";
 import { nativeSchema } from "./native-schema";
 import { captureDocument } from "./native-document";
+import { documentState, publishDocument } from "./document-publication";
+import type { DocumentState } from "./document-publication";
 
 class AppHost {
   private spaces!: Spaces;
@@ -29,6 +31,7 @@ class AppHost {
   private operations = Promise.resolve<unknown>(null);
   private ready = false;
   private activityTargets = new Map<string, string>();
+  private publications = new Map<string, Map<string, { publication: number; state: DocumentState }>>();
 
   async start(): Promise<void> {
     const hostWindow = getCurrentWindow();
@@ -320,6 +323,11 @@ class AppHost {
     if (!window.open) throw Error("This writing window is closed.");
     const space = this.spaces.space(window.spaceId);
     const documents: Record<string, DocumentExchange> = {};
+    let publications = this.publications.get(windowId);
+    if (!publications) {
+      publications = new Map();
+      this.publications.set(windowId, publications);
+    }
     const identities = [
       ...new Set([
         ...space.documentIds,
@@ -331,6 +339,8 @@ class AppHost {
           .map(([identity]) => identity),
       ]),
     ];
+    for (const identity of publications.keys())
+      if (!identities.includes(identity)) publications.delete(identity);
     for (const [identity, session] of this.documents.sessions) {
       const previous = versions[identity];
       if (previous?.epoch === session.journal.epoch)
@@ -352,11 +362,9 @@ class AppHost {
       )
         continue;
       const changes = reset ? [] : journal.changes.slice(previous.version - (journal.version - journal.changes.length));
-      const state = session.getSnapshot();
-      const metadata = { ...state.metadata };
-      delete metadata.nativeDocument;
+      const state = documentState(session.getSnapshot());
+      const saved = publications.get(identity);
       const exchange = {
-        state: { ...state, metadata },
         publication: session.publication,
         epoch: journal.epoch,
         version: journal.version,
@@ -368,14 +376,20 @@ class AppHost {
             ...exchange,
             reset: true,
             state: {
-              ...exchange.state,
+              ...state,
               metadata: {
-                ...metadata,
+                ...state.metadata,
                 nativeDocument: captureDocument(session.model.state.doc, state.text),
               },
             },
           }
-        : { ...exchange, reset: false };
+        : {
+            ...exchange, reset: false,
+            update: saved?.publication === previous.publication
+              ? publishDocument(saved.state, state, saved.publication)
+              : { kind: "snapshot", state },
+          };
+      publications.set(identity, { publication: session.publication, state });
     }
     const library = this.documents.getSnapshot();
     const folders = new Set<string>();
@@ -492,6 +506,7 @@ class AppHost {
       return opened;
     }
     if (request.kind === "close-window") {
+      this.publications.delete(windowId);
       this.spaces.updateWindow(windowId, { open: false });
       for (const session of this.documents.sessions.values()) session.journal.forget(windowId);
       await this.persist();

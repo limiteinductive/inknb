@@ -1,7 +1,7 @@
 import { z } from "zod";
 import type { Metadata, Preferences } from "./domain";
 import type { NativeDocument } from "./native-schema";
-import type { SessionState } from "./session";
+import type { DocumentState, DocumentPublication } from "./document-publication";
 import type { LibraryEntry, LibraryNode } from "./workspace";
 import { spaceWindowSchema } from "./spaces";
 import type { SpacesState } from "./spaces";
@@ -113,15 +113,11 @@ export type DocumentExchange = {
 } & (
   | {
       reset: true;
-      state: SessionState & {
-        metadata: Metadata & { nativeDocument: NativeDocument };
-      };
+      state: DocumentState & { metadata: Metadata & { nativeDocument: NativeDocument } };
     }
   | {
       reset: false;
-      state: Omit<SessionState, "metadata"> & {
-        metadata: Omit<Metadata, "nativeDocument">;
-      };
+      update: DocumentPublication;
     }
 );
 export interface HostSnapshot {

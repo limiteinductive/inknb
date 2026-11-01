@@ -75,10 +75,7 @@ export default function AgentConnections({ open, onOpenChange }: { open: boolean
             className="permission"
             isSelected={state.agentAccess === "edit"}
             onChange={(enabled) =>
-              session.changed({
-                ...state.metadata,
-                agentAccess: enabled ? "edit" : "read",
-              })
+              session.setAgentAccess(enabled ? "edit" : "read")
             }
           >
             <span className="switch-track">
@@ -90,7 +87,7 @@ export default function AgentConnections({ open, onOpenChange }: { open: boolean
             <Button
               className="text-button"
               onPress={() =>
-                session.changed({ ...state.metadata, agentAccess: null })
+                session.setAgentAccess(null)
               }
             >
               Use app default

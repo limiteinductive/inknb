@@ -146,6 +146,7 @@ class WindowWorkspace implements DocumentHost {
           (space) => space.id === window?.spaceId,
         );
         if (!window || !space) throw Error("This space window is unavailable.");
+        let pendingRecoveryChanged = false;
         this.receiving = true;
         try {
           if (
@@ -159,8 +160,11 @@ class WindowWorkspace implements DocumentHost {
             snapshot.documents,
           )) {
             const existing = this.sessions.get(identity);
-            if (existing) existing.receive(exchange);
-            else {
+            if (existing) {
+              const pendingSource = existing.getSnapshot().pendingSource;
+              existing.receive(exchange);
+              pendingRecoveryChanged ||= shareValue(pendingSource, existing.getSnapshot().pendingSource) !== pendingSource;
+            } else {
               if (!exchange.reset)
                 throw Error("Opening a document requires a full snapshot.");
               const session = new WindowDocument(
@@ -246,6 +250,7 @@ class WindowWorkspace implements DocumentHost {
         } finally {
           this.receiving = false;
         }
+        if (pendingRecoveryChanged) this.update({});
         const acknowledgements = Object.fromEntries(Object.keys(snapshot.documents).flatMap(identity => {
           const session = this.sessions.get(identity);
           return session?.model ? [[identity, { epoch: session.epochIdentity, version: getVersion(session.model.state) }]] : [];

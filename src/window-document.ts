@@ -4,8 +4,10 @@ import { Step, Transform } from "prosemirror-transform";
 import type { Node as DocumentNode } from "prosemirror-model";
 import { z } from "zod";
 import { resolvedAsideView } from "./aside-state";
-import { DocumentSession } from "./session";
+import { DocumentReader } from "./document-reader";
+import type { DocumentSession } from "./session";
 import { shareMetadata, shareValue } from "./snapshot-sharing";
+import { documentState, receiveDocument } from "./document-publication";
 import type { CommentReceipt, DocumentHost, SessionState } from "./session";
 import type { Binding, Metadata, Selection } from "./domain";
 import { captureAnchor, mapAnchor } from "./domain";
@@ -20,7 +22,7 @@ import { captureDocument } from "./native-document";
 import { save } from "@tauri-apps/plugin-dialog";
 import { draftSnapshot } from "./images";
 
-export class WindowDocument extends DocumentSession {
+export class WindowDocument extends DocumentReader {
   epochIdentity: string;
   version: number;
   confirmedPublication: number;
@@ -45,7 +47,7 @@ export class WindowDocument extends DocumentSession {
     this.epochIdentity = exchange.epoch;
     this.version = exchange.version;
     this.confirmedPublication = exchange.publication;
-    this.confirmed = exchange.state;
+    this.confirmed = { ...this.getWorkingSnapshot(), ...exchange.state };
     const from = Math.min(view.selection.from, exchange.state.text.length);
     this.update({
       ...exchange.state,
@@ -84,13 +86,11 @@ export class WindowDocument extends DocumentSession {
     this.model.commit(transaction);
   }
 
-  override prepareModel(): void {
+  prepareModel(): void {
     this.model = new NativeDocumentModel(this, [
       collab({ version: this.version, clientID: this.clientId }),
     ]);
   }
-
-  override getSnapshot = (): SessionState => this.getWorkingSnapshot();
 
   receive(exchange: DocumentExchange): void {
     const current = this.getWorkingSnapshot();
@@ -105,7 +105,7 @@ export class WindowDocument extends DocumentSession {
       this.epochIdentity = exchange.epoch;
       this.version = exchange.version;
       this.confirmedPublication = exchange.publication;
-      this.confirmed = exchange.state;
+      this.confirmed = { ...this.getWorkingSnapshot(), ...exchange.state };
       this.update({
         ...exchange.state,
         ...documentViewSchema.parse(current),
@@ -120,6 +120,7 @@ export class WindowDocument extends DocumentSession {
     if (exchange.epoch !== this.epochIdentity)
       throw Error("A new document epoch requires a full snapshot.");
     if (exchange.version < this.version) return;
+    const published = receiveDocument(documentState(this.confirmed), this.confirmedPublication, exchange.update);
     this.receiving = true;
     try {
       const steps = exchange.steps.map((step) =>
@@ -142,10 +143,11 @@ export class WindowDocument extends DocumentSession {
         confirmedDocument = confirmed.doc;
       }
       const state: SessionState = {
-        ...exchange.state,
+        ...this.confirmed,
+        ...published,
         metadata: {
-          ...exchange.state.metadata,
-          nativeDocument: captureDocument(confirmedDocument, exchange.state.text),
+          ...published.metadata,
+          nativeDocument: captureDocument(confirmedDocument, published.text),
         },
       };
       const source = this.model?.source.toString() ?? state.text;
@@ -181,6 +183,7 @@ export class WindowDocument extends DocumentSession {
         ...state,
         ...documentViewSchema.parse(local),
         drafts: local.drafts,
+        pendingSource: this.pendingWriting(),
         asideNarrow: local.asideNarrow,
         ...resolvedAsideView(local, state.metadata.threads
           .filter((thread) => thread.resolved && local.metadata.threads.some((previous) => previous.id === thread.id && !previous.resolved))
@@ -210,7 +213,7 @@ export class WindowDocument extends DocumentSession {
     }
   }
 
-  override onEditorUpdate(update: NativeUpdate): void {
+  onEditorUpdate(update: NativeUpdate): void {
     if (!update.docChanged) {
       this.update({ selection: update.selection });
       return;
@@ -240,19 +243,20 @@ export class WindowDocument extends DocumentSession {
     });
   }
 
+  private pendingWriting(): SessionState["pendingSource"] {
+    if (this.sourceChanged) return this.state.pendingSource;
+    const pending = this.model ? sendableSteps(this.model.state) : null;
+    return shareValue(this.state.pendingSource, pending ? {
+      baseText: this.confirmed.text,
+      text: this.model!.source.toString(),
+      steps: pending.steps.map(step => step.toJSON()),
+      selection: this.model!.state.selection.toJSON(),
+    } : null);
+  }
+
   committed(): void {
     if (this.receiving || this.sourceChanged) return;
-    const pending = this.model ? sendableSteps(this.model.state) : null;
-    this.update({
-      pendingSource: pending
-        ? {
-            baseText: this.confirmed.text,
-            text: this.model!.source.toString(),
-            steps: pending.steps.map((step) => step.toJSON()),
-            selection: this.model!.state.selection.toJSON(),
-          }
-        : null,
-    });
+    this.update({ pendingSource: this.pendingWriting() });
     void this.flush().catch((error) => this.fail(error));
   }
 
@@ -320,24 +324,16 @@ export class WindowDocument extends DocumentSession {
     return result;
   }
 
-  override changed(
-    metadata: Metadata = this.getWorkingSnapshot().metadata,
-  ): void {
-    const previous = this.getWorkingSnapshot().metadata;
-    if (
-      JSON.stringify({ ...metadata, agentAccess: previous.agentAccess }) !==
-      JSON.stringify(previous)
-    )
-      throw Error("Document changes must go through the app host.");
+  setAgentAccess(permission: Metadata["agentAccess"]): void {
     void this.request({
       kind: "permission",
-      documentId: metadata.documentId,
-      permission: metadata.agentAccess,
+      documentId: this.state.metadata.documentId,
+      permission,
     })
       .then(() => this.refreshHost())
       .catch((error) => this.fail(error));
   }
-  override async comment(
+  async comment(
     content: string,
     threadId?: string,
   ): Promise<CommentReceipt> {
@@ -397,7 +393,7 @@ export class WindowDocument extends DocumentSession {
     );
   }
 
-  override resolve(threadId: string, restoreFocus = true): void {
+  resolve(threadId: string, restoreFocus = true): void {
     void this.action({ kind: "resolve", threadId, restoreFocus: false })
       .then(() => {
         if (this.getSnapshot().metadata.threads.find(thread => thread.id === threadId)?.resolved)
@@ -412,7 +408,7 @@ export class WindowDocument extends DocumentSession {
   override async acceptAllProposals(): Promise<string[]> {
     return z.array(z.string().uuid()).parse(await this.action({ kind: "accept-all" }));
   }
-  override reanchor(
+  reanchor(
     threadId: string,
     selection: Selection = this.getWorkingSnapshot().selection,
   ): void {
@@ -420,25 +416,25 @@ export class WindowDocument extends DocumentSession {
       this.fail(error),
     );
   }
-  override async proposal(proposalId: string, accept: boolean): Promise<void> {
+  async proposal(proposalId: string, accept: boolean): Promise<void> {
     await this.action({ kind: "proposal", proposalId, accept });
   }
-  override hideComponent(componentId: string): void {
+  hideComponent(componentId: string): void {
     void this.action({ kind: "component-hide", componentId }).catch((error) =>
       this.fail(error),
     );
   }
-  override componentMessage(
+  componentMessage(
     componentId: string,
     message: Parameters<DocumentSession["componentMessage"]>[1],
   ): Promise<unknown> {
     return this.action({ kind: "component-message", componentId, message });
   }
-  override async answerDecision(decisionId: string, option: number | null, text: string): Promise<void> {
+  async answerDecision(decisionId: string, option: number | null, text: string): Promise<void> {
     await this.action({ kind: "decision-answer", decisionId, option, text });
   }
 
-  override async bind(
+  async bind(
     binding: Binding | null,
     documentId: string,
   ): Promise<void> {
@@ -490,7 +486,7 @@ export class WindowDocument extends DocumentSession {
         "window_resize",
       ].includes(method)
     )
-      return super.control(method, parameters);
+      return this.controlView(method, parameters);
     await this.flush();
     const result = await this.request({
       kind: "document",
@@ -530,23 +526,21 @@ export class WindowDocument extends DocumentSession {
       }
       return command === "undo" ? this.undoNative() : this.redoNative();
     }
-    if (command === "save-as") {
-      const path = await save({
-        defaultPath: this.getSnapshot().path ?? undefined,
-      });
-      if (path) await this.control("document_save", { path });
-      return;
-    }
+    if (command === "save-as") return this.saveAs();
     if (command === "preview")
       return this.host?.detachPreview(this.confirmed.metadata.documentId);
-    return super.command(command);
+    if (command === "save") return this.persist();
+    if (command === "close") return this.host?.close();
+    await this.readerCommand(command);
   }
-  override async recover(): Promise<void> {}
-  override async persist(): Promise<void> {
+  async saveAs(): Promise<void> {
+    const path = await save({ defaultPath: this.getSnapshot().path ?? undefined });
+    if (path) await this.control("document_save", { path });
+  }
+  async persist(): Promise<void> {
     await this.control("document_save", {});
   }
-  override async load(path: string): Promise<void> {
+  async load(path: string): Promise<void> {
     await this.host?.openDocument(path);
   }
-  override async checkFiles(): Promise<void> {}
 }
