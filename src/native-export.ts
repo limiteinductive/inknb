@@ -558,7 +558,8 @@ export function originalProjection(document: DocumentNode): SourceProjection {
 }
 
 export function plainProjection(document: DocumentNode): SourceProjection {
-  let text = "";
+  const preserveSource = sourceFormatSchema.parse(document.attrs.syntax ?? document.attrs.format) === "text";
+  let text = preserveSource ? String(document.attrs.prefix ?? "") : "";
   const spans: SourceSpan[] = [];
   const render = (node: DocumentNode, position: number) => {
     if (node.isText) {
@@ -591,11 +592,16 @@ export function plainProjection(document: DocumentNode): SourceProjection {
       return;
     }
     node.forEach((child, offset, index) => {
-      if (index && !node.inlineContent)
-        text += node.type.name === "table_row" ? "\t" : "\n\n";
+      if (index && !node.inlineContent) {
+        let before = node.type.name === "table_row" ? "\t" : "\n\n";
+        if (preserveSource && node.type.name !== "table_row" && typeof child.attrs.before === "string" && child.attrs.before)
+          before = child.attrs.before;
+        text += before;
+      }
       render(child, position + offset + (node.type.name === "doc" ? 0 : 1));
     });
   };
   render(document, 0);
+  if (preserveSource) text += String(document.attrs.suffix ?? "");
   return { text, spans };
 }

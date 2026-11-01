@@ -54,6 +54,8 @@ Response HTML retains its markup for stable text, asset, and citation inputs. Em
 
 Each immutable metadata snapshot owns indexes of threads, requests, and proposal relationships. Conversation cards and activity receipts share these indexes. Proposal groups retain source order and include direct ownership, request ownership, and local suggestion links.
 
+Plain-text files retain their original leading whitespace, paragraph gaps, and trailing whitespace during native edits.
+
 The document host indexes aside references across the library. Document snapshots carry outgoing references and backlinks. Linked labels update through document publication. Conversation cards read these references from their session state.
 
 Each immutable session snapshot owns shared current, visible, and earlier suggestion queues. The queue arrays are read-only. Marker decoration passes build one visibility set.
