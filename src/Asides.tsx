@@ -61,13 +61,14 @@ import ReferenceEditor from "./ReferenceEditor";
 import PassageText from "./PassageText";
 import AnnotationContext from "./AnnotationContext";
 import CommentRecipients from "./CommentRecipients";
+import { metadataIndex } from "./metadata-index";
 
 function AsidePassage({ threadId }: { threadId?: string }) {
   const session = useAsideSession();
   const state = useAsideState();
   const documentSession = useContext(SessionContext);
   const thread = threadId
-    ? state.metadata.threads.find((thread) => thread.id === threadId)
+    ? metadataIndex(state.metadata).threads.get(threadId)
     : null;
   const anchor = threadId ? thread?.anchor : state.composerAnchor;
   const preview = threadId
@@ -362,9 +363,8 @@ export function Conversation({
   const followMessages = useRef(true);
   const [copiedReference, setCopiedReference] = useState<string | null>(null);
   const references = state.asideReferences[identity] ?? [];
-  const thread = state.metadata.threads.find(
-    (thread) => thread.id === identity,
-  );
+  const index = metadataIndex(state.metadata);
+  const thread = index.threads.get(identity);
   const activity = thread ? threadActivity(state.metadata, thread) : null;
   const latestMessage = thread?.messages.at(-1);
   useLayoutEffect(() => {
@@ -420,19 +420,12 @@ export function Conversation({
     };
   }, [session, identity, activity]);
   if (!thread) return null;
-  const requests = state.metadata.requests.filter(
-    (request) => request.threadId === identity,
-  );
+  const requests = index.threadRequests.get(identity) ?? [];
   const latest = requests.at(-1);
-  const proposals = state.metadata.proposals.filter(
-    (proposal) =>
-      proposal.threadId === identity && proposal.status !== "superseded",
+  const proposals = (index.threadProposals.get(identity) ?? []).filter(
+    (proposal) => proposal.status !== "superseded",
   );
-  const turnProposals = state.metadata.proposals.filter((proposal) => proposal.status !== "superseded" && (
-    proposal.threadId === identity ||
-    state.metadata.requests.some((request) => request.id === proposal.requestId && request.threadId === identity) ||
-    state.metadata.threads.find((owner) => owner.id === proposal.threadId)?.links.some((link) => link.relation === "suggestion_for" && link.documentId === state.metadata.documentId && link.threadId === identity)
-  ));
+  const turnProposals = index.turnProposals.get(identity) ?? [];
   const turns: { id: string | null; messages: Message[]; proposals: Proposal[] }[] = [];
   for (const message of thread.messages) {
     if (message.author === "human" || !turns.length)

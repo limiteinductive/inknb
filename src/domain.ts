@@ -15,6 +15,7 @@ import {
   previewReferenceSchema,
 } from "./preview-model";
 import type { PreviewAnchor } from "./preview-model";
+import { metadataIndex } from "./metadata-index";
 
 export const sourceSchema = z.object({
   id: z.string().uuid(),
@@ -428,8 +429,7 @@ export function threadActivity(
       status: source.status,
     })),
   );
-  const proposals = metadata.proposals
-    .filter((proposal) => proposal.threadId === thread.id)
+  const proposals = (metadataIndex(metadata).threadProposals.get(thread.id) ?? [])
     .map((proposal) => proposal.id);
   const suggestions = thread.anchorSuggestions.map(
     (suggestion) => suggestion.id,
@@ -668,9 +668,9 @@ export function proposalTurnId(
   proposal: Pick<Proposal, "requestId" | "createdAt" | "turnId">,
   thread: Thread,
 ): string | null {
-  const request = metadata.requests.find(
-    (request) => request.id === proposal.requestId,
-  );
+  const request = proposal.requestId
+    ? metadataIndex(metadata).requests.get(proposal.requestId)?.[0]
+    : undefined;
   const explicit = proposal.turnId ?? request?.messageId;
   if (explicit) return explicit;
   const origin =
