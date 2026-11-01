@@ -5,13 +5,15 @@
   "type": "module",
   "scripts": {
     "dev": "vite --host 127.0.0.1 --port 1420 --strictPort",
-    "build": "npm run design:check && tsc -b && vite build",
-    "check": "npm run design:check && tsc -b",
+    "build": "npm run agent:check && npm run design:check && tsc -b && vite build",
+    "check": "npm run agent:check && npm run design:check && tsc -b",
     "test": "vitest run",
     "tauri": "tauri",
     "desktop": "tauri dev",
     "bundle": "node scripts/bundle.mjs",
     "verification": "node scripts/verification.mjs",
+    "agent:generate": "node scripts/agent-contract.mjs",
+    "agent:check": "node scripts/agent-contract.mjs --check",
     "design:check": "node scripts/design-check.mjs"
   },
   "dependencies": {

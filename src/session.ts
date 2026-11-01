@@ -1,8 +1,9 @@
+import { toolSchemas } from "./tool-contract";
 import { undoDepth, redoDepth } from "prosemirror-history";
 import { DocumentReader } from "./document-reader";
 import { reconcileText } from "./file-sync";
 import { documentAuthoring, documentOutline } from "./document-structure";
-import { defaultAgent, agentId, requestAgentIds, decisionSchema, decisionOptionSchema } from "./domain";
+import { defaultAgent, agentId, requestAgentIds, decisionSchema } from "./domain";
 import { NativeDocumentModel } from "./native-model";
 import { DocumentJournal } from "./document-journal";
 import { activity } from "./activity";
@@ -17,7 +18,7 @@ import { nonOverlappingSuggestions, pendingSuggestions, sameSuggestionChange } f
 import type { PageDraft } from "./document-page";
 import { invoke } from "@tauri-apps/api/core";
 import type { AsideDraft } from "./images";
-import { passageReferenceSchema, messageAnnotationSchema, passageSourceSchema, validatePassageReferences, mapPassageDrafts, messagePassageSnapshot } from "./passage-reference";
+import { passageSourceSchema, validatePassageReferences, mapPassageDrafts, messagePassageSnapshot } from "./passage-reference";
 import type { PassageSource } from "./passage-reference";
 import { renderMarkdown } from "./markdown";
 import { save } from "@tauri-apps/plugin-dialog";
@@ -29,7 +30,6 @@ import type { ChangeDesc, Text } from "@codemirror/state";
 import {
   nativeObject,
   sourceFormat,
-  sourceFormatSchema,
 } from "./native-schema";
 import {
   projectDocument,
@@ -40,7 +40,6 @@ import {
 import type { NativeUpdate } from "./native-editor";
 import { z } from "zod";
 import {
-  previewBuildSchema,
   previewInfoSchema,
   previewActionSchema,
   textFingerprint,
@@ -80,7 +79,6 @@ import {
   relocateAnchor,
   validateSelection,
   threadActivity,
-  asideReferenceSchema,
   threadSchema,
 } from "./domain";
 import type {
@@ -200,25 +198,7 @@ export interface SessionState {
   socketPath: string;
 }
 
-const editSchema = z
-  .object({
-    documentId: z.string().uuid().optional(),
-    requestId: z.string().uuid().optional(),
-    threadId: z.string().uuid().optional(),
-    annotationId: z.string().uuid().optional(),
-    revision: z.number().int().nonnegative(),
-    from: z.number().int().nonnegative(),
-    to: z.number().int().nonnegative(),
-    expectedText: z.string(),
-    replacement: z.string(),
-    explanation: z.string(),
-    replaces: z.string().uuid().optional(),
-  })
-  .strict()
-  .refine(
-    (edit) => Boolean(edit.documentId || edit.requestId || edit.threadId || edit.annotationId),
-    "Supply the document, request, or aside identity.",
-  );
+
 
 export interface AsideViewContext {
   revision: number;
@@ -2158,7 +2138,7 @@ export class DocumentSession extends DocumentReader {
     if (["ui_inspect", "ui_action", "ui_state", "window_resize", "editor_select"].includes(method))
       return this.controlView(method, parameters);
     if (method === "passage_reference_create") {
-      const parsed = z.object({ documentId: z.string().uuid(), revision: z.number().int().nonnegative().optional(), threadId: z.string().uuid().optional(), messageId: z.string().uuid().optional(), field: z.enum(["content", "details", "annotation-comment", "annotation-quote"]).default("content"), annotationId: z.string().uuid().optional(), from: z.number().int().nonnegative().optional(), to: z.number().int().nonnegative().optional(), expectedText: z.string().min(1) }).strict().parse(parameters);
+      const parsed = toolSchemas.passage_reference_create.parse(parameters);
       if (parsed.documentId !== this.state.metadata.documentId) throw Error("The document changed.");
       if (parsed.messageId) {
         const thread = this.state.metadata.threads.find(thread => thread.id === parsed.threadId);
@@ -2186,21 +2166,8 @@ export class DocumentSession extends DocumentReader {
       await this.recover();
       const query =
         method === "history_read"
-          ? z
-              .object({
-                documentId: z.string().uuid().optional(),
-                before: z.number().int().positive().optional(),
-              })
-              .strict()
-              .parse(parameters)
-          : z
-              .object({
-                documentId: z.string().uuid().optional(),
-                fromCursor: z.number().int().positive(),
-                toCursor: z.number().int().positive(),
-              })
-              .strict()
-              .parse(parameters);
+          ? toolSchemas.history_read.parse(parameters)
+          : toolSchemas.revision_read.parse(parameters);
       if (
         query.documentId &&
         query.documentId !== this.state.metadata.documentId
@@ -2214,7 +2181,7 @@ export class DocumentSession extends DocumentReader {
         : historyRevisionSchema.parse(result);
     }
     if (method === "page_read") {
-      z.object({}).strict().parse(parameters);
+      toolSchemas.page_read.parse(parameters);
       const page = this.state.metadata.page;
       if (!page) return { documentId: this.state.metadata.documentId, page: null };
       const information = previewInfoSchema.parse(await invoke("preview_info", { artifactId: page.artifactId }));
@@ -2225,7 +2192,7 @@ export class DocumentSession extends DocumentReader {
       return { documentId: this.state.metadata.documentId, page, information, missing: bindings.filter((binding) => !identities.has(binding.identity)) };
     }
     if (method === "page_publish") {
-      const parsed = z.object({ documentId: z.string().uuid(), revision: z.number().int().nonnegative(), path: z.string().startsWith("/") }).strict().parse(parameters);
+      const parsed = toolSchemas.page_publish.parse(parameters);
       if (parsed.documentId !== this.state.metadata.documentId || parsed.revision !== this.state.metadata.revision)
         throw Error("The document changed. Read document_read again.");
       const information = previewInfoSchema.parse(await invoke("register_preview", { path: parsed.path }));
@@ -2254,7 +2221,7 @@ export class DocumentSession extends DocumentReader {
       return { documentId: parsed.documentId, page: this.state.metadata.page };
     }
     if (method === "object_move") {
-      const parsed = z.object({ documentId: z.string().uuid(), revision: z.number().int().nonnegative(), identity: z.string().uuid(), parentIdentity: z.string().uuid(), beforeIdentity: z.string().uuid().nullable(), expectedText: z.string() }).strict().parse(parameters);
+      const parsed = toolSchemas.object_move.parse(parameters);
       if (parsed.documentId !== this.state.metadata.documentId || parsed.revision !== this.state.metadata.revision)
         throw Error("The document changed. Read document_read again.");
       if (!defaultAgent(this.state.metadata) || this.agentAccess !== "edit") throw Error("Connect an agent with document edit permission before moving objects.");
@@ -2263,13 +2230,13 @@ export class DocumentSession extends DocumentReader {
       return { documentId: parsed.documentId, revision: this.state.metadata.revision, moved: true };
     }
     if (method === "document_delete") {
-      const parsed = z.object({ documentId: z.string().uuid(), revision: z.number().int().nonnegative(), textHash: z.string().regex(/^[a-f0-9]{64}$/) }).strict().parse(parameters);
+      const parsed = toolSchemas.document_delete.parse(parameters);
       if (!this.agent() || this.agentAccess !== "edit") throw Error("Connect an agent with document edit permission before deleting a document.");
       if (parsed.documentId !== this.state.metadata.documentId || parsed.revision !== this.state.metadata.revision || parsed.textHash !== await textFingerprint(this.state.text)) throw Error("The document changed. Read document_read again before deleting it.");
       return { documentId: parsed.documentId };
     }
     if (method === "document_read") {
-      z.object({}).strict().parse(parameters);
+      toolSchemas.document_read.parse(parameters);
       const document = this.model.source;
       this.readSnapshots.delete(this.state.metadata.revision);
       this.readSnapshots.set(this.state.metadata.revision, {
@@ -2302,14 +2269,7 @@ export class DocumentSession extends DocumentReader {
       return { ...snapshot, textHash: await textFingerprint(snapshot.text) };
     }
     if (method === "document_format") {
-      const parsed = z
-        .object({
-          documentId: z.string().uuid(),
-          revision: z.number().int().nonnegative(),
-          format: sourceFormatSchema,
-        })
-        .strict()
-        .parse(parameters);
+      const parsed = toolSchemas.document_format.parse(parameters);
       if (
         parsed.documentId !== this.state.metadata.documentId ||
         parsed.revision !== this.state.metadata.revision
@@ -2325,17 +2285,7 @@ export class DocumentSession extends DocumentReader {
       };
     }
     if (method === "object_edit") {
-      const parsed = z
-        .object({
-          documentId: z.string().uuid(),
-          revision: z.number().int().nonnegative(),
-          identity: z.string().uuid(),
-          replacement: z.json(),
-          explanation: z.string(),
-          threadId: z.string().uuid().optional(),
-        })
-        .strict()
-        .parse(parameters);
+      const parsed = toolSchemas.object_edit.parse(parameters);
       if (
         parsed.documentId !== this.state.metadata.documentId ||
         parsed.revision !== this.state.metadata.revision
@@ -2397,7 +2347,7 @@ export class DocumentSession extends DocumentReader {
       };
     }
     if (method === "aside_read") {
-      const reference = asideReferenceSchema.parse(parameters);
+      const reference = toolSchemas.aside_read.parse(parameters);
       const details = this.host?.readAside(reference);
       const thread =
         details?.thread ??
@@ -2424,15 +2374,7 @@ export class DocumentSession extends DocumentReader {
       };
     }
     if (method === "aside_link") {
-      const parsed = z
-        .object({
-          documentId: z.string().uuid(),
-          threadId: z.string().uuid(),
-          target: asideReferenceSchema,
-          relation: z.enum(["related", "supersedes"]).default("related"),
-        })
-        .strict()
-        .parse(parameters);
+      const parsed = toolSchemas.aside_link.parse(parameters);
       if (parsed.documentId !== this.state.metadata.documentId)
         throw Error("The document changed.");
       const thread = this.state.metadata.threads.find(
@@ -2480,17 +2422,7 @@ export class DocumentSession extends DocumentReader {
       return { linked: true, reference: asideLink(parsed.target) };
     }
     if (method === "conversation_resolve") {
-      const parsed = z
-        .object({
-          documentId: z.string().uuid(),
-          threadId: z.string().uuid(),
-          lastMessageId: z.string().uuid().nullable(),
-          reason: z.string().trim().min(1),
-          outcome: z.enum(["done", "superseded"]).default("done"),
-          supersededBy: asideReferenceSchema.optional(),
-        })
-        .strict()
-        .parse(parameters);
+      const parsed = toolSchemas.conversation_resolve.parse(parameters);
       if (parsed.documentId !== this.state.metadata.documentId)
         throw Error("The document changed.");
       const thread = this.state.metadata.threads.find(
@@ -2565,14 +2497,7 @@ export class DocumentSession extends DocumentReader {
       return { resolved: true, resolution };
     }
     if (method === "image_read") {
-      const parsed = z
-        .object({
-          documentId: z.string().uuid().optional(),
-          threadId: z.string().uuid(),
-          imageId: z.string().regex(/^[a-f0-9]{64}$/),
-        })
-        .strict()
-        .parse(parameters);
+      const parsed = toolSchemas.image_read.parse(parameters);
       const thread = this.state.metadata.threads.find(
         (thread) => thread.id === parsed.threadId,
       );
@@ -2595,13 +2520,7 @@ export class DocumentSession extends DocumentReader {
       };
     }
     if (method === "preview_capture_read") {
-      const parsed = z
-        .object({
-          documentId: z.string().uuid().optional(),
-          threadId: z.string().uuid(),
-        })
-        .strict()
-        .parse(parameters);
+      const parsed = toolSchemas.preview_capture_read.parse(parameters);
       const thread = this.state.metadata.threads.find(
         (thread) => thread.id === parsed.threadId,
       );
@@ -2621,16 +2540,7 @@ export class DocumentSession extends DocumentReader {
       };
     }
     if (method === "preview_read") {
-      const parsed = z
-        .object({
-          documentId: z.string().uuid().optional(),
-          artifactId: z
-            .string()
-            .regex(/^[a-f0-9]{64}$/)
-            .optional(),
-        })
-        .strict()
-        .parse(parameters);
+      const parsed = toolSchemas.preview_read.parse(parameters);
       const reference = this.state.metadata.preview;
       const artifactId = parsed.artifactId ?? reference?.artifactId;
       const info = artifactId
@@ -2648,10 +2558,7 @@ export class DocumentSession extends DocumentReader {
       };
     }
     if (method === "preview_build") {
-      const parsed = previewBuildSchema
-        .extend({ documentId: z.string().uuid().optional() })
-        .strict()
-        .parse(parameters);
+      const parsed = toolSchemas.preview_build.parse(parameters);
       const build = {
         sourceHash: parsed.sourceHash,
         status: parsed.status,
@@ -2662,17 +2569,7 @@ export class DocumentSession extends DocumentReader {
       return build;
     }
     if (method === "preview_publish") {
-      const parsed = z
-        .object({
-          documentId: z.string().uuid().optional(),
-          path: z.string().startsWith("/"),
-          expectedArtifactId: z
-            .string()
-            .regex(/^[a-f0-9]{64}$/)
-            .nullable(),
-        })
-        .strict()
-        .parse(parameters);
+      const parsed = toolSchemas.preview_publish.parse(parameters);
       const epoch = this.state.epoch;
       if (
         (this.state.metadata.preview?.artifactId ?? null) !==
@@ -2738,13 +2635,7 @@ export class DocumentSession extends DocumentReader {
       };
     }
     if (method === "request_retry") {
-      const parsed = z
-        .object({
-          requestId: z.string().uuid(),
-          confirmedNotQueued: z.literal(true),
-        })
-        .strict()
-        .parse(parameters);
+      const parsed = toolSchemas.request_retry.parse(parameters);
       const request = this.state.metadata.requests.find(
         (request) => request.id === parsed.requestId,
       );
@@ -2763,7 +2654,7 @@ export class DocumentSession extends DocumentReader {
       };
     }
     if (method === "requests_list") {
-      z.object({}).strict().parse(parameters);
+      toolSchemas.requests_list.parse(parameters);
       return this.state.metadata.requests
         .filter((request) => request.state !== "answered")
         .map((request) => ({
@@ -2776,17 +2667,17 @@ export class DocumentSession extends DocumentReader {
         }));
     }
     if (method === "annotations_list") {
-      const parsed = z.object({ documentId: z.string().uuid().optional(), status: z.enum(["open", "waiting", "resolved", "all"]).default("open") }).strict().parse(parameters);
+      const parsed = toolSchemas.annotations_list.parse(parameters);
       return this.state.metadata.annotations.filter(annotation => parsed.status === "all" || annotation.status === parsed.status);
     }
     if (method === "annotation_read") {
-      const parsed = z.object({ documentId: z.string().uuid().optional(), annotationId: z.string().uuid() }).strict().parse(parameters);
+      const parsed = toolSchemas.annotation_read.parse(parameters);
       const annotation = this.state.metadata.annotations.find(annotation => annotation.id === parsed.annotationId);
       if (!annotation) throw Error("This annotation is unavailable.");
       return { documentId: this.state.metadata.documentId, annotation, requests: this.state.metadata.requests.filter(request => request.trigger.kind === "annotation" && request.trigger.annotationId === parsed.annotationId) };
     }
     if (method === "annotation_resolve") {
-      const parsed = z.object({ documentId: z.string().uuid(), annotationId: z.string().uuid(), reason: z.string().min(1) }).strict().safeParse(parameters);
+      const parsed = toolSchemas.annotation_resolve.options[0].safeParse(parameters);
       if (parsed.success) {
         if (parsed.data.documentId !== this.state.metadata.documentId) throw Error("The document changed.");
         const annotation = this.state.metadata.annotations.find(annotation => annotation.id === parsed.data.annotationId);
@@ -2807,7 +2698,7 @@ export class DocumentSession extends DocumentReader {
       identityIsAuthentication: false,
     };
     if (method === "agent_default" || method === "agent_disconnect") {
-      const parsed = z.object({ documentId: z.string().uuid(), agentId: z.string().min(1) }).strict().parse(parameters);
+      const parsed = toolSchemas[method].parse(parameters);
       if (!this.state.metadata.agents.some((agent) => agent.id === parsed.agentId)) throw Error("This agent is not connected.");
       const agents = method === "agent_disconnect" ? this.state.metadata.agents.filter((agent) => agent.id !== parsed.agentId) : this.state.metadata.agents;
       this.changed({ ...this.state.metadata, agents, defaultAgentId: method === "agent_default" ? parsed.agentId : this.state.metadata.defaultAgentId === parsed.agentId ? agents[0]?.id ?? null : this.state.metadata.defaultAgentId });
@@ -2815,23 +2706,17 @@ export class DocumentSession extends DocumentReader {
       return { agents, defaultAgentId: this.state.metadata.defaultAgentId };
     }
     if (method === "decisions_list") {
-      z.object({ documentId: z.string().uuid().optional() }).strict().parse(parameters);
+      toolSchemas.decisions_list.parse(parameters);
       return [...this.state.metadata.decisions].sort((first, second) => second.createdAt.localeCompare(first.createdAt));
     }
     if (method === "decision_read") {
-      const parsed = z.object({ decisionId: z.string().uuid(), documentId: z.string().uuid().optional() }).strict().parse(parameters);
+      const parsed = toolSchemas.decision_read.parse(parameters);
       const decision = this.state.metadata.decisions.find((decision) => decision.id === parsed.decisionId);
       if (!decision) throw Error("This decision is unavailable.");
       return { documentId: this.state.metadata.documentId, decision };
     }
     if (method === "decision_create") {
-      const parsed = z.object({
-        documentId: z.string().uuid(), decisionId: z.string().uuid(),
-        question: z.string().trim().min(1).max(100), options: z.array(decisionOptionSchema).min(1).max(3),
-        recommended: z.number().int().nonnegative(), context: z.string().default(""),
-        revision: z.number().int().nonnegative().optional(),
-        from: z.number().int().nonnegative().optional(), to: z.number().int().nonnegative().optional(), expectedText: z.string().optional(),
-      }).strict().parse(parameters);
+      const parsed = toolSchemas.decision_create.parse(parameters);
       const creator = this.agent();
       if (!creator) throw Error("Connect a named agent before creating a decision.");
       const duplicate = this.state.metadata.decisions.find((decision) => decision.id === parsed.decisionId);
@@ -2861,8 +2746,8 @@ export class DocumentSession extends DocumentReader {
       await this.recover();
       return { documentId: parsed.documentId, decision };
     }
-    if (["decision_acknowledge", "decision_withdraw", "decision_supersede"].includes(method)) {
-      const parsed = z.object({ decisionId: z.string().uuid(), documentId: z.string().uuid().optional(), supersededBy: z.string().uuid().optional(), reason: z.string().trim().min(1).optional() }).strict().parse(parameters);
+    if (method === "decision_acknowledge" || method === "decision_withdraw" || method === "decision_supersede") {
+      const parsed = toolSchemas[method].parse(parameters);
       if (method !== "decision_supersede" && parsed.supersededBy !== undefined) throw Error("Only supersession accepts a replacement decision.");
       if (method === "decision_acknowledge" && parsed.reason !== undefined) throw Error("Acknowledgement retains the human answer.");
       const decision = this.state.metadata.decisions.find((decision) => decision.id === parsed.decisionId);
@@ -2883,18 +2768,7 @@ export class DocumentSession extends DocumentReader {
       return { decision: next };
     }
     if (method === "agent_connect") {
-      const parsed = z
-        .object({
-          documentId: z.string().uuid(),
-          provider: z.enum(["codex", "claude"]),
-          sessionId: z.string().trim().min(1),
-          commandPath: z.string().startsWith("/").optional(),
-          name: z.string().trim().min(1).max(120).optional(),
-          role: z.string().trim().max(120).optional(),
-          sessionUrl: z.string().url().optional(),
-        })
-        .strict()
-        .parse(parameters);
+      const parsed = toolSchemas.agent_connect.parse(parameters);
       if (parsed.provider === "codex")
         z.string().uuid().parse(parsed.sessionId);
       const previous = this.state.metadata.agents.find((agent) => agent.provider === parsed.provider && agent.sessionId === parsed.sessionId);
@@ -2918,10 +2792,7 @@ export class DocumentSession extends DocumentReader {
     }
 
     if (method === "component_read") {
-      const parsed = z
-        .object({ componentId: z.string().uuid() })
-        .strict()
-        .parse(parameters);
+      const parsed = toolSchemas.component_read.parse(parameters);
       const component = this.state.metadata.threads
         .flatMap((thread) => thread.components)
         .find((component) => component.id === parsed.componentId);
@@ -2934,18 +2805,7 @@ export class DocumentSession extends DocumentReader {
       };
     }
     if (method === "component_mount") {
-      const parsed = z
-        .object({
-          documentId: z.string().uuid(),
-          revision: z.number().int().nonnegative(),
-          threadId: z.string().uuid(),
-          componentId: z.string().uuid(),
-          bundleId: z.string().regex(/^[a-f0-9]{64}$/),
-          data: z.json(),
-          state: z.json(),
-        })
-        .strict()
-        .parse(parameters);
+      const parsed = toolSchemas.component_mount.parse(parameters);
       if (parsed.documentId !== this.state.metadata.documentId)
         throw new Error("The open document changed.");
       const epoch = this.state.epoch;
@@ -3009,20 +2869,7 @@ export class DocumentSession extends DocumentReader {
       return component;
     }
     if (method === "component_update" || method === "component_unmount") {
-      const parsed = z
-        .object({
-          documentId: z.string().uuid(),
-          componentId: z.string().uuid(),
-          revision: z.number().int().nonnegative(),
-          bundleId: z
-            .string()
-            .regex(/^[a-f0-9]{64}$/)
-            .optional(),
-          data: z.json().optional(),
-          state: z.json().optional(),
-          hidden: z.boolean().optional(),
-        })
-        .strict()
+      const parsed = toolSchemas[method]
         .parse(parameters);
       if (parsed.documentId !== this.state.metadata.documentId)
         throw new Error("The open document changed.");
@@ -3073,32 +2920,13 @@ export class DocumentSession extends DocumentReader {
     }
 
     if (method === "request_delivered") {
-      const parsed = z
-        .object({ requestId: z.string().uuid() })
-        .strict()
-        .parse(parameters);
+      const parsed = toolSchemas.request_delivered.parse(parameters);
       this.markDelivered(parsed.requestId);
       await this.recover();
       return { delivered: true };
     }
     if (method === "conversation_reply") {
-      const parsed = z
-        .object({
-          requestId: z.string().uuid().optional(),
-          threadId: z.string().uuid().optional(),
-          documentId: z.string().uuid().optional(),
-          messageId: z.string().uuid(),
-          content: z.string().min(1),
-          details: z.string().min(1).optional(),
-          awaitingHuman: z.boolean().optional(),
-          status: z.enum(["working", "complete"]).optional(),
-          continuedIn: asideReferenceSchema.optional(),
-          references: z.array(passageReferenceSchema).optional(),
-          annotations: z.array(messageAnnotationSchema).optional(),
-        })
-        .strict()
-        .parse(parameters);
-      if (!parsed.requestId && !parsed.threadId) throw Error("Supply a requestId or threadId.");
+      const parsed = toolSchemas.conversation_reply.parse(parameters);
       if (parsed.documentId && parsed.documentId !== this.state.metadata.documentId) throw Error("The document changed.");
       const request = this.state.metadata.requests.find(
         (request) => request.id === parsed.requestId,
@@ -3117,11 +2945,7 @@ export class DocumentSession extends DocumentReader {
       );
     }
     if (method === "edit_withdraw") {
-      const parsed = z.object({
-        documentId: z.string().uuid(),
-        proposalId: z.string().uuid(),
-        reason: z.string().trim().min(1),
-      }).strict().parse(parameters);
+      const parsed = toolSchemas.edit_withdraw.parse(parameters);
       if (parsed.documentId !== this.state.metadata.documentId)
         throw Error("The document identity changed. Read document_read again.");
       const proposal = this.state.metadata.proposals.find(candidate => candidate.id === parsed.proposalId);
@@ -3147,7 +2971,7 @@ export class DocumentSession extends DocumentReader {
       return { proposalId: proposal.id, threadId: proposal.threadId, status: "withdrawn" };
     }
     if (method === "edit_propose" || method === "edit_apply") {
-      const parsed = editSchema.parse(parameters);
+      const parsed = toolSchemas[method].parse(parameters);
       const annotation = parsed.annotationId ? this.state.metadata.annotations.find(annotation => annotation.id === parsed.annotationId) : null;
       if (parsed.annotationId && !annotation) throw Error("This annotation is unavailable.");
       const request = this.state.metadata.requests.find(request => parsed.requestId ? request.id === parsed.requestId : request.trigger.kind === "annotation" && request.trigger.annotationId === annotation?.id);
@@ -3299,26 +3123,10 @@ export class DocumentSession extends DocumentReader {
       };
     }
     if (method === "figure_propose" || method === "table_propose") {
-      const figure = z
-        .object({
-          requestId: z.string().uuid(),
-          revision: z.number().int().nonnegative(),
-          path: z.string().startsWith("/"),
-          label: z.string().min(1),
-        })
-        .strict();
-      const table = z
-        .object({
-          requestId: z.string().uuid(),
-          revision: z.number().int().nonnegative(),
-          columns: z.array(z.string()).min(1),
-          rows: z.array(z.array(z.string())).min(1),
-        })
-        .strict();
       const parsed =
         method === "figure_propose"
-          ? figure.parse(parameters)
-          : table.parse(parameters);
+          ? toolSchemas.figure_propose.parse(parameters)
+          : toolSchemas.table_propose.parse(parameters);
       const request = this.state.metadata.requests.find(
         (request) => request.id === parsed.requestId,
       );
@@ -3362,25 +3170,7 @@ export class DocumentSession extends DocumentReader {
       });
     }
     if (method === "annotation_create") {
-      const parsed = z
-        .object({
-          documentId: z.string().uuid(),
-          annotationId: z.string().uuid().optional(),
-          revision: z.number().int().nonnegative(),
-          from: z.number().int().nonnegative().optional(),
-          to: z.number().int().nonnegative().optional(),
-          expectedText: z.string().optional(),
-          scope: z.enum(["document", "passage"]).default("passage"),
-          messageId: z.string().uuid(),
-          consumer: z.string().min(1).max(120),
-          label: z.string().min(1),
-          content: z.string().min(1),
-          details: z.string().min(1).optional(),
-          references: z.array(passageReferenceSchema).optional(),
-          annotations: z.array(messageAnnotationSchema).optional(),
-        })
-        .strict()
-        .parse(parameters);
+      const parsed = toolSchemas.annotation_create.parse(parameters);
       if (parsed.documentId !== this.state.metadata.documentId)
         throw new Error("The open document changed.");
       const annotation = parsed.annotationId ? this.state.metadata.annotations.find(annotation => annotation.id === parsed.annotationId) : null;
@@ -3500,13 +3290,7 @@ export class DocumentSession extends DocumentReader {
       };
     }
     if (method === "annotation_resolve") {
-      const parsed = z
-        .object({
-          documentId: z.string().uuid(),
-          threadId: z.string().uuid(),
-          consumer: z.string().min(1),
-        })
-        .strict()
+      const parsed = toolSchemas.annotation_resolve.options[1]
         .parse(parameters);
       if (parsed.documentId !== this.state.metadata.documentId)
         throw new Error("The open document changed.");
@@ -3532,16 +3316,7 @@ export class DocumentSession extends DocumentReader {
       });
     }
     if (method === "source_review") {
-      const parsed = z
-        .object({
-          requestId: z.string().uuid(),
-          hash: z.string().nullable(),
-          messageId: z.string().uuid(),
-          summary: z.string().min(1),
-          details: z.string().min(1).optional(),
-        })
-        .strict()
-        .parse(parameters);
+      const parsed = toolSchemas.source_review.parse(parameters);
       const request = this.state.metadata.requests.find(
         (request) => request.id === parsed.requestId,
       );
@@ -3599,26 +3374,7 @@ export class DocumentSession extends DocumentReader {
       );
     }
     if (method === "anchor_suggest") {
-      const parsed = z
-        .object({
-          requestId: z.string().uuid(),
-          revision: z.number().int().nonnegative(),
-          candidates: z
-            .array(
-              z
-                .object({
-                  from: z.number().int().nonnegative(),
-                  to: z.number().int().nonnegative(),
-                  expectedText: z.string().min(1),
-                  label: z.string().min(1),
-                })
-                .strict(),
-            )
-            .min(1)
-            .max(5),
-        })
-        .strict()
-        .parse(parameters);
+      const parsed = toolSchemas.anchor_suggest.parse(parameters);
       if (parsed.revision !== this.state.metadata.revision)
         throw new Error(
           "The document changed. Read it again before locating this passage.",
@@ -3663,14 +3419,7 @@ export class DocumentSession extends DocumentReader {
       return { reattached: exact, candidates };
     }
     if (method === "source_attach") {
-      const parsed = z
-        .object({
-          messageId: z.string().uuid(),
-          path: z.string().min(1),
-          label: z.string().min(1),
-        })
-        .strict()
-        .parse(parameters);
+      const parsed = toolSchemas.source_attach.parse(parameters);
       const message = this.state.metadata.threads
         .flatMap((thread) => thread.messages)
         .find(
@@ -3707,14 +3456,7 @@ export class DocumentSession extends DocumentReader {
     }
 
     if (method === "document_move") {
-      const parsed = z
-        .object({
-          documentId: z.string().uuid(),
-          revision: z.number().int().nonnegative(),
-          path: z.string().startsWith("/"),
-        })
-        .strict()
-        .parse(parameters);
+      const parsed = toolSchemas.document_move.parse(parameters);
       if (
         parsed.documentId !== this.state.metadata.documentId ||
         parsed.revision !== this.state.metadata.revision
@@ -3803,13 +3545,7 @@ export class DocumentSession extends DocumentReader {
       return { documentId: parsed.documentId, path: this.state.path };
     }
     if (method === "document_save") {
-      const parsed = z
-        .object({
-          documentId: z.string().uuid().optional(),
-          path: z.string().min(1).optional(),
-        })
-        .strict()
-        .parse(parameters);
+      const parsed = toolSchemas.document_save.parse(parameters);
       if (parsed.path && parsed.path !== this.state.path) {
         await this.saveTo(parsed.path, false);
         return { saved: !this.state.dirty, path: this.state.path };

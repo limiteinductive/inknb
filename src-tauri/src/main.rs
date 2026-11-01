@@ -1167,6 +1167,18 @@ async fn serve_connection(
     if request.id.len() > 80 {
         return Err("Invalid request identity.".into());
     }
+    if let Err(error) = inknb_core::protocol::validate_tool(&request.method, &request.params) {
+        return write_control(
+            &mut writer,
+            ControlResponse {
+                version: 1,
+                id: request.id,
+                result: None,
+                error: Some(error),
+            },
+        )
+        .await;
+    }
     if request.method == "events_subscribe" {
         let mut query = match serde_json::from_value::<EventQuery>(request.params.clone()) {
             Ok(query) => query,

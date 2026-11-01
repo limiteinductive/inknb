@@ -1,3 +1,4 @@
+import { toolSchemas } from "./tool-contract";
 import { z } from "zod";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { LogicalSize } from "@tauri-apps/api/dpi";
@@ -398,7 +399,7 @@ export abstract class DocumentReader {
 
   async controlView(method: string, parameters: unknown): Promise<unknown> {
     if (method === "ui_inspect") {
-      z.object({}).strict().parse(parameters);
+      toolSchemas.ui_inspect.parse(parameters);
       return {
         documentId: this.state.metadata.documentId,
         ...(await inspectInterface()),
@@ -417,7 +418,7 @@ export abstract class DocumentReader {
     }
     if (method === "ui_state") {
       if (!this.view) throw Error("This document has no attached window.");
-      z.object({}).strict().parse(parameters);
+      toolSchemas.ui_state.parse(parameters);
       const geometry = [
         ".library-sidebar",
         ".writing-pane",
@@ -549,13 +550,7 @@ export abstract class DocumentReader {
       };
     }
     if (method === "window_resize") {
-      const parsed = z
-        .object({
-          width: z.number().int().min(700).max(2400),
-          height: z.number().int().min(480).max(1800),
-        })
-        .strict()
-        .parse(parameters);
+      const parsed = toolSchemas.window_resize.parse(parameters);
       await getCurrentWindow().setSize(
         new LogicalSize(parsed.width, parsed.height),
       );
@@ -563,15 +558,7 @@ export abstract class DocumentReader {
     }
     if (method === "editor_select") {
       if (!this.view) throw Error("This document has no attached window.");
-      const parsed = z
-        .object({
-          documentId: z.string().uuid().optional(),
-          revision: z.number().int().nonnegative(),
-          from: z.number().int().nonnegative(),
-          to: z.number().int().nonnegative(),
-        })
-        .strict()
-        .parse(parameters);
+      const parsed = toolSchemas.editor_select.parse(parameters);
       if (parsed.revision !== this.state.metadata.revision)
         throw new Error("The document revision changed.");
       validateSelection(this.state.text, parsed);

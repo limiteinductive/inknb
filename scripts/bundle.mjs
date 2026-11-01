@@ -4,6 +4,7 @@ import { fileURLToPath } from "node:url";
 import path from "node:path";
 
 const root = fileURLToPath(new URL("../", import.meta.url));
+execFileSync("node", ["scripts/agent-contract.mjs", "--check"], { cwd: root, stdio: "inherit" });
 execFileSync(
   "cargo",
   [

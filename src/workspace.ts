@@ -1,3 +1,4 @@
+import { toolSchemas, documentRoutingSchema } from "./tool-contract";
 import { spacesSchema } from "./spaces";
 import { activity } from "./activity";
 import { invoke } from "@tauri-apps/api/core";
@@ -18,7 +19,6 @@ import { indexAsideConnections, parseAsideLink } from "./aside-reference";
 import type { AsideConnection } from "./aside-reference";
 import { DocumentSession } from "./session";
 import type { Bootstrap, DocumentHost, LoadedDocument } from "./session";
-import { sourceFormatSchema } from "./native-schema";
 import type { SourceFormat } from "./native-schema";
 import { pendingSuggestions } from "./suggestions";
 
@@ -936,45 +936,23 @@ export class DocumentLibrary implements DocumentHost {
     const targets = z.object({ documentId: z.string().uuid().optional(), itemId: z.string().uuid().optional(), targetId: z.string().uuid().optional() }).passthrough().parse(parameters);
     if (this.state.documents.some(entry => entry.trash && [targets.documentId, targets.itemId, targets.targetId].includes(entry.id))) throw Error("This document is in Trash. Use document_restore first.");
     if (method === "library_list") {
-      z.object({}).strict().parse(parameters);
+      toolSchemas.library_list.parse(parameters);
       return librarySchema.parse({ ...this.state, documents: this.state.documents.filter(entry => !entry.trash) });
     }
     if (method === "library_reorder") {
-      const parsed = z
-        .object({
-          documentId: z.string().uuid(),
-          targetId: z.string().uuid(),
-          position: z.enum(["before", "after"]),
-        })
-        .strict()
-        .parse(parameters);
+      const parsed = toolSchemas.library_reorder.parse(parameters);
       this.reorder(parsed.documentId, parsed.targetId, parsed.position);
       await this.persist();
       return librarySchema.parse({ ...this.state, documents: this.state.documents.filter(entry => !entry.trash) });
     }
     if (method === "library_organize") {
-      const parsed = z
-        .object({
-          itemId: z.string().uuid(),
-          parentId: z.string().uuid().nullable(),
-          beforeId: z.string().uuid().optional(),
-        })
-        .strict()
-        .parse(parameters);
+      const parsed = toolSchemas.library_organize.parse(parameters);
       this.organize(parsed.itemId, parsed.parentId, parsed.beforeId);
       await this.persist();
       return librarySchema.parse({ ...this.state, documents: this.state.documents.filter(entry => !entry.trash) });
     }
     if (method === "collection_update") {
-      const parsed = z
-        .object({
-          collectionId: z.string().uuid(),
-          title: z.string().trim().min(1).optional(),
-          parentId: z.string().uuid().nullable().optional(),
-          priority: z.number().finite().optional(),
-        })
-        .strict()
-        .parse(parameters);
+      const parsed = toolSchemas.collection_update.parse(parameters);
       if (
         !this.state.collections.some((node) => node.id === parsed.collectionId)
       )
@@ -997,29 +975,12 @@ export class DocumentLibrary implements DocumentHost {
       );
     }
     if (method === "document_open") {
-      const parsed = z
-        .object({ path: z.string().min(1) })
-        .strict()
-        .parse(parameters);
+      const parsed = toolSchemas.document_open.parse(parameters);
       await this.openDocument(parsed.path);
       return this.active!.control("document_read", {});
     }
     if (method === "document_create") {
-      const parsed = z
-        .object({
-          title: z.string().trim().min(1),
-          format: sourceFormatSchema.default("markdown"),
-          collectionId: z.string().uuid().nullable().optional(),
-          parentId: z.string().uuid().nullable().optional(),
-        })
-        .strict()
-        .refine(
-          (parameters) =>
-            parameters.parentId === undefined ||
-            parameters.collectionId === undefined,
-          "Supply parentId or collectionId, not both.",
-        )
-        .parse(parameters);
+      const parsed = toolSchemas.document_create.parse(parameters);
       if (
         parsed.collectionId &&
         !this.state.collections.some(
@@ -1047,23 +1008,7 @@ export class DocumentLibrary implements DocumentHost {
       return { documentId: identity, format: parsed.format };
     }
     if (method === "library_update") {
-      const parsed = z
-        .object({
-          documentId: z.string().uuid(),
-          title: z.string().trim().min(1).optional(),
-          collectionId: z.string().uuid().nullable().optional(),
-          parentId: z.string().uuid().nullable().optional(),
-          pinned: z.boolean().optional(),
-          priority: z.number().finite().optional(),
-        })
-        .strict()
-        .refine(
-          (parameters) =>
-            parameters.parentId === undefined ||
-            parameters.collectionId === undefined,
-          "Supply parentId or collectionId, not both.",
-        )
-        .parse(parameters);
+      const parsed = toolSchemas.library_update.parse(parameters);
       if (!this.sessions.has(parsed.documentId))
         throw Error("This document is unavailable.");
       if (
@@ -1091,22 +1036,13 @@ export class DocumentLibrary implements DocumentHost {
       );
     }
     if (method === "collection_create") {
-      const parsed = z
-        .object({
-          title: z.string().trim().min(1),
-          parentId: z.string().uuid().nullable().optional(),
-        })
-        .strict()
-        .parse(parameters);
+      const parsed = toolSchemas.collection_create.parse(parameters);
       this.collection(parsed.title, parsed.parentId);
       await this.persist();
       return this.state.collections.at(-1);
     }
     if (method === "document_activate") {
-      const parsed = z
-        .object({ documentId: z.string().uuid() })
-        .strict()
-        .parse(parameters);
+      const parsed = toolSchemas.document_activate.parse(parameters);
       this.activate(parsed.documentId);
       return { documentId: parsed.documentId };
     }
@@ -1168,8 +1104,7 @@ export class DocumentLibrary implements DocumentHost {
     )
       throw Error("Activate this document before acting on its interface.");
     if (method === "document_read" || method === "requests_list") {
-      z.object({ documentId: z.string().uuid().optional() })
-        .strict()
+      documentRoutingSchema
         .parse(parameters);
       return session.control(method, {}, agentId);
     }

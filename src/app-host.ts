@@ -1,3 +1,4 @@
+import { toolRouting } from "./tool-contract";
 import { searchDocuments } from "./document-search";
 import { invoke } from "@tauri-apps/api/core";
 import { getCurrentWindow } from "@tauri-apps/api/window";
@@ -801,7 +802,7 @@ class AppHost {
       }).sort((first, second) => second.decision.createdAt.localeCompare(first.decision.createdAt));
     }
     if (method === "requests_list" && source.allConnected === true) {
-      z.object({ allConnected: z.literal(true) }).strict().parse(source);
+      toolRouting.requests.options[1].parse(source);
       if (!agentId) throw Error("Identify the connected caller first.");
       return [...this.documents.sessions.values()].filter(session => !this.documents.getSnapshot().documents.find(entry => entry.id === session.getSnapshot().metadata.documentId)?.trash).flatMap((session) => {
         const metadata = session.getSnapshot().metadata;

@@ -190,6 +190,8 @@ Codex receives end-to-end verification with an existing session. Claude remains 
 
 The external agent owns routine document operations, including PDF export. It saves the current Markdown through MCP and runs the document's existing build tools. Generated files attach to anchored replies as local references.
 
+The `long-term` agent input contract lives in `src/tool-contract.ts`. TypeScript handlers use its validators. `npm run agent:generate` writes the Rust tool catalog. Native IPC validates public tool parameters against that catalog before dispatch. Caller, window, and Space routing fields belong to the contract. Checks and release builds reject a stale catalog. Document owners enforce revision, permission, and lifecycle preconditions.
+
 The agent protocol provides live document state, selection, annotations, replies, sources, proposed edits, authorized changes, navigation, and rendered screenshots. The protocol does not select models or start an independent agent conversation.
 
 Aside anchors provide context for edits. Document access authorizes direct changes. Exact revision and text checks reject stale operations. Undo restores text, anchors, and the applied edit status.

@@ -1,18 +1,10 @@
+import { toolSchemas } from "./tool-contract";
 import { documentScroll } from "./document-scroll";
 import { z } from "zod";
 import type { PointerEvent } from "react";
 import { componentRuntimes } from "./component-bridge";
 
-const actionSchema = z
-  .object({
-    documentId: z.string().uuid().nullable(),
-    snapshotId: z.string().uuid(),
-    target: z.string(),
-    action: z.enum(["activate", "focus", "scroll", "setValue"]),
-    value: z.string().max(100000).optional(),
-    top: z.number().finite().nonnegative().optional(),
-  })
-  .strict();
+const actionSchema = toolSchemas.ui_action;
 
 let snapshotId = "";
 const targets = new Map<
