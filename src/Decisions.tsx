@@ -10,7 +10,7 @@ import { agentAttribution } from "./domain";
 import { useAsideSession, useAsideSelector, sameFields } from "./use-session";
 import { workspace } from "./window-workspace";
 import { ResponseBody } from "./AgentResponse";
-import { SessionContext } from "./use-session";
+import type { AsideDraft } from "./images";
 import { invoke } from "@tauri-apps/api/core";
 import { PanelModal, PanelBody, PanelEmpty } from "./PanelPopover";
 import "./decisions.css";
@@ -19,22 +19,20 @@ export function DecisionCard({ decision }: { decision: Decision }) {
   const session = useAsideSession();
   const draftKey = `decision:${decision.id}`;
   const state = useAsideSelector(state => ({ draft: state.drafts[draftKey], path: state.path }), sameFields);
+  return <DecisionBody decision={decision} path={state.path} draft={state.draft ?? { content: "", images: [] }} onDraft={content => session.update({ drafts: { ...session.getSnapshot().drafts, [draftKey]: { ...state.draft, content, images: state.draft?.images ?? [] } } })} onAnswer={(option, content) => session.answerDecision(decision.id, option, content)} onError={error => session.fail(error)} />;
+}
+
+function DecisionBody({ decision, path, draft, onDraft, onAnswer, onError }: { decision: Decision; path: string | null; draft: AsideDraft; onDraft: (content: string) => void; onAnswer: (option: number | null, text: string) => Promise<void>; onError: (error: unknown) => void }) {
   const [expanded, setExpanded] = useState(true);
   const [busy, setBusy] = useState(false);
-  const draft = state.draft ?? { content: "", images: [] };
   const answer = async (option: number | null, text: string) => {
     if (busy) return;
     setBusy(true);
     try {
-      await session.answerDecision(decision.id, option, text);
-      session.update({
-        drafts: {
-          ...session.getSnapshot().drafts,
-          [draftKey]: { content: "", images: [] },
-        },
-      });
+      await onAnswer(option, text);
+      onDraft("");
     } catch (error) {
-      session.fail(error);
+      onError(error);
     } finally {
       setBusy(false);
     }
@@ -69,9 +67,9 @@ export function DecisionCard({ decision }: { decision: Decision }) {
                 assets={{}}
                 onReference={(reference) =>
                   void invoke("open_reference", {
-                    documentPath: state.path,
+                    documentPath: path,
                     reference,
-                  }).catch((error) => session.fail(error))
+                  }).catch(onError)
                 }
               />
             </details>
@@ -105,14 +103,7 @@ export function DecisionCard({ decision }: { decision: Decision }) {
                   isDisabled={busy}
                   value={draft.content}
                   aria-label="Your own answer"
-                  onChange={(content) =>
-                    session.update({
-                      drafts: {
-                        ...session.getSnapshot().drafts,
-                        [draftKey]: { ...draft, content },
-                      },
-                    })
-                  }
+                  onChange={onDraft}
                 >
                   <TextArea rows={2} placeholder="Or write your answer…" />
                 </TextField>
@@ -161,16 +152,10 @@ export function DecisionsPanel({ open, onOpenChange }: { open: boolean; onOpenCh
     workspace.getSnapshot,
   );
   const [history, setHistory] = useState(false);
-  const entries = library.documents
-    .flatMap((document) =>
-      (
-        workspace.sessions.get(document.id)?.getSnapshot().metadata.decisions ??
-        []
-      ).map((decision) => ({ document, decision })),
-    )
-    .sort((first, second) =>
-      second.decision.createdAt.localeCompare(first.decision.createdAt),
-    );
+  const entries = library.decisions.flatMap(entry => {
+    const document = library.documents.find(document => document.id === entry.documentId);
+    return document ? [{ document, path: entry.path, decision: entry.decision }] : [];
+  }).sort((first, second) => second.decision.createdAt.localeCompare(first.decision.createdAt));
   const pending = entries.filter(({ decision }) => decision.status === "open");
   const shown = history ? entries : pending;
   return (
@@ -190,12 +175,8 @@ export function DecisionsPanel({ open, onOpenChange }: { open: boolean; onOpenCh
               {history ? "No decisions yet." : "No open decisions."}
             </PanelEmpty>
           )}
-          {shown.map(({ document: entry, decision }) => (
-            <SessionContext.Provider
-              key={decision.id}
-              value={workspace.sessions.get(entry.id) ?? null}
-            >
-              <div className="decision-list-entry">
+          {shown.map(({ document: entry, path, decision }) => (
+              <div className="decision-list-entry" key={decision.id}>
                 <Button
                   className="decision-document-link text-button"
                   onPress={() => {
@@ -218,9 +199,8 @@ export function DecisionsPanel({ open, onOpenChange }: { open: boolean; onOpenCh
                 >
                   {entry.title}
                 </Button>
-                <DecisionCard decision={decision} />
+                <DecisionBody decision={decision} path={path} draft={workspace.documentDraft(entry.id, `decision:${decision.id}`)} onDraft={content => workspace.setDocumentDraft(entry.id, `decision:${decision.id}`, content)} onAnswer={async (option, text) => { await workspace.request({ kind: "decision-answer", documentId: entry.id, decisionId: decision.id, option, text }); }} onError={error => workspace.fail(error)} />
               </div>
-            </SessionContext.Provider>
           ))}
         </PanelBody>
     </PanelModal>

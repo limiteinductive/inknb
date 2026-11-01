@@ -1,5 +1,5 @@
 import { z } from "zod";
-import type { Metadata, Preferences } from "./domain";
+import type { Decision, Metadata, Preferences } from "./domain";
 import type { NativeDocument } from "./native-schema";
 import type { DocumentState, DocumentPublication } from "./document-publication";
 import type { LibraryEntry, LibraryNode } from "./workspace";
@@ -20,6 +20,9 @@ export const hostRequestSchema = z.discriminatedUnion("kind", [
   }),
   z.object({
     kind: z.literal("snapshot"),
+    activeId: z.string().uuid().nullable(),
+    restoring: z.boolean(),
+    readers: z.array(z.string().uuid()),
     versions: z.record(
       z.string().uuid(),
       z.object({
@@ -35,6 +38,8 @@ export const hostRequestSchema = z.discriminatedUnion("kind", [
     patch: spaceWindowSchema.omit({ id: true, spaceId: true }).partial(),
   }),
   z.object({ kind: z.literal("spaces") }),
+  z.object({ kind: z.literal("search"), query: z.string() }),
+  z.object({ kind: z.literal("decision-answer"), documentId: z.string().uuid(), decisionId: z.string().uuid(), option: z.number().int().nonnegative().nullable(), text: z.string() }),
   z.object({ kind: z.literal("open-aside"), reference: asideReferenceSchema }),
   z.object({ kind: z.literal("open-document"), documentId: z.string().uuid() }),
   z.object({ kind: z.literal("resource"), documentId: z.string().uuid(), action: resourceActionSchema }),
@@ -120,7 +125,14 @@ export type DocumentExchange = {
       update: DocumentPublication;
     }
 );
+export interface DocumentDecision {
+  documentId: string;
+  path: string | null;
+  decision: Decision;
+}
+
 export interface HostSnapshot {
+  decisions: DocumentDecision[];
   spaces: SpacesState;
   windowId: string;
   activityKey: string | null;

@@ -1,3 +1,4 @@
+import { undoDepth, redoDepth } from "prosemirror-history";
 import { DocumentReader } from "./document-reader";
 import { reconcileText } from "./file-sync";
 import { documentAuthoring, documentOutline } from "./document-structure";
@@ -279,17 +280,35 @@ export class DocumentSession extends DocumentReader {
   private checking = false;
 
   journal = new DocumentJournal();
+  private modelUsers = 0;
 
   prepareModel(): void {
+    if (this.model) return;
     this.model = new NativeDocumentModel(this);
-    this.journal = new DocumentJournal();
+    for (const snapshot of this.readSnapshots.values())
+      snapshot.current = this.model.source;
     this.update({
       metadata: {
         ...this.state.metadata,
         nativeDocument: captureDocument(this.model.state.doc, this.state.text),
       },
     });
+    this.reconcileProposals();
   }
+  retainModel(): () => void {
+    this.prepareModel();
+    this.modelUsers += 1;
+    return () => {
+      this.modelUsers -= 1;
+      this.releaseModel();
+    };
+  }
+
+  releaseModel(): void {
+    if (!this.model || this.modelUsers || this.journal.observed || (this.state.dirty && this.recoveredGeneration < this.generation) || this.state.saving || this.checking || undoDepth(this.model.state) || redoDepth(this.model.state)) return;
+    this.model = null;
+  }
+
   override update(patch: Partial<SessionState>): void {
     if (
       (patch.epoch !== undefined && patch.epoch !== this.state.epoch) ||
@@ -623,7 +642,6 @@ export class DocumentSession extends DocumentReader {
       this.changed(await this.reconcileDeliveries(this.state.metadata));
       await this.recover();
     }
-    this.prepareModel();
     this.reconcileProposals();
     if (this.state.dirty) await this.recover();
     this.update({ ready: true });
@@ -756,13 +774,12 @@ export class DocumentSession extends DocumentReader {
   }
 
   private reconcileProposals(): void {
-    if (!this.model) return;
     const proposals = this.state.metadata.proposals.map((proposal) => {
       if (proposal.status !== "pending") return proposal;
       try {
         if (proposal.revision !== this.state.metadata.revision || this.state.text.slice(proposal.from, proposal.to) !== proposal.expectedText)
           return { ...proposal, status: "conflict" as const };
-        this.model!.sourceTransaction([{ from: proposal.from, to: proposal.to, insert: proposal.replacement }]);
+        this.model?.sourceTransaction([{ from: proposal.from, to: proposal.to, insert: proposal.replacement }]);
         return proposal;
       } catch {
         return { ...proposal, status: "conflict" as const };
@@ -946,16 +963,11 @@ export class DocumentSession extends DocumentReader {
         })),
       };
     }
-    const native = restoreDocument(
-      loaded.text,
-      loaded.path,
-      metadata.nativeDocument,
-    );
-    metadata = {
-      ...metadata,
-      version: 14,
-      nativeDocument: captureDocument(native, loaded.text),
-    };
+    const savedNative = metadata.nativeDocument;
+    const nativeDocument = savedNative?.source === loaded.text && savedNative.version === 3
+      ? savedNative
+      : captureDocument(restoreDocument(loaded.text, loaded.path, savedNative), loaded.text);
+    metadata = { ...metadata, version: 14, nativeDocument };
     if (
       storedMetadata.documentHash &&
       storedMetadata.documentHash !== loaded.hash
@@ -967,8 +979,8 @@ export class DocumentSession extends DocumentReader {
         createdAt: new Date().toISOString(),
         actor: "External file",
         threadId: null,
-        beforeFormat: sourceFormatSchema.parse(native.attrs.format),
-        format: sourceFormatSchema.parse(native.attrs.format),
+        beforeFormat: nativeDocument.format,
+        format: nativeDocument.format,
         from: 0,
         removed: "",
         inserted: "",
@@ -1004,7 +1016,8 @@ export class DocumentSession extends DocumentReader {
         : null,
       selection: { from: 0, to: 0 },
     });
-    this.prepareModel();
+    this.model = null;
+    this.journal = new DocumentJournal();
     this.reconcileProposals();
     await invoke("discard_recovery", {
       documentId: this.state.metadata.documentId,
@@ -1560,7 +1573,7 @@ export class DocumentSession extends DocumentReader {
   }
 
   async reconcileFile(): Promise<void> {
-    if (!this.state.path || !this.model || this.savedHash === null) return;
+    if (!this.state.path || this.savedHash === null) return;
     const path = this.state.path;
     const documentId = this.state.metadata.documentId;
     const expectedHash = this.savedHash;
@@ -1614,13 +1627,15 @@ export class DocumentSession extends DocumentReader {
                   ],
           }
         : reconcileText(base, this.state.text, loaded.text);
-    if (reconciled.changes.length)
-      this.model.applySource(
+    if (reconciled.changes.length) {
+      this.prepareModel();
+      this.model!.applySource(
         reconciled.changes,
         undefined,
         undefined,
         "External file",
       );
+    }
     let metadata = this.state.metadata;
     for (const conflict of reconciled.conflicts) {
       const expectedText = this.state.text.slice(conflict.from, conflict.to);
@@ -1746,6 +1761,7 @@ export class DocumentSession extends DocumentReader {
       activity.report(this.state.metadata.documentId, "external", error);
     } finally {
       this.checking = false;
+      this.releaseModel();
     }
   }
 
@@ -2049,6 +2065,7 @@ export class DocumentSession extends DocumentReader {
       .catch(() => undefined)
       .then(async () => {
         await this.recover();
+        const releaseModel = this.retainModel();
         const previous = this.state;
         const events = [...this.pendingEvents];
         const history = [...this.pendingHistory];
@@ -2066,6 +2083,7 @@ export class DocumentSession extends DocumentReader {
         const anchors = editor ? { ...editor.anchors } : null;
         let operationGeneration = generation;
         try {
+          await this.recover();
           const executing = execute();
           operationGeneration = this.generation;
           const result = await executing;
@@ -2103,6 +2121,8 @@ export class DocumentSession extends DocumentReader {
             this.update(previous);
           }
           throw error;
+        } finally {
+          releaseModel();
         }
       });
     this.controls = operation;
@@ -2132,8 +2152,9 @@ export class DocumentSession extends DocumentReader {
     method: string,
     parameters: unknown,
   ): Promise<unknown> {
-    if (!this.state.ready || !this.model)
-      throw new Error("The editor is starting.");
+    if (!this.state.ready) throw new Error("The editor is starting.");
+    this.prepareModel();
+    if (!this.model) throw new Error("The document model is unavailable.");
     if (["ui_inspect", "ui_action", "ui_state", "window_resize", "editor_select"].includes(method))
       return this.controlView(method, parameters);
     if (method === "passage_reference_create") {

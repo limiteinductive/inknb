@@ -1,3 +1,4 @@
+import { searchDocuments } from "./document-search";
 import { invoke } from "@tauri-apps/api/core";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { Selection } from "prosemirror-state";
@@ -318,6 +319,9 @@ class AppHost {
   private async snapshot(
     windowId: string,
     versions: Extract<HostRequest, { kind: "snapshot" }>["versions"],
+    activeId: string | null,
+    restoring: boolean,
+    readers: string[],
   ): Promise<HostSnapshot> {
     const window = this.spaces.window(windowId);
     if (!window.open) throw Error("This writing window is closed.");
@@ -330,7 +334,9 @@ class AppHost {
     }
     const identities = [
       ...new Set([
-        ...space.documentIds,
+        ...(activeId && space.documentIds.includes(activeId) ? [activeId] : []),
+        ...readers.filter(identity => space.documentIds.includes(identity)),
+        ...(restoring ? Object.entries(window.documents).filter(([identity, view]) => view.pendingSource && space.documentIds.includes(identity)).map(([identity]) => identity) : []),
         ...Object.entries(versions)
           .filter(
             ([identity, version]) =>
@@ -343,53 +349,59 @@ class AppHost {
       if (!identities.includes(identity)) publications.delete(identity);
     for (const [identity, session] of this.documents.sessions) {
       const previous = versions[identity];
-      if (previous?.epoch === session.journal.epoch)
+      if (!identities.includes(identity)) {
+        session.journal.forget(windowId);
+        session.releaseModel();
+      } else if (previous?.epoch === session.journal.epoch)
         session.journal.acknowledge(windowId, previous.version);
-      else if (!identities.includes(identity)) session.journal.forget(windowId);
     }
     for (const identity of identities) {
       const session = this.documents.sessions.get(identity);
-      if (!session?.model) continue;
-      await session.recover();
-      const journal = session.journal;
-      const previous = versions[identity];
-      const reset = !previous || previous.epoch !== journal.epoch;
-      if (reset) journal.acknowledge(windowId, journal.version);
-      if (
-        !reset &&
-        previous.publication === session.publication &&
-        previous.version === journal.version
-      )
-        continue;
-      const changes = reset ? [] : journal.changes.slice(previous.version - (journal.version - journal.changes.length));
-      const state = documentState(session.getSnapshot());
-      const saved = publications.get(identity);
-      const exchange = {
-        publication: session.publication,
-        epoch: journal.epoch,
-        version: journal.version,
-        steps: changes.map((change) => change.step),
-        clients: changes.map((change) => change.clientId),
-      };
-      documents[identity] = reset
-        ? {
-            ...exchange,
-            reset: true,
-            state: {
-              ...state,
-              metadata: {
-                ...state.metadata,
-                nativeDocument: captureDocument(session.model.state.doc, state.text),
+      if (!session) continue;
+      const releaseModel = session.retainModel();
+      try {
+        if (!session.model) throw Error("The document model is unavailable.");
+        await session.recover();
+        const journal = session.journal;
+        const previous = versions[identity];
+        const reset = !previous || previous.epoch !== journal.epoch;
+        if (reset) journal.acknowledge(windowId, journal.version);
+        if (
+          !reset &&
+          previous.publication === session.publication &&
+          previous.version === journal.version
+        )
+          continue;
+        const changes = reset ? [] : journal.changes.slice(previous.version - (journal.version - journal.changes.length));
+        const state = documentState(session.getSnapshot());
+        const saved = publications.get(identity);
+        const exchange = {
+          publication: session.publication,
+          epoch: journal.epoch,
+          version: journal.version,
+          steps: changes.map((change) => change.step),
+          clients: changes.map((change) => change.clientId),
+        };
+        documents[identity] = reset
+          ? {
+              ...exchange,
+              reset: true,
+              state: {
+                ...state,
+                metadata: {
+                  ...state.metadata,
+                  nativeDocument: captureDocument(session.model.state.doc, state.text),
+                },
               },
-            },
-          }
-        : {
-            ...exchange, reset: false,
-            update: saved?.publication === previous.publication
-              ? publishDocument(saved.state, state, saved.publication)
-              : { kind: "snapshot", state },
-          };
-      publications.set(identity, { publication: session.publication, state });
+            }
+          : {
+              ...exchange, reset: false,
+              update: saved?.publication === previous.publication
+                ? publishDocument(saved.state, state, saved.publication)
+                : { kind: "snapshot", state },
+            };
+        publications.set(identity, { publication: session.publication, state });
+      } finally { releaseModel(); }
     }
     const library = this.documents.getSnapshot();
     const folders = new Set<string>();
@@ -407,6 +419,7 @@ class AppHost {
     const activityKey = this.activityTargets.get(windowId) ?? null;
     this.activityTargets.delete(windowId);
     return {
+      decisions: [...this.documents.sessions].flatMap(([documentId, session]) => space.documentIds.includes(documentId) ? session.getSnapshot().metadata.decisions.map(decision => ({ documentId, path: session.getSnapshot().path, decision })) : []),
       spaces: {
         ...this.spaces.getSnapshot(),
         windows: this.spaces
@@ -467,7 +480,7 @@ class AppHost {
       return this.control("document_activate", { documentId: request.documentId });
     }
     if (request.kind === "snapshot")
-      return this.snapshot(windowId, request.versions);
+      return this.snapshot(windowId, request.versions, request.activeId ?? window.activeId, request.restoring, request.readers);
     if (request.kind === "window") {
       this.spaces.updateWindow(windowId, {
         ...request.patch,
@@ -477,6 +490,13 @@ class AppHost {
       });
       await this.persist();
       return null;
+    }
+    if (request.kind === "search") {
+      const space = this.spaces.space(window.spaceId);
+      return searchDocuments(this.documents.getSnapshot().documents.flatMap(entry => {
+        if (entry.trash || !space.documentIds.includes(entry.id)) return [];
+        return [{ documentId: entry.id, title: entry.title, text: this.documents.sessions.get(entry.id)?.getSnapshot().text ?? "" }];
+      }), request.query);
     }
     if (request.kind === "spaces")
       return {
@@ -546,7 +566,7 @@ class AppHost {
     )
       throw Error("This document is outside the window's space.");
     const session = this.documents.sessions.get(request.documentId);
-    if (!session?.model) throw Error("The document model is unavailable.");
+    if (!session) throw Error("The document is unavailable.");
     if (request.kind !== "steps" && this.documents.getSnapshot().documents.find(entry => entry.id === request.documentId)?.trash) throw Error("This document is in Trash. Use document_restore first.");
     if (request.kind === "resource") return this.resources(request.documentId, request.action);
     let result: unknown = null;
@@ -561,6 +581,11 @@ class AppHost {
       }
       result = await session.control(request.method, request.parameters);
     }
+    if (request.kind === "decision-answer")
+      result = await session.transact(async () => {
+        await session.answerDecision(request.decisionId, request.option, request.text);
+        return null;
+      });
     if (request.kind === "binding")
       result = await session.transact(async () => {
         await session.bind(request.binding, request.documentId);
@@ -901,6 +926,7 @@ class AppHost {
     }
     const result = await this.documents.control(method, source, agentId);
     await this.persist();
+    for (const session of this.documents.sessions.values()) session.releaseModel();
     await invoke("host_changed");
     return result;
   }

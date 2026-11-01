@@ -118,6 +118,9 @@ export default function ActivityCenter() {
     if (!state.open) setSelected(null);
   }, [state.open]);
   useEffect(() => setDiscussionOpen(false), [selected?.key]);
+  useEffect(() => {
+    if (state.open && selected?.documentId) return workspace.retain(selected.documentId);
+  }, [state.open, selected?.documentId]);
   const items = state.pending;
   const session = selected?.documentId
     ? workspace.sessions.get(selected.documentId)
@@ -204,7 +207,7 @@ export default function ActivityCenter() {
     selected;
   useEffect(() => {
     if (state.open && session && thread && !completed) {
-      workspace.activate(session.getSnapshot().metadata.documentId);
+      void workspace.activate(session.getSnapshot().metadata.documentId).catch(error => workspace.fail(error));
       session.selectThread(thread.id);
     }
   }, [state.open, session, thread?.id, completed]);
@@ -431,10 +434,10 @@ export default function ActivityCenter() {
                     className="text-button"
                     data-inknb-control="activity.open-document"
                     onPress={() => {
-                      workspace.activate(selected.documentId!);
-                      if (thread && !thread.resolved)
-                        session?.selectThread(thread.id);
-                      activity.update({ open: false });
+                      void workspace.activate(selected.documentId!).then(() => {
+                        if (thread && !thread.resolved) workspace.active?.selectThread(thread.id);
+                        activity.update({ open: false });
+                      }).catch(error => workspace.fail(error));
                     }}
                   >
                     Open document

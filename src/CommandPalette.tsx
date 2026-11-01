@@ -7,7 +7,9 @@ import { compactLibraryWidth, workspace } from "./window-workspace";
 import { currentSuggestions, nonOverlappingSuggestions } from "./suggestions";
 import { resolvableAsides } from "./aside-state";
 import type { WindowDocument } from "./window-document";
-import { documentPosition } from "./native-source";
+import { z } from "zod";
+import { documentSearchMatchSchema, searchDocuments } from "./document-search";
+import type { DocumentSearchMatch } from "./document-search";
 import "./command-palette.css";
 
 interface PaletteCommand {
@@ -27,6 +29,7 @@ export default function CommandPalette({ session }: { session?: WindowDocument }
   const state = useSyncExternalStore(session?.subscribe ?? workspace.subscribe, session?.getSnapshot ?? (() => null));
   const [query, setQuery] = useState("");
   const [selectedIndex, setSelectedIndex] = useState(0);
+  const [searchMatches, setSearchMatches] = useState<DocumentSearchMatch[]>([]);
   const listId = useId();
   const searching = library.commandSurface === "project-search";
   const open = library.commandSurface === "commands" || searching;
@@ -70,30 +73,31 @@ export default function CommandPalette({ session }: { session?: WindowDocument }
   ];
   for (const command of commands) command.shortcut = shortcutLabel(command.id, library.preferences);
   const terms = query.toLocaleLowerCase().trim().split(/\s+/);
-  const search = query.trim();
-  const expression = search ? new RegExp(search.replace(/[.*+?^${}()|[\]\\]/gu, "\\$&"), "iu") : null;
-  const matches: PaletteOption[] = searching ? library.documents.flatMap(entry => {
-    const document = workspace.sessions.get(entry.id);
-    if (!document) return [];
-    const snapshot = document.getSnapshot();
-    const match = expression?.exec(snapshot.text);
-    if (expression && !expression.test(entry.title) && !match) return [];
-    const model = document.model;
-    const detail = match && model
-      ? model.state.doc.textBetween(documentPosition(model.projection, match.index), documentPosition(model.projection, Math.min(snapshot.text.length, match.index + Math.max(search.length, 72))), " ", " ")
-      : undefined;
-    return [{
-      id: entry.id,
-      label: entry.title,
-      detail,
-      select: async () => {
-        if (match) workspace.reveal(entry.id, match.index, match.index + match[0].length);
-        else workspace.activate(entry.id);
-        if (window.innerWidth <= compactLibraryWidth) workspace.update({ sidebarOpen: false });
-        requestAnimationFrame(() => workspace.active?.surface?.focus());
-      },
-    }];
-  }) : commands.filter(command => terms.every(term => command.label.toLocaleLowerCase().includes(term))).map(command => ({ ...command, select: () => workspace.command(command.id) }));
+  const searchVersion = library.documents.map(entry => `${entry.id}:${entry.title}:${entry.modifiedAt}`).join("|");
+  useEffect(() => {
+    if (!open || !searching) return;
+    let current = true;
+    setSearchMatches([]);
+    void workspace.request({ kind: "search", query }).then(result => {
+      if (!current) return;
+      const committed = z.array(documentSearchMatchSchema).parse(result);
+      const local = searchDocuments([...workspace.sessions].map(([documentId, session]) => ({ documentId, title: workspace.documentTitle(documentId), text: session.getSnapshot().text })), query);
+      const matches = new Map([...committed.filter(match => !workspace.sessions.has(match.documentId)), ...local].map(match => [match.documentId, match]));
+      setSearchMatches(workspace.getSnapshot().documents.flatMap(entry => matches.has(entry.id) ? [matches.get(entry.id)!] : []));
+    }).catch(error => { if (current) workspace.fail(error); });
+    return () => { current = false; };
+  }, [open, searching, query, searchVersion]);
+  const matches: PaletteOption[] = searching ? searchMatches.map(match => ({
+    id: match.documentId,
+    label: match.title,
+    detail: match.detail,
+    select: async () => {
+      if (match.from !== null && match.to !== null) await workspace.reveal(match.documentId, match.from, match.to);
+      else await workspace.activate(match.documentId);
+      if (window.innerWidth <= compactLibraryWidth) workspace.update({ sidebarOpen: false });
+      requestAnimationFrame(() => workspace.active?.surface?.focus());
+    },
+  })) : commands.filter(command => terms.every(term => command.label.toLocaleLowerCase().includes(term))).map(command => ({ ...command, select: () => workspace.command(command.id) }));
   const selected = matches[Math.min(selectedIndex, matches.length - 1)];
   const run = (command: PaletteOption) => {
     if (command.disabled) return;

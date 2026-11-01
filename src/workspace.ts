@@ -462,7 +462,6 @@ export class DocumentLibrary implements DocumentHost {
     }
   }
   register(session: DocumentSession, stored?: LibraryEntry): void {
-    if (!session.model) session.prepareModel();
     const state = session.getSnapshot();
     const entry =
       stored ??

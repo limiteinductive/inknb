@@ -123,7 +123,7 @@ function DocumentRow({
             startRenaming();
           }}
           onPress={() => {
-            workspace.activate(entry.id);
+            void workspace.activate(entry.id).catch(error => workspace.fail(error));
             onNavigate?.();
           }}
         >
@@ -153,9 +153,7 @@ export default function Library({
   );
   const draggedIds = useRef<string[]>([]);
   const resize = useRef<{ start: number; width: number } | null>(null);
-  const available = library.documents.filter((entry) =>
-    workspace.sessions.has(entry.id),
-  );
+  const available = library.documents;
   const documentCounts = new Map<string, number>();
   const parents = new Map(
     workspace.nodes.map((node) => [node.id, node.parentId]),
@@ -172,7 +170,7 @@ export default function Library({
   const documents = available.map(entry => ({ entry }));
   function navigateDocument(identity: string | number) {
     if (!available.some(entry => entry.id === identity)) return;
-    workspace.activate(String(identity));
+    void workspace.activate(String(identity)).catch(error => workspace.fail(error));
     onNavigate?.();
   }
   const nodes = flat

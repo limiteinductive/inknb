@@ -358,7 +358,7 @@ function App() {
         )}
         {[...workspace.sessions]
           .filter(([identity]) =>
-            library.documents.some((entry) => entry.id === identity),
+            identity === library.activeId && library.documents.some((entry) => entry.id === identity),
           )
           .map(([identity, session]) => (
             <div

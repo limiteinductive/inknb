@@ -19,8 +19,8 @@ import {
   asideReferenceSchema,
 } from "./domain";
 import { documentViewSchema, spacesSchema } from "./spaces";
-import type { SpaceWindow, SpacesState } from "./spaces";
-import type { HostRequest, HostSnapshot } from "./host-protocol";
+import type { DocumentViewState, SpaceWindow, SpacesState } from "./spaces";
+import type { DocumentDecision, HostRequest, HostSnapshot } from "./host-protocol";
 import type { DocumentHost } from "./session";
 import type { Library, LibraryNode } from "./workspace";
 import { WindowDocument } from "./window-document";
@@ -32,6 +32,7 @@ type CommandSurface = "commands" | "project-search" | "agents" | "decisions" | "
 
 class WindowWorkspace implements DocumentHost {
   private state: Library & {
+    decisions: DocumentDecision[];
     ready: boolean;
     error: string | null;
     spaceId: string | null;
@@ -41,6 +42,7 @@ class WindowWorkspace implements DocumentHost {
     profile: string | null;
     commandSurface: CommandSurface | null;
   } = {
+    decisions: [],
     version: 2,
     documents: [],
     collections: [],
@@ -62,6 +64,33 @@ class WindowWorkspace implements DocumentHost {
     commandSurface: null,
   };
   readonly sessions = new Map<string, WindowDocument>();
+  private documentViews = new Map<string, DocumentViewState>();
+  private readers = new Map<string, number>();
+
+  documentDraft(identity: string, key: string) {
+    return this.sessions.get(identity)?.getSnapshot().drafts[key] ?? this.documentViews.get(identity)?.drafts[key] ?? { content: "", images: [] };
+  }
+  setDocumentDraft(identity: string, key: string, content: string): void {
+    const session = this.sessions.get(identity);
+    const view = session ? documentViewSchema.parse(session.getSnapshot()) : this.documentViews.get(identity) ?? documentViewSchema.parse({});
+    const drafts = { ...view.drafts, [key]: { ...this.documentDraft(identity, key), content } };
+    if (session) session.update({ drafts });
+    else {
+      this.documentViews.set(identity, { ...view, drafts });
+      this.update({});
+    }
+  }
+
+  retain(identity: string): () => void {
+    this.readers.set(identity, (this.readers.get(identity) ?? 0) + 1);
+    void this.refresh().catch(error => this.fail(error));
+    return () => {
+      const remaining = this.readers.get(identity)! - 1;
+      if (remaining) this.readers.set(identity, remaining);
+      else this.readers.delete(identity);
+      void this.refresh().catch(error => this.fail(error));
+    };
+  }
   readonly windowId = getCurrentWindow().label.replace(/^writing-/, "");
   private listeners = new Set<() => void>();
   private refreshing: Promise<void> | null = null;
@@ -136,6 +165,9 @@ class WindowWorkspace implements DocumentHost {
         );
         const snapshot = (await this.request({
           kind: "snapshot",
+          activeId: this.state.activeId,
+          restoring: !this.state.ready,
+          readers: [...this.readers.keys()],
           versions,
         })) as HostSnapshot;
         const spaces = spacesSchema.parse(snapshot.spaces);
@@ -170,7 +202,7 @@ class WindowWorkspace implements DocumentHost {
               const session = new WindowDocument(
                 this,
                 exchange,
-                window.documents[identity] ?? documentViewSchema.parse({}),
+                this.documentViews.get(identity) ?? window.documents[identity] ?? documentViewSchema.parse({}),
                 this.windowId,
                 this.request,
                 this.refresh,
@@ -182,18 +214,24 @@ class WindowWorkspace implements DocumentHost {
               });
             }
           }
-          for (const identity of this.sessions.keys())
-            if (
-              !space.documentIds.includes(identity) &&
-              !this.sessions.get(identity)?.getSnapshot().pendingSource &&
-              !sendableSteps(this.sessions.get(identity)!.model!.state)
-            )
+          const desiredActiveId = this.state.ready && space.documentIds.includes(this.state.activeId ?? "")
+            ? this.state.activeId
+            : window.activeId;
+          for (const [identity, session] of this.sessions)
+            if (identity !== desiredActiveId && !this.readers.has(identity) && !session.getSnapshot().pendingSource && !sendableSteps(session.model!.state)) {
+              this.documentViews.set(identity, { ...documentViewSchema.parse(session.getSnapshot()), scrollTop: this.state.documents.find(entry => entry.id === identity)?.scrollTop ?? session.getSnapshot().sourceScrollTop });
               this.sessions.delete(identity);
+              this.refreshAgain = true;
+            }
+          for (const [identity, view] of Object.entries(window.documents))
+            if (!this.documentViews.has(identity)) this.documentViews.set(identity, view);
+          for (const identity of this.documentViews.keys())
+            if (!space.documentIds.includes(identity) && !this.documentViews.get(identity)?.pendingSource) this.documentViews.delete(identity);
           const documents = snapshot.library.documents.map((entry) => {
             const session = this.sessions.get(entry.id);
             const view = this.state.ready && session
               ? documentViewSchema.parse(session.getSnapshot())
-              : window.documents[entry.id];
+              : this.documentViews.get(entry.id) ?? window.documents[entry.id];
             const scrollTop = this.state.ready
               ? (this.state.documents.find(
                   (candidate) => candidate.id === entry.id,
@@ -219,6 +257,7 @@ class WindowWorkspace implements DocumentHost {
           this.state = {
             ...this.state,
             documents,
+            decisions: shareValue(this.state.decisions, snapshot.decisions),
             collections: snapshot.library.collections,
             activeId,
             ready: true,
@@ -287,7 +326,7 @@ class WindowWorkspace implements DocumentHost {
     const scale = await window.scaleFactor();
     const position = await window.outerPosition();
     const size = await window.innerSize();
-    const documents = Object.fromEntries(
+    const documents = { ...Object.fromEntries(this.documentViews), ...Object.fromEntries(
       [...this.sessions].map(([identity, session]) => {
         const view = documentViewSchema.parse(session.getSnapshot());
         const reader = identity === this.state.activeId
@@ -303,7 +342,7 @@ class WindowWorkspace implements DocumentHost {
                   ?.scrollTop ?? 0),
         }];
       }),
-    );
+    ) };
     const patch: Partial<SpaceWindow> = {
       activeId: this.state.activeId,
       documents,
@@ -349,6 +388,9 @@ class WindowWorkspace implements DocumentHost {
     };
   }
   openAside(reference: AsideReference): void {
+    void this.revealAside(reference).catch(error => this.fail(error));
+  }
+  private async revealAside(reference: AsideReference): Promise<void> {
     const member = this.state.documents.some(
       (entry) => entry.id === reference.documentId,
     );
@@ -358,8 +400,8 @@ class WindowWorkspace implements DocumentHost {
       );
       return;
     }
+    await this.activate(reference.documentId);
     this.readAside(reference);
-    this.activate(reference.documentId);
     this.active?.revealSource(reference.threadId);
   }
   async newDocument(): Promise<void> {
@@ -371,7 +413,7 @@ class WindowWorkspace implements DocumentHost {
       }),
     );
     await this.refresh();
-    this.activate(result.documentId);
+    await this.activate(result.documentId);
   }
   async openDocument(path?: string): Promise<void> {
     const documentId = path ? parseDocumentLink(path) : null;
@@ -408,7 +450,7 @@ class WindowWorkspace implements DocumentHost {
         }),
       );
     await this.refresh();
-    this.activate(result.documentId);
+    await this.activate(result.documentId);
   }
   async flush(): Promise<void> {
     for (const session of this.sessions.values()) await session.flush();
@@ -464,11 +506,11 @@ class WindowWorkspace implements DocumentHost {
       return;
     }
     if (command === "back") {
-      this.navigate(-1);
+      await this.navigate(-1);
       return;
     }
     if (command === "forward") {
-      this.navigate(1);
+      await this.navigate(1);
       return;
     }
     if (command === "sidebar") {
@@ -509,7 +551,7 @@ class WindowWorkspace implements DocumentHost {
     }
     const values = z.record(z.string(), z.unknown()).parse(parameters);
     if (method === "aside_open") {
-      this.openAside(asideReferenceSchema.parse(parameters));
+      await this.revealAside(asideReferenceSchema.parse(parameters));
       return { opened: true };
     }
     if (method === "window_resize") {
@@ -563,12 +605,12 @@ class WindowWorkspace implements DocumentHost {
 
     if (method === "library_list") return this.state;
     if (method === "document_activate") {
-      this.activate(z.string().uuid().parse(values.documentId));
+      await this.activate(z.string().uuid().parse(values.documentId));
       return { documentId: values.documentId };
     }
     if (method === "page_open") {
       const documentId = z.string().uuid().parse(values.documentId);
-      this.activate(documentId);
+      await this.activate(documentId);
       if (!this.active?.getSnapshot().metadata.page) throw Error("This document has no published page.");
       this.active.update({ pageVisible: true });
       return { documentId, opened: true };
@@ -603,12 +645,10 @@ class WindowWorkspace implements DocumentHost {
       };
     return result;
   }
-  activate(identity: string): void {
+  async activate(identity: string): Promise<void> {
     if (!this.state.documents.some((entry) => entry.id === identity))
       throw Error("This document is outside this space.");
-    if (!this.sessions.has(identity))
-      throw Error("This document is unavailable.");
-    if (this.state.activeId === identity) return;
+    if (this.state.activeId === identity && this.sessions.has(identity)) return;
     this.beforeNavigation();
     const ancestors = new Set<string>();
     let parentId = this.state.documents.find(
@@ -627,6 +667,8 @@ class WindowWorkspace implements DocumentHost {
         entry.id === identity ? { ...entry, open: true } : entry,
       ),
     });
+    await this.refresh();
+    if (this.state.activeId !== identity) return;
     this.afterNavigation();
     const scrollTop =
       this.state.documents.find((entry) => entry.id === identity)?.scrollTop ??
@@ -650,6 +692,7 @@ class WindowWorkspace implements DocumentHost {
     const history = [...this.state.history];
     const scrollTop = this.scrollTop;
     this.active.update({ sourceScrollTop: scrollTop });
+    this.documentViews.set(state.metadata.documentId, { ...documentViewSchema.parse(this.active.getSnapshot()), scrollTop });
     this.update({
       documents: this.state.documents.map((entry) =>
         entry.id === state.metadata.documentId
@@ -694,15 +737,17 @@ class WindowWorkspace implements DocumentHost {
       historyIndex: this.state.historyIndex + 1,
     });
   }
-  navigate(direction: -1 | 1): void {
+  async navigate(direction: -1 | 1): Promise<void> {
     const index = this.state.historyIndex + direction;
     const location = this.state.history[index];
     if (!location) return;
-    const session = this.sessions.get(location.documentId);
-    if (!session) return;
     this.beforeNavigation();
     this.navigating = true;
-    this.activate(location.documentId);
+    try { await this.activate(location.documentId); }
+    finally { this.navigating = false; }
+    const session = this.sessions.get(location.documentId);
+    if (!session || this.state.activeId !== location.documentId) return;
+    this.navigating = true;
     const state = session.getSnapshot();
     const anchor = relocateAnchor(state.text, location.anchor);
     const selection =
@@ -739,10 +784,13 @@ class WindowWorkspace implements DocumentHost {
     });
     session.restoreFocus();
   }
-  reveal(identity: string, from: number, to: number): void {
+  async reveal(identity: string, from: number, to: number): Promise<void> {
     this.beforeNavigation();
     this.navigating = true;
-    this.activate(identity);
+    try { await this.activate(identity); }
+    finally { this.navigating = false; }
+    if (this.state.activeId !== identity) return;
+    this.navigating = true;
     if (this.navigationFrame !== null) {
       cancelAnimationFrame(this.navigationFrame);
       this.navigationFrame = null;

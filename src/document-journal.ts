@@ -31,6 +31,10 @@ export class DocumentJournal {
     this.release();
   }
 
+  get observed(): boolean {
+    return this.consumers.size > 0;
+  }
+
   private release(): void {
     const retainedFrom = Math.min(this.version, ...this.consumers.values());
     const discarded = retainedFrom - (this.version - this.changes.length);
