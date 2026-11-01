@@ -1,4 +1,5 @@
 import {
+  memo,
   useEffect,
   useId,
   useLayoutEffect,
@@ -9,13 +10,22 @@ import {
 } from "react";
 import { Button } from "react-aria-components";
 import { X } from "lucide-react";
-import { useDocumentSession, useSession } from "./use-session";
+import { useDocumentSession, useSessionSelector, sameFields } from "./use-session";
 import { documentOutline } from "./document-structure";
 import { workspace } from "./window-workspace";
 
-export default function DocumentOutline({ active }: { active: boolean }) {
+export default memo(function DocumentOutline({ active }: { active: boolean }) {
   const session = useDocumentSession();
-  const state = useSession();
+  const state = useSessionSelector(session, state => ({
+    ready: state.ready,
+    epoch: state.epoch,
+    pageVisible: state.pageVisible,
+    outlineOpen: state.outlineOpen,
+    preferences: state.preferences,
+    documentId: state.metadata.documentId,
+    nativeDocument: state.metadata.nativeDocument,
+    text: state.text,
+  }), sameFields);
   const container = useRef<HTMLElement>(null);
   const trigger = useRef<HTMLButtonElement>(null);
   const list = useRef<HTMLOListElement>(null);
@@ -259,7 +269,7 @@ export default function DocumentOutline({ active }: { active: boolean }) {
                 data-inknb-control={`outline:${heading.identity}`}
                 onPress={() => {
                   workspace.reveal(
-                    state.metadata.documentId,
+                    state.documentId,
                     heading.from,
                     heading.from,
                   );
@@ -288,4 +298,4 @@ export default function DocumentOutline({ active }: { active: boolean }) {
       </div>
     </nav>
   );
-}
+});

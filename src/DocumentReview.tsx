@@ -49,10 +49,10 @@ export default function DocumentReview({
   onReveal: (proposal: Proposal) => void;
 }) {
   const session = useAsideSession();
-  const state = useAsideState();
+  const state = useAsideSelector(state => ({ reviewOpen: state.reviewOpen, reviewProposalId: state.reviewProposalId, focus: state.focus }), sameFields);
   useLayoutEffect(() => {
     if (!active || !state.reviewOpen || state.focus) return;
-    const selected = currentSuggestions(state).find(
+    const selected = currentSuggestions(session.getSnapshot()).find(
       (proposal) => proposal.id === state.reviewProposalId,
     );
     const frame = requestAnimationFrame(() => {

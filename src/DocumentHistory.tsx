@@ -4,7 +4,7 @@ import { ArrowLeft, History, X } from "lucide-react";
 import { Conversation } from "./Asides";
 import { asideOutdated } from "./aside-state";
 import type { AsideReference } from "./domain";
-import { useAsideSession, useAsideState } from "./use-session";
+import { useAsideSession, useAsideSelector, sameFields } from "./use-session";
 import {
   historyPageSchema,
   historyRevisionSchema,
@@ -35,7 +35,7 @@ export default function DocumentHistory({
   presentation?: "popover" | "modal";
 }) {
   const session = useAsideSession();
-  const state = useAsideState();
+  const state = useAsideSelector(state => ({ metadata: state.metadata }), sameFields);
   const [filter, setFilter] = useState("all");
   const [history, setHistory] = useState<{
     entries: HistoryEntry[];

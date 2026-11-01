@@ -1,12 +1,12 @@
 import { Button, Switch } from "react-aria-components";
 import { invoke } from "@tauri-apps/api/core";
-import { useDocumentSession, useSession } from "./use-session";
+import { useDocumentSession, useSessionSelector, sameFields } from "./use-session";
 import { PanelModal, PanelBody, PanelEmpty } from "./PanelPopover";
 import { agentAttribution } from "./domain";
 
 export default function AgentConnections({ open, onOpenChange }: { open: boolean; onOpenChange: (open: boolean) => void }) {
   const session = useDocumentSession();
-  const state = useSession();
+  const state = useSessionSelector(session, state => ({ metadata: state.metadata, path: state.path, agentAccess: state.metadata.agentAccess ?? (state.preferences.agent_edits ? "edit" : "read") }), sameFields);
   return (
     <PanelModal open={open} onOpenChange={onOpenChange}
         className="agent-connection-popover"
@@ -73,7 +73,7 @@ export default function AgentConnections({ open, onOpenChange }: { open: boolean
           ))}
           <Switch
             className="permission"
-            isSelected={session.agentAccess === "edit"}
+            isSelected={state.agentAccess === "edit"}
             onChange={(enabled) =>
               session.changed({
                 ...state.metadata,

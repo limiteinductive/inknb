@@ -3,7 +3,7 @@ import { Button } from "react-aria-components";
 import { File, FileText, Globe } from "lucide-react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
-import { useDocumentSession, useSession } from "./use-session";
+import { useDocumentSession, useSessionSelector, sameFields } from "./use-session";
 import { workspace } from "./window-workspace";
 import { resourceStateSchema } from "./resources";
 import type { ResourceState } from "./resources";
@@ -12,7 +12,7 @@ import { PanelModal, PanelBody, PanelEmpty } from "./PanelPopover";
 
 export default function LinkedResources({ open, onOpenChange }: { open: boolean; onOpenChange: (open: boolean) => void }) {
   const session = useDocumentSession();
-  const state = useSession();
+  const state = useSessionSelector(session, state => ({ documentId: state.metadata.documentId, path: state.path }), sameFields);
   const [resources, setResources] = useState<ResourceState | null>(null);
   const [error, setError] = useState<string | null>(null);
   useEffect(() => {
@@ -23,7 +23,7 @@ export default function LinkedResources({ open, onOpenChange }: { open: boolean;
       workspace
         .request({
           kind: "resource",
-          documentId: state.metadata.documentId,
+          documentId: state.documentId,
           action: { kind: "read" },
         })
         .then((result) => {
@@ -38,7 +38,7 @@ export default function LinkedResources({ open, onOpenChange }: { open: boolean;
       current = false;
       void subscription.then((unlisten) => unlisten());
     };
-  }, [open, state.metadata.documentId]);
+  }, [open, state.documentId]);
   return (
     <PanelModal open={open} onOpenChange={onOpenChange} className="resources-popover" title="Linked resources">
         {error && (
@@ -88,7 +88,7 @@ export default function LinkedResources({ open, onOpenChange }: { open: boolean;
                           void workspace
                             .request({
                               kind: "resource",
-                              documentId: state.metadata.documentId,
+                              documentId: state.documentId,
                               action: { kind: "remove", id: resource.id },
                             })
                             .catch((error) => session.fail(error));

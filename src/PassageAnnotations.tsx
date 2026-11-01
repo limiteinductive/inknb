@@ -1,11 +1,11 @@
 import { ShortcutResolver, shortcutTooltip } from "./shortcuts";
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { memo, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { RefObject } from "react";
 import { createPortal } from "react-dom";
 import { captureAnchor } from "./domain";
 import type { PassageSource } from "./passage-reference";
 import { annotationTransferType, textRange } from "./passage-reference";
-import { useDocumentSession, useSession } from "./use-session";
+import { useDocumentSession, useSessionSelector, sameFields } from "./use-session";
 import "./passage-annotations.css";
 import { useAutoHideScrollbar } from "./use-auto-hide-scrollbar";
 import { annotationSpace } from "./annotation-layout";
@@ -13,9 +13,9 @@ import { ArrowUp, X } from "lucide-react";
 import IconButton from "./IconButton";
 import CommentRecipients from "./CommentRecipients";
 
-export default function PassageAnnotations({ active }: { active: boolean }) {
+export default memo(function PassageAnnotations({ active }: { active: boolean }) {
   const session = useDocumentSession();
-  const state = useSession();
+  const state = useSessionSelector(session, state => ({ drafts: state.drafts, annotations: state.metadata.annotations }), sameFields);
   const [selected, setSelected] = useState<string | null>(null);
   const selectedKey = useRef<string | null>(null);
   selectedKey.current = selected;
@@ -33,13 +33,13 @@ export default function PassageAnnotations({ active }: { active: boolean }) {
   }, []);
   useEffect(() => {
     if (!active || !window.CSS?.highlights) return;
-    const passages = [...Object.keys(state.drafts), ...state.metadata.annotations.filter(annotation => annotation.status === "open").map(annotation => `annotation:${annotation.id}`)].flatMap(key => {
+    const passages = [...Object.keys(state.drafts), ...state.annotations.filter(annotation => annotation.status === "open").map(annotation => `annotation:${annotation.id}`)].flatMap(key => {
       const range = ranges.current.get(key);
       return range?.startContainer.isConnected ? [range] : [];
     });
     CSS.highlights.set("inknb-annotation", new Highlight(...passages));
     return () => { CSS.highlights.delete("inknb-annotation"); };
-  }, [active, state.drafts, state.metadata.annotations]);
+  }, [active, state.drafts, state.annotations]);
   useEffect(() => {
     if (!active) return;
     const select = (event: Event) => {
@@ -154,14 +154,14 @@ export default function PassageAnnotations({ active }: { active: boolean }) {
   if (!active) return null;
   const identities = new Set([
     ...Object.entries(state.drafts).filter(([key, draft]) => draft.annotation && (key === selected || draft.content.trim() || draft.annotation.completed)).map(([key]) => key),
-    ...state.metadata.annotations.filter(annotation => annotation.status === "open").map(annotation => `annotation:${annotation.id}`),
+    ...state.annotations.filter(annotation => annotation.status === "open").map(annotation => `annotation:${annotation.id}`),
   ]);
   return <>{[...identities].map(identity => <PassageAnnotation key={identity} identity={identity} sourceRange={ranges.current.get(identity)} reply={reply} />)}</>;
-}
+});
 
-function PassageAnnotation({ identity, sourceRange, reply }: { identity: string; sourceRange?: Range; reply: RefObject<HTMLElement | null> }) {
+const PassageAnnotation = memo(function PassageAnnotation({ identity, sourceRange, reply }: { identity: string; sourceRange?: Range; reply: RefObject<HTMLElement | null> }) {
   const session = useDocumentSession();
-  const state = useSession();
+  const state = useSessionSelector(session, state => ({ ready: state.ready, epoch: state.epoch, metadata: state.metadata, preferences: state.preferences, draft: state.drafts[identity] }), sameFields);
   const [position, setPosition] = useState({ left: 0, top: 0, clipPath: "none", visibility: "hidden" as "hidden" | "visible" });
   const [sending, setSending] = useState(false);
   const [announcement, setAnnouncement] = useState("");
@@ -172,7 +172,7 @@ function PassageAnnotation({ identity, sourceRange, reply }: { identity: string;
   const shortcuts = useRef(new ShortcutResolver());
   const clickTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const work = state.metadata.annotations.find(annotation => identity === `annotation:${annotation.id}`);
-  const draft = useMemo(() => state.drafts[identity] ?? (work ? { content: work.comment, images: [], annotation: { source: work.source, completed: true } } : null), [state.drafts[identity], work]);
+  const draft = useMemo(() => state.draft ?? (work ? { content: work.comment, images: [], annotation: { source: work.source, completed: true } } : null), [state.draft, work]);
   const annotation = draft?.annotation;
   useAutoHideScrollbar(comment, Boolean(annotation && !annotation.completed));
   const edit = () => {
@@ -442,4 +442,4 @@ function PassageAnnotation({ identity, sourceRange, reply }: { identity: string;
     </>,
     document.body,
   );
-}
+});
