@@ -60,6 +60,8 @@ Selection-only editor updates retain document metadata, draft passages, and comp
 
 Aside components use selector subscriptions and memoized render boundaries. Each component selects its rendering inputs. Selection availability updates aside actions independently of selection offsets. Writing and detached preview windows share the subscription hooks.
 
+Document shells select their editor lifecycle, layout, title, and panel inputs. Shell render boundaries preserve each mounted editor across unrelated session and workspace publications. Suggestion navigation reads the current document snapshot when it runs.
+
 The document host indexes aside references across the library. Document snapshots carry outgoing references and backlinks. Linked labels update through document publication. Conversation cards read these references from their session state.
 
 Each immutable session snapshot owns shared current, visible, and earlier suggestion queues. The queue arrays are read-only. Marker decoration passes build one visibility set.

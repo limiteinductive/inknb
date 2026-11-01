@@ -62,6 +62,14 @@ export function useAsideSelector<Selected>(
   equal?: (previous: Selected, next: Selected) => boolean,
 ): Selected {
   const session = useAsideSession();
+  return useSessionSelector(session, select, equal);
+}
+
+export function useSessionSelector<Selected>(
+  session: Pick<DocumentSession, "getSnapshot" | "subscribe">,
+  select: (state: SessionState) => Selected,
+  equal?: (previous: Selected, next: Selected) => boolean,
+): Selected {
   return useSyncExternalStoreWithSelector(
     session.subscribe,
     session.getSnapshot,

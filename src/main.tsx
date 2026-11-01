@@ -5,6 +5,7 @@ import ActivityCenter from "./ActivityCenter";
 import { activity } from "./activity";
 import {
   lazy,
+  memo,
   Suspense,
   useEffect,
   useLayoutEffect,
@@ -12,6 +13,7 @@ import {
   useState,
   useSyncExternalStore,
 } from "react";
+import { useSyncExternalStoreWithSelector } from "use-sync-external-store/with-selector";
 import { createRoot } from "react-dom/client";
 import {
   Button,
@@ -25,7 +27,7 @@ import { getCurrentWindow } from "@tauri-apps/api/window";
 import AsideLayout from "./AsideLayout";
 import DocumentHistory from "./DocumentHistory";
 import { NativeEditor } from "./native-editor";
-import { SessionContext, useDocumentSession, useSession } from "./use-session";
+import { SessionContext, useDocumentSession, useSessionSelector, sameFields } from "./use-session";
 import { appHost } from "./app-host";
 import { compactLibraryWidth, workspace } from "./window-workspace";
 import Library from "./Library";
@@ -46,13 +48,32 @@ import "./document-review.css";
 const DetachedPreview = lazy(() => import("./DetachedPreview"));
 const DocumentPage = lazy(() => import("./DocumentPage"));
 
-function DocumentApp({ active }: { active: boolean }) {
-  const library = useSyncExternalStore(
+const DocumentApp = memo(function DocumentApp({ active }: { active: boolean }) {
+  const session = useDocumentSession();
+  const state = useSessionSelector(session, state => ({
+    ready: state.ready,
+    epoch: state.epoch,
+    composer: state.composer,
+    documentId: state.metadata.documentId,
+    dirty: state.dirty,
+    profile: state.profile,
+    focus: state.focus,
+    placement: state.preferences.placement,
+    pageVisible: state.pageVisible,
+    hasPage: Boolean(state.metadata.page),
+  }), sameFields);
+  const library = useSyncExternalStoreWithSelector(
     workspace.subscribe,
     workspace.getSnapshot,
+    undefined,
+    library => ({
+      commandSurface: active ? library.commandSurface : null,
+      asideWidth: library.asideWidth,
+      title: active ? library.documents.find(entry => entry.id === state.documentId)?.title ?? "Untitled" : "",
+      spaceTitle: active ? library.spaceTitle : "",
+    }),
+    sameFields,
   );
-  const session = useDocumentSession();
-  const state = useSession();
   const historyOpen = active && library.commandSurface === "history";
   const editorHost = useRef<HTMLDivElement>(null);
   useLayoutEffect(() => {
@@ -74,7 +95,7 @@ function DocumentApp({ active }: { active: boolean }) {
     const entry = workspace
       .getSnapshot()
       .documents.find(
-        (candidate) => candidate.id === state.metadata.documentId,
+        (candidate) => candidate.id === state.documentId,
       );
     const selection = session.model?.state.selection;
     const frame = requestAnimationFrame(() => {
@@ -89,24 +110,20 @@ function DocumentApp({ active }: { active: boolean }) {
   }, [active, state.ready, state.epoch, state.composer]);
   useEffect(() => {
     if (!active) return;
-    const name =
-      library.documents.find((entry) => entry.id === state.metadata.documentId)
-        ?.title ?? "Untitled";
     void getCurrentWindow().setTitle(
-      `${library.spaceTitle} · ${name}${state.dirty ? " •" : ""} · ink and butter${state.profile ? ` · ${state.profile}` : ""}`,
+      `${library.spaceTitle} · ${library.title}${state.dirty ? " •" : ""} · ink and butter${state.profile ? ` · ${state.profile}` : ""}`,
     );
   }, [
-    state.path,
     state.dirty,
     active,
-    library.documents,
+    library.title,
     library.spaceTitle,
-    state.metadata.documentId,
+    state.documentId,
     state.profile,
   ]);
   return (
     <div
-      className={`app ${state.focus ? "focus-mode" : ""} placement-${state.preferences.placement}`}
+      className={`app ${state.focus ? "focus-mode" : ""} placement-${state.placement}`}
     >
       {active && <>
         <AgentConnections open={library.commandSurface === "agents"} onOpenChange={open => workspace.update({ commandSurface: open ? "agents" : null })} />
@@ -122,16 +139,16 @@ function DocumentApp({ active }: { active: boolean }) {
         <main className="workspace">
           <DocumentOutline active={active} />
           <div className="writing-region">
-            <div className="editor-host" ref={editorHost} hidden={state.pageVisible && Boolean(state.metadata.page)} />
-            {state.pageVisible && state.metadata.page && <Suspense fallback={<p className="preview-placeholder">Opening page…</p>}><DocumentPage /></Suspense>}
+            <div className="editor-host" ref={editorHost} hidden={state.pageVisible && state.hasPage} />
+            {state.pageVisible && state.hasPage && <Suspense fallback={<p className="preview-placeholder">Opening page…</p>}><DocumentPage /></Suspense>}
           </div>
         </main>
       </AsideLayout>
-      <DocumentReview active={active} onReveal={(proposal) => session.surface?.scrollToSource(proposal.from, captureAnchor(state.text, proposal))} />
+      <DocumentReview active={active} onReveal={(proposal) => session.surface?.scrollToSource(proposal.from, captureAnchor(session.getSnapshot().text, proposal))} />
       <PassageAnnotations active={active} />
     </div>
   );
-}
+});
 
 function App() {
   useContextMenus(
