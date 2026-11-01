@@ -56,6 +56,8 @@ Each immutable metadata snapshot owns indexes of threads, requests, and proposal
 
 Plain-text files retain their original leading whitespace, paragraph gaps, and trailing whitespace during native edits.
 
+Selection-only editor updates retain document metadata, draft passages, and composer anchors. Document changes update these values through the native transaction path.
+
 The document host indexes aside references across the library. Document snapshots carry outgoing references and backlinks. Linked labels update through document publication. Conversation cards read these references from their session state.
 
 Each immutable session snapshot owns shared current, visible, and earlier suggestion queues. The queue arrays are read-only. Marker decoration passes build one visibility set.

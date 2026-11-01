@@ -208,6 +208,10 @@ export class WindowDocument extends DocumentSession {
   }
 
   override onEditorUpdate(update: NativeUpdate): void {
+    if (!update.docChanged) {
+      this.update({ selection: update.selection });
+      return;
+    }
     const state = this.getWorkingSnapshot();
     this.update({
       text: update.source.toString(),
