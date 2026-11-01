@@ -5,11 +5,11 @@ import Asides from "./Asides";
 import { useAutoHideScrollbar } from "./use-auto-hide-scrollbar";
 import IconButton from "./IconButton";
 import { asideVisible } from "./aside-state";
-import { useAsideSession, useAsideState } from "./use-session";
+import { useAsideSession, useAsideSelector, sameFields } from "./use-session";
 
 export function AsidesButton() {
   const session = useAsideSession();
-  const state = useAsideState();
+  const state = useAsideSelector(state => ({ metadata: state.metadata, threadReads: state.threadReads, threadExpansions: state.threadExpansions, asidesOpen: state.asidesOpen, focus: state.focus }), sameFields);
   const count = state.metadata.threads.filter(thread => asideVisible(state, thread)).length;
   return <IconButton icon={MessageSquare} label={`Asides, ${count} open`} agentControl="asides.toggle" active={state.asidesOpen && !state.focus} onPress={() => session.update({ asidesOpen: !state.asidesOpen, focus: false })} />;
 }
@@ -28,7 +28,7 @@ export default function AsideLayout({
   onWidthChange?: (width: number) => void;
 }) {
   const session = useAsideSession();
-  const state = useAsideState();
+  const state = useAsideSelector(state => ({ metadata: state.metadata, threadReads: state.threadReads, threadExpansions: state.threadExpansions, preferences: state.preferences, asideNarrow: state.asideNarrow, asidesOpen: state.asidesOpen, focus: state.focus, composer: state.composer, asideReader: state.asideReader, reviewOpen: state.reviewOpen }), sameFields);
   const container = useRef<HTMLDivElement>(null);
   const readerViewport = useRef<HTMLDivElement>(null);
   const documentViewport = useRef<HTMLDivElement>(null);

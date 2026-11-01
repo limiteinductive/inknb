@@ -50,7 +50,9 @@ export function asideOutdated(metadata: Metadata, thread: Thread): boolean {
   );
 }
 
-export function asideExpanded(state: SessionState, thread: Thread): boolean {
+type AsideVisibilityState = Pick<SessionState, "metadata" | "threadReads" | "threadExpansions">;
+
+export function asideExpanded(state: AsideVisibilityState, thread: Thread): boolean {
   if (thread.resolved) return false;
   const activity = threadActivity(state.metadata, thread);
   if (
@@ -66,7 +68,7 @@ export function asideExpanded(state: SessionState, thread: Thread): boolean {
   );
 }
 
-export function asideVisible(state: SessionState, thread: Thread): boolean {
+export function asideVisible(state: AsideVisibilityState, thread: Thread): boolean {
   return (
     asideExpanded(state, thread) ||
     (!thread.resolved &&

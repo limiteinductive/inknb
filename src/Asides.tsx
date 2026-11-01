@@ -4,6 +4,7 @@ import { agentAttribution, messageSummary, defaultAgent, proposalTurnId } from "
 import { focusAside, revealAsideComposer } from "./aside-focus";
 import {
   Fragment,
+  memo,
   useContext,
   useEffect,
   useLayoutEffect,
@@ -50,7 +51,7 @@ import {
   resolvableAsides,
 } from "./aside-state";
 import { asideLink } from "./aside-reference";
-import { SessionContext, useAsideSession, useAsideState } from "./use-session";
+import { SessionContext, useAsideSession, useAsideSelector, sameFields, sameItems } from "./use-session";
 import {
   currentSuggestions,
   visibleSuggestions,
@@ -63,9 +64,9 @@ import AnnotationContext from "./AnnotationContext";
 import CommentRecipients from "./CommentRecipients";
 import { metadataIndex } from "./metadata-index";
 
-function AsidePassage({ threadId }: { threadId?: string }) {
+const AsidePassage = memo(function AsidePassage({ threadId }: { threadId?: string }) {
   const session = useAsideSession();
-  const state = useAsideState();
+  const state = useAsideSelector(state => ({ metadata: state.metadata, composerAnchor: state.composerAnchor, composerPreviewAnchor: state.composerPreviewAnchor }), sameFields);
   const documentSession = useContext(SessionContext);
   const thread = threadId
     ? metadataIndex(state.metadata).threads.get(threadId)
@@ -106,9 +107,9 @@ function AsidePassage({ threadId }: { threadId?: string }) {
       <span className="annotation-context-label">{tableTitle || quote || "This position"}</span>
     </button>
   );
-}
+});
 
-function Composer({
+const Composer = memo(function Composer({
   threadId,
   onClose,
 }: {
@@ -116,9 +117,13 @@ function Composer({
   onClose?: () => void;
 }) {
   const session = useAsideSession();
-  const state = useAsideState();
   const draftKey = threadId ?? "new";
-  const { content, images, annotations = [] } = state.drafts[draftKey] ?? {
+  const state = useAsideSelector(state => ({
+    metadata: state.metadata,
+    preferences: state.preferences,
+    draft: state.drafts[draftKey],
+  }), sameFields);
+  const { content, images, annotations = [] } = state.draft ?? {
     content: "",
     images: [],
   };
@@ -160,11 +165,14 @@ function Composer({
       <CommentRecipients
         metadata={state.metadata}
         preferences={state.preferences}
-        draft={state.drafts[draftKey]}
+        draft={state.draft}
         threadId={threadId}
         controlId={draftKey}
         disabled={sending}
-        onChange={recipientAgentIds => session.update({ drafts: { ...state.drafts, [draftKey]: { ...state.drafts[draftKey], content, images, recipientAgentIds, recipientAgentId: undefined } } })}
+        onChange={recipientAgentIds => {
+          const current = session.getSnapshot();
+          session.update({ drafts: { ...current.drafts, [draftKey]: { ...current.drafts[draftKey], content, images, recipientAgentIds, recipientAgentId: undefined } } });
+        }}
       />
       <div
         className="composer-content"
@@ -177,7 +185,7 @@ function Composer({
           preferences={state.preferences}
           annotations={annotations}
           content={content}
-          references={state.drafts[draftKey]?.references}
+          references={state.draft?.references}
           elementRef={textarea}
           control={`composer.input:${draftKey}`}
           label={threadId ? "Reply to conversation" : "Request to your agent"}
@@ -263,11 +271,11 @@ function Composer({
       )}
     </form>
   );
-}
+});
 
-function DeliveryReceipt({ request, named = false }: { request: AgentRequest; named?: boolean }) {
-  const state = useAsideState();
-  const recipient = request.binding ?? defaultAgent(state.metadata);
+const DeliveryReceipt = memo(function DeliveryReceipt({ request, named = false }: { request: AgentRequest; named?: boolean }) {
+  const metadata = useAsideSelector(state => state.metadata);
+  const recipient = request.binding ?? defaultAgent(metadata);
   const label = request.state === "failed"
     ? "Not sent"
     : request.state === "sending"
@@ -296,7 +304,7 @@ function DeliveryReceipt({ request, named = false }: { request: AgentRequest; na
       )}
     </div>
   );
-}
+});
 
 function SourceChip({ source }: { source: Source }) {
   const session = useAsideSession();
@@ -346,7 +354,7 @@ function SourceChip({ source }: { source: Source }) {
   );
 }
 
-export function Conversation({
+export const Conversation = memo(function Conversation({
   identity,
   onClose,
 }: {
@@ -355,7 +363,9 @@ export function Conversation({
 }) {
   const session = useAsideSession();
   const documentSession = useContext(SessionContext);
-  const state = useAsideState();
+  const state = useAsideSelector(state => ({ metadata: state.metadata, asideReferences: state.asideReferences, activeThread: state.activeThread, previewHost: state.previewHost, draft: state.drafts[identity], hasSelection: state.selection.from !== state.selection.to }), sameFields);
+  const shown = useAsideSelector(visibleSuggestions, sameItems);
+  const current = useAsideSelector(currentSuggestions, sameItems);
   const card = useRef<HTMLElement>(null);
   const conversationScroll = useRef<HTMLDivElement>(null);
   useAutoHideScrollbar(conversationScroll);
@@ -445,7 +455,6 @@ export function Conversation({
     turn.proposals.push(proposal);
   }
   const conversationReferences = references.filter((reference) => reference.documentId !== state.metadata.documentId || !turnProposals.some((proposal) => proposal.threadId === reference.threadId));
-  const shown = visibleSuggestions(state);
   const pending = proposals.filter((proposal) => proposal.status === "pending");
   const passage =
     pending.find((proposal) =>
@@ -554,7 +563,7 @@ export function Conversation({
               <MenuItem
                 id="move-passage"
                 data-inknb-control={`aside.reanchor:${identity}`}
-                isDisabled={state.selection.from === state.selection.to}
+                isDisabled={!state.hasSelection}
                 onAction={() => session.reanchor(identity)}
               >
                 Move aside to selected text
@@ -721,11 +730,11 @@ export function Conversation({
                     <Button
                       className="text-button"
                       data-inknb-control={`proposal.review:${proposal.id}`}
-                      onPress={() => currentSuggestions(state).some((current) => current.id === proposal.id)
+                      onPress={() => current.some((candidate) => candidate.id === proposal.id)
                         ? reviewSuggestion(proposal.id, session)
                         : void session.proposal(proposal.id, false).catch((error) => session.fail(error))}
                     >
-                      {currentSuggestions(state).some((current) => current.id === proposal.id) ? "Show in document" : "Dismiss earlier suggestion"}
+                      {current.some((candidate) => candidate.id === proposal.id) ? "Show in document" : "Dismiss earlier suggestion"}
                     </Button>
                   )}
                 </div>
@@ -788,17 +797,17 @@ export function Conversation({
       )}
       </div>
       {(!thread.resolved ||
-        state.drafts[identity]?.content ||
-        state.drafts[identity]?.images.length) && (
+        state.draft?.content ||
+        state.draft?.images.length) && (
         <Composer threadId={identity} onClose={onClose} />
       )}
     </section>
   );
-}
+});
 
-export default function Asides({ historyOpen }: { historyOpen: boolean }) {
+export default memo(function Asides({ historyOpen }: { historyOpen: boolean }) {
   const session = useAsideSession();
-  const state = useAsideState();
+  const state = useAsideSelector(state => ({ metadata: state.metadata, threadReads: state.threadReads, threadExpansions: state.threadExpansions, composer: state.composer, composerPreviewAnchor: state.composerPreviewAnchor, activeThread: state.activeThread }), sameFields);
   const decisions = state.metadata.decisions.filter(decision => ["open", "answered"].includes(decision.status));
   const threads = state.metadata.threads.filter(thread => asideVisible(state, thread));
   return (
@@ -891,4 +900,4 @@ export default function Asides({ historyOpen }: { historyOpen: boolean }) {
       </div>
     </aside>
   );
-}
+});

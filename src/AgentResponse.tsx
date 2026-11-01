@@ -1,4 +1,5 @@
 import {
+  memo,
   useEffect,
   useId,
   useLayoutEffect,
@@ -19,7 +20,7 @@ import { agentAttribution, responseWords } from "./domain";
 import type { Message } from "./domain";
 import { renderMarkdown } from "./markdown";
 import { parseAsideLink } from "./aside-reference";
-import { useAsideSession, useAsideState } from "./use-session";
+import { useAsideSession, useAsideSelector } from "./use-session";
 import "./agent-response.css";
 import type { PassageReference } from "./passage-reference";
 
@@ -105,9 +106,9 @@ export function ResponseBody({
   );
 }
 
-export default function AgentResponse({ message }: { message: Message }) {
+export default memo(function AgentResponse({ message }: { message: Message }) {
   const session = useAsideSession();
-  const state = useAsideState();
+  const path = useAsideSelector(state => state.path);
   const [open, setOpen] = useState(false);
   const trigger = useRef<HTMLButtonElement>(null);
   const previousOpen = useRef(false);
@@ -138,7 +139,7 @@ export default function AgentResponse({ message }: { message: Message }) {
       return;
     }
     void invoke("open_reference", {
-      documentPath: state.path,
+      documentPath: path,
       reference,
     }).catch((error) => session.fail(error));
   };
@@ -147,7 +148,7 @@ export default function AgentResponse({ message }: { message: Message }) {
     let current = true;
     setError(null);
     void invoke<Record<string, string>>("preview_assets", {
-      documentPath: state.path,
+      documentPath: path,
       references: renderMarkdown(complete).references,
     })
       .then((result) => {
@@ -159,7 +160,7 @@ export default function AgentResponse({ message }: { message: Message }) {
     return () => {
       current = false;
     };
-  }, [open, complete, state.path]);
+  }, [open, complete, path]);
   return (
     <>
       {legacy && <span className="response-preview-label">Preview</span>}
@@ -228,7 +229,7 @@ export default function AgentResponse({ message }: { message: Message }) {
                               key={source.id}
                               onPress={() =>
                                 void invoke("open_reference", {
-                                  documentPath: state.path,
+                                  documentPath: path,
                                   reference: source.path,
                                 }).catch((error) => session.fail(error))
                               }
@@ -248,4 +249,4 @@ export default function AgentResponse({ message }: { message: Message }) {
       )}
     </>
   );
-}
+});

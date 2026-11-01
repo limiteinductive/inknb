@@ -58,6 +58,8 @@ Plain-text files retain their original leading whitespace, paragraph gaps, and t
 
 Selection-only editor updates retain document metadata, draft passages, and composer anchors. Document changes update these values through the native transaction path.
 
+Aside components use selector subscriptions and memoized render boundaries. Each component selects its rendering inputs. Selection availability updates aside actions independently of selection offsets. Writing and detached preview windows share the subscription hooks.
+
 The document host indexes aside references across the library. Document snapshots carry outgoing references and backlinks. Linked labels update through document publication. Conversation cards read these references from their session state.
 
 Each immutable session snapshot owns shared current, visible, and earlier suggestion queues. The queue arrays are read-only. Marker decoration passes build one visibility set.

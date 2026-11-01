@@ -1,6 +1,7 @@
 import { createContext, useContext, useSyncExternalStore } from "react";
+import { useSyncExternalStoreWithSelector } from "use-sync-external-store/with-selector";
 import type { WindowDocument } from "./window-document";
-import type { DocumentSession } from "./session";
+import type { DocumentSession, SessionState } from "./session";
 
 export const SessionContext = createContext<WindowDocument | null>(null);
 
@@ -54,4 +55,27 @@ export function useAsideSession(): AsideSession {
 export function useAsideState() {
   const session = useAsideSession();
   return useSyncExternalStore(session.subscribe, session.getSnapshot);
+}
+
+export function useAsideSelector<Selected>(
+  select: (state: SessionState) => Selected,
+  equal?: (previous: Selected, next: Selected) => boolean,
+): Selected {
+  const session = useAsideSession();
+  return useSyncExternalStoreWithSelector(
+    session.subscribe,
+    session.getSnapshot,
+    undefined,
+    select,
+    equal,
+  );
+}
+
+export function sameFields(previous: Record<string, unknown>, next: Record<string, unknown>): boolean {
+  return Object.keys(previous).length === Object.keys(next).length &&
+    Object.entries(previous).every(([key, value]) => Object.is(value, next[key]));
+}
+
+export function sameItems(previous: readonly unknown[], next: readonly unknown[]): boolean {
+  return previous.length === next.length && previous.every((value, index) => Object.is(value, next[index]));
 }

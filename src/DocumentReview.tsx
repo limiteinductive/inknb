@@ -1,4 +1,4 @@
-import { useLayoutEffect, useState } from "react";
+import { memo, useLayoutEffect, useState } from "react";
 import { Button } from "react-aria-components";
 import {
   Check,
@@ -8,7 +8,7 @@ import {
   ListChecks,
 } from "lucide-react";
 import { invoke } from "@tauri-apps/api/core";
-import { useAsideSession, useAsideState } from "./use-session";
+import { useAsideSession, useAsideState, useAsideSelector, sameFields, sameItems } from "./use-session";
 import { currentSuggestions, reviewSuggestion } from "./suggestions";
 import { renderChange } from "./change-display";
 import { sourceFormat } from "./native-schema";
@@ -64,10 +64,10 @@ export default function DocumentReview({
   return null;
 }
 
-export function InlineSuggestion({ identity }: { identity: string }) {
+export const InlineSuggestion = memo(function InlineSuggestion({ identity }: { identity: string }) {
   const session = useAsideSession();
-  const state = useAsideState();
-  const queue = currentSuggestions(state);
+  const state = useAsideSelector(state => ({ path: state.path, text: state.text, format: state.metadata.nativeDocument?.format }), sameFields);
+  const queue = useAsideSelector(currentSuggestions, sameItems);
   const selected = queue.find((proposal) => proposal.id === identity);
   const index = queue.findIndex((proposal) => proposal.id === identity);
   const [preview, setPreview] = useState<HTMLDivElement | null>(null);
@@ -83,7 +83,7 @@ export function InlineSuggestion({ identity }: { identity: string }) {
       sourceFormat(
         state.path,
         state.text,
-        state.metadata.nativeDocument?.format,
+        state.format,
       ),
     );
     preview.replaceChildren(fragment);
@@ -227,4 +227,4 @@ export function InlineSuggestion({ identity }: { identity: string }) {
       )}
     </section>
   );
-}
+});

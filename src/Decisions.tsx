@@ -7,7 +7,7 @@ import {
 import { Check, ChevronDown } from "lucide-react";
 import type { Decision } from "./domain";
 import { agentAttribution } from "./domain";
-import { useAsideSession, useAsideState } from "./use-session";
+import { useAsideSession, useAsideSelector, sameFields } from "./use-session";
 import { workspace } from "./window-workspace";
 import { ResponseBody } from "./AgentResponse";
 import { SessionContext } from "./use-session";
@@ -17,11 +17,11 @@ import "./decisions.css";
 
 export function DecisionCard({ decision }: { decision: Decision }) {
   const session = useAsideSession();
-  const state = useAsideState();
+  const draftKey = `decision:${decision.id}`;
+  const state = useAsideSelector(state => ({ draft: state.drafts[draftKey], path: state.path }), sameFields);
   const [expanded, setExpanded] = useState(true);
   const [busy, setBusy] = useState(false);
-  const draftKey = `decision:${decision.id}`;
-  const draft = state.drafts[draftKey] ?? { content: "", images: [] };
+  const draft = state.draft ?? { content: "", images: [] };
   const answer = async (option: number | null, text: string) => {
     if (busy) return;
     setBusy(true);
@@ -108,7 +108,7 @@ export function DecisionCard({ decision }: { decision: Decision }) {
                   onChange={(content) =>
                     session.update({
                       drafts: {
-                        ...state.drafts,
+                        ...session.getSnapshot().drafts,
                         [draftKey]: { ...draft, content },
                       },
                     })

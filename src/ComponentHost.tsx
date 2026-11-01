@@ -4,7 +4,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { X } from "lucide-react";
 import { componentMessage, componentRuntimes } from "./component-bridge";
 import type { ComponentInstance } from "./domain";
-import { useAsideSession, useAsideState } from "./use-session";
+import { useAsideSession, useAsideSelector } from "./use-session";
 import { showContextMenu } from "./context-menu";
 import { scrollbarTheme } from "./scrollbars";
 import { reportFramePointer } from "./geometry";
@@ -15,7 +15,7 @@ export default function ComponentHost({
   instance: ComponentInstance;
 }) {
   const session = useAsideSession();
-  const state = useAsideState();
+  const preferences = useAsideSelector(state => state.preferences);
   const frame = useRef<HTMLIFrameElement>(null);
   const [entry, setEntry] = useState<string | null>(null);
   const [height, setHeight] = useState(180);
@@ -225,7 +225,7 @@ export default function ComponentHost({
   }, [instance.id, instance.bundleId, reload]);
   useEffect(() => {
     if (ready) sendContext.current();
-  }, [instance, ready, state.preferences]);
+  }, [instance, ready, preferences]);
   if (instance.hidden) return null;
   return (
     <section className="component-card" aria-label={instance.title}>
