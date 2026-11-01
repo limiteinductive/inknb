@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { shareValue } from "./snapshot-sharing";
 import { anchorSchema, mapAnchor } from "./anchors";
 import type { ChangeDesc } from "@codemirror/state";
 import type { AsideDraft } from "./images";
@@ -105,7 +106,7 @@ export function mapPassageDrafts(
   return Object.fromEntries(
     Object.entries(drafts).map(([key, draft]) => [
       key,
-      {
+      shareValue(draft, {
         ...draft,
         ...(draft.annotation
           ? {
@@ -146,7 +147,7 @@ export function mapPassageDrafts(
               })),
             }
           : {}),
-      },
+      }),
     ]),
   );
 }

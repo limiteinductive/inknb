@@ -4,6 +4,7 @@ import { open } from "@tauri-apps/plugin-dialog";
 import { getVersion, sendableSteps } from "prosemirror-collab";
 import { z } from "zod";
 import { activity } from "./activity";
+import { shareValue } from "./snapshot-sharing";
 import { LogicalSize } from "@tauri-apps/api/dpi";
 import { inspectInterface, actOnInterface } from "./ui-control";
 import { readWindowChrome } from "./window-chrome";
@@ -228,7 +229,7 @@ class WindowWorkspace implements DocumentHost {
             spaceId: space.id,
             spaceTitle: space.title,
             spaceRegistry: spaces,
-            preferences: snapshot.preferences,
+            preferences: shareValue(this.state.preferences, snapshot.preferences),
             profile: snapshot.profile,
           };
           activity.setScope(space.documentIds);

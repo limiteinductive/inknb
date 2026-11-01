@@ -58,7 +58,7 @@ Plain-text files retain their original leading whitespace, paragraph gaps, and t
 
 Selection-only editor updates retain document metadata, draft passages, and composer anchors. Document changes update these values through the native transaction path.
 
-Aside components use selector subscriptions and memoized render boundaries. Each component selects its rendering inputs. Selection availability updates aside actions independently of selection offsets. Writing and detached preview windows share the subscription hooks.
+Aside components use selector subscriptions and memoized render boundaries. Each component selects its rendering inputs. Selection availability updates aside actions independently of selection offsets. Writing and detached preview windows share the subscription hooks. Received metadata and local source transactions retain unchanged records and messages. Conversation cards select their own thread, requests, suggestions, and activity. Recipient controls read connection and request data.
 
 Document shells select their editor lifecycle, layout, title, and panel inputs. Outline, annotation, review, and panel subscriptions select their displayed data. Each annotation selects its own draft. Shell render boundaries preserve each mounted editor across unrelated session and workspace publications. Suggestion navigation reads the current document snapshot when it runs.
 

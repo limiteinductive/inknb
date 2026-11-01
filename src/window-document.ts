@@ -5,6 +5,7 @@ import type { Node as DocumentNode } from "prosemirror-model";
 import { z } from "zod";
 import { resolvedAsideView } from "./aside-state";
 import { DocumentSession } from "./session";
+import { shareMetadata, shareValue } from "./snapshot-sharing";
 import type { CommentReceipt, DocumentHost, SessionState } from "./session";
 import type { Binding, Metadata, Selection } from "./domain";
 import { captureAnchor, mapAnchor } from "./domain";
@@ -179,12 +180,14 @@ export class WindowDocument extends DocumentSession {
       this.update({
         ...state,
         ...documentViewSchema.parse(local),
+        drafts: local.drafts,
         asideNarrow: local.asideNarrow,
         ...resolvedAsideView(local, state.metadata.threads
           .filter((thread) => thread.resolved && local.metadata.threads.some((previous) => previous.id === thread.id && !previous.resolved))
           .map((thread) => thread.id)),
         text: source,
-        metadata: {
+        preferences: shareValue(local.preferences, state.preferences),
+        metadata: shareMetadata(local.metadata, {
           ...state.metadata,
           nativeDocument: local.metadata.nativeDocument,
           decisions: state.metadata.decisions.map((decision) => ({ ...decision, anchor: anchors[decision.id] ?? decision.anchor })),
@@ -192,7 +195,7 @@ export class WindowDocument extends DocumentSession {
             ...thread,
             anchor: anchors[thread.id] ?? thread.anchor,
           })),
-        },
+        }),
         dirty: Boolean(this.model && sendableSteps(this.model.state)),
       });
       this.model?.restoreAnchors(
@@ -217,7 +220,7 @@ export class WindowDocument extends DocumentSession {
       text: update.source.toString(),
       drafts: mapPassageDrafts(state.drafts, state.metadata.documentId, update.source.toString(), update.changes),
       selection: update.selection,
-      metadata: {
+      metadata: shareMetadata(state.metadata, {
         ...state.metadata,
         nativeDocument: update.document,
         decisions: state.metadata.decisions.map((decision) => ({ ...decision, anchor: update.anchors[decision.id] ?? decision.anchor })),
@@ -225,7 +228,7 @@ export class WindowDocument extends DocumentSession {
           ...thread,
           anchor: update.anchors[thread.id] ?? thread.anchor,
         })),
-      },
+      }),
       dirty: update.docChanged || state.dirty,
       composerAnchor: state.composerAnchor
         ? mapAnchor(

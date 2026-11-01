@@ -66,11 +66,9 @@ import { metadataIndex } from "./metadata-index";
 
 const AsidePassage = memo(function AsidePassage({ threadId }: { threadId?: string }) {
   const session = useAsideSession();
-  const state = useAsideSelector(state => ({ metadata: state.metadata, composerAnchor: state.composerAnchor, composerPreviewAnchor: state.composerPreviewAnchor }), sameFields);
+  const state = useAsideSelector(state => ({ thread: threadId ? metadataIndex(state.metadata).threads.get(threadId) : undefined, composerAnchor: state.composerAnchor, composerPreviewAnchor: state.composerPreviewAnchor }), sameFields);
   const documentSession = useContext(SessionContext);
-  const thread = threadId
-    ? metadataIndex(state.metadata).threads.get(threadId)
-    : null;
+  const thread = state.thread;
   const anchor = threadId ? thread?.anchor : state.composerAnchor;
   const preview = threadId
     ? thread?.previewAnchor
@@ -119,10 +117,13 @@ const Composer = memo(function Composer({
   const session = useAsideSession();
   const draftKey = threadId ?? "new";
   const state = useAsideSelector(state => ({
-    metadata: state.metadata,
+    documentId: state.metadata.documentId,
+    agents: state.metadata.agents,
+    defaultAgentId: state.metadata.defaultAgentId,
     preferences: state.preferences,
     draft: state.drafts[draftKey],
   }), sameFields);
+  const requests = useAsideSelector(state => state.metadata.requests, sameItems);
   const { content, images, annotations = [] } = state.draft ?? {
     content: "",
     images: [],
@@ -163,7 +164,7 @@ const Composer = memo(function Composer({
     >
       {!threadId && <AsidePassage />}
       <CommentRecipients
-        metadata={state.metadata}
+        metadata={{ agents: state.agents, defaultAgentId: state.defaultAgentId, requests }}
         preferences={state.preferences}
         draft={state.draft}
         threadId={threadId}
@@ -207,7 +208,7 @@ const Composer = memo(function Composer({
               const files = clipboardImages(event.clipboardData);
               if (!files.length) return;
               event.preventDefault();
-              const documentId = state.metadata.documentId;
+              const documentId = state.documentId;
               setPasting((count) => count + 1);
               void importImages(files)
                 .then((imported) => {
@@ -274,8 +275,7 @@ const Composer = memo(function Composer({
 });
 
 const DeliveryReceipt = memo(function DeliveryReceipt({ request, named = false }: { request: AgentRequest; named?: boolean }) {
-  const metadata = useAsideSelector(state => state.metadata);
-  const recipient = request.binding ?? defaultAgent(metadata);
+  const recipient = useAsideSelector(state => request.binding ?? defaultAgent(state.metadata));
   const label = request.state === "failed"
     ? "Not sent"
     : request.state === "sending"
@@ -363,19 +363,29 @@ export const Conversation = memo(function Conversation({
 }) {
   const session = useAsideSession();
   const documentSession = useContext(SessionContext);
-  const state = useAsideSelector(state => ({ metadata: state.metadata, asideReferences: state.asideReferences, activeThread: state.activeThread, previewHost: state.previewHost, draft: state.drafts[identity], hasSelection: state.selection.from !== state.selection.to }), sameFields);
-  const shown = useAsideSelector(visibleSuggestions, sameItems);
-  const current = useAsideSelector(currentSuggestions, sameItems);
+  const state = useAsideSelector(state => ({ documentId: state.metadata.documentId, activeThread: state.activeThread === identity ? identity : null, previewHost: state.previewHost, draft: state.drafts[identity], hasSelection: state.selection.from !== state.selection.to, canResolveAll: resolvableAsides(state.metadata).length > 0 }), sameFields);
+  const thread = useAsideSelector(state => metadataIndex(state.metadata).threads.get(identity));
+  const requests = useAsideSelector(state => metadataIndex(state.metadata).threadRequests.get(identity) ?? [], sameItems);
+  const proposals = useAsideSelector(state => (metadataIndex(state.metadata).threadProposals.get(identity) ?? []).filter(proposal => proposal.status !== "superseded"), sameItems);
+  const turnProposals = useAsideSelector(state => metadataIndex(state.metadata).turnProposals.get(identity) ?? [], sameItems);
+  const turnIds = useAsideSelector(state => {
+    const index = metadataIndex(state.metadata);
+    const thread = index.threads.get(identity);
+    return thread ? (index.turnProposals.get(identity) ?? []).map(proposal => proposalTurnId(state.metadata, proposal, thread)) : [];
+  }, sameItems);
+  const shown = useAsideSelector(state => visibleSuggestions(state).filter(proposal => metadataIndex(state.metadata).turnProposals.get(identity)?.includes(proposal)).map(proposal => proposal.id), sameItems);
+  const current = useAsideSelector(state => currentSuggestions(state).filter(proposal => metadataIndex(state.metadata).turnProposals.get(identity)?.includes(proposal)).map(proposal => proposal.id), sameItems);
+  const references = useAsideSelector(state => state.asideReferences[identity] ?? [], (previous, next) => JSON.stringify(previous) === JSON.stringify(next));
+  const activity = useAsideSelector(state => {
+    const thread = metadataIndex(state.metadata).threads.get(identity);
+    return thread ? threadActivity(state.metadata, thread) : null;
+  });
   const card = useRef<HTMLElement>(null);
   const conversationScroll = useRef<HTMLDivElement>(null);
   useAutoHideScrollbar(conversationScroll);
   const previousMessage = useRef<{ threadId: string; messageId: string } | null>(null);
   const followMessages = useRef(true);
   const [copiedReference, setCopiedReference] = useState<string | null>(null);
-  const references = state.asideReferences[identity] ?? [];
-  const index = metadataIndex(state.metadata);
-  const thread = index.threads.get(identity);
-  const activity = thread ? threadActivity(state.metadata, thread) : null;
   const latestMessage = thread?.messages.at(-1);
   useLayoutEffect(() => {
     const viewport = conversationScroll.current;
@@ -430,20 +440,15 @@ export const Conversation = memo(function Conversation({
     };
   }, [session, identity, activity]);
   if (!thread) return null;
-  const requests = index.threadRequests.get(identity) ?? [];
   const latest = requests.at(-1);
-  const proposals = (index.threadProposals.get(identity) ?? []).filter(
-    (proposal) => proposal.status !== "superseded",
-  );
-  const turnProposals = index.turnProposals.get(identity) ?? [];
   const turns: { id: string | null; messages: Message[]; proposals: Proposal[] }[] = [];
   for (const message of thread.messages) {
     if (message.author === "human" || !turns.length)
       turns.push({ id: message.id, messages: [], proposals: [] });
     turns.at(-1)!.messages.push(message);
   }
-  for (const proposal of turnProposals) {
-    const turnId = proposalTurnId(state.metadata, proposal, thread);
+  for (const [position, proposal] of turnProposals.entries()) {
+    const turnId = turnIds[position];
     let turn = turns.find((turn) => turn.messages.some((message) => message.id === turnId));
     if (!turn) {
       turn = turns.find((turn) => turn.id === null);
@@ -454,11 +459,11 @@ export const Conversation = memo(function Conversation({
     }
     turn.proposals.push(proposal);
   }
-  const conversationReferences = references.filter((reference) => reference.documentId !== state.metadata.documentId || !turnProposals.some((proposal) => proposal.threadId === reference.threadId));
+  const conversationReferences = references.filter((reference) => reference.documentId !== state.documentId || !turnProposals.some((proposal) => proposal.threadId === reference.threadId));
   const pending = proposals.filter((proposal) => proposal.status === "pending");
   const passage =
     pending.find((proposal) =>
-      shown.some((candidate) => candidate.id === proposal.id),
+      shown.includes(proposal.id),
     ) ?? pending.at(-1);
   const quote = thread.anchor?.native?.region
     ? ""
@@ -503,7 +508,7 @@ export const Conversation = memo(function Conversation({
           const excerpt =
             quote || messageSummary(thread.messages.at(-1)) || "Whole document";
           void invoke("clipboard_write", {
-            text: `Aside: ${excerpt}\n${asideLink({ documentId: state.metadata.documentId, threadId: identity })}`,
+            text: `Aside: ${excerpt}\n${asideLink({ documentId: state.documentId, threadId: identity })}`,
           })
             .then(() => setCopiedReference(identity))
             .catch((error) =>
@@ -536,7 +541,7 @@ export const Conversation = memo(function Conversation({
             <MenuItem
               id="resolve-all"
               data-inknb-control="asides.resolve-all"
-              isDisabled={!resolvableAsides(state.metadata).length}
+              isDisabled={!state.canResolveAll}
               onAction={() =>
                 void session.resolveAll().catch((error) => session.fail(error))
               }
@@ -730,11 +735,11 @@ export const Conversation = memo(function Conversation({
                     <Button
                       className="text-button"
                       data-inknb-control={`proposal.review:${proposal.id}`}
-                      onPress={() => current.some((candidate) => candidate.id === proposal.id)
+                      onPress={() => current.includes(proposal.id)
                         ? reviewSuggestion(proposal.id, session)
                         : void session.proposal(proposal.id, false).catch((error) => session.fail(error))}
                     >
-                      {current.some((candidate) => candidate.id === proposal.id) ? "Show in document" : "Dismiss earlier suggestion"}
+                      {current.includes(proposal.id) ? "Show in document" : "Dismiss earlier suggestion"}
                     </Button>
                   )}
                 </div>
@@ -781,7 +786,7 @@ export const Conversation = memo(function Conversation({
             onPress={() =>
               void session
                 .control("component_update", {
-                  documentId: state.metadata.documentId,
+                  documentId: state.documentId,
                   componentId: component.id,
                   revision: component.revision,
                   hidden: false,

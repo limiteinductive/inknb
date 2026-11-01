@@ -10,7 +10,7 @@ import {
 } from "react-aria-components";
 import { Check, ChevronDown } from "lucide-react";
 import { agentAttribution, requestAgentIds } from "./domain";
-import type { Metadata, Preferences } from "./domain";
+import type { RecipientMetadata, Preferences } from "./domain";
 import type { AsideDraft } from "./images";
 
 export default function CommentRecipients({
@@ -23,7 +23,7 @@ export default function CommentRecipients({
   disabled = false,
   onChange,
 }: {
-  metadata: Metadata;
+  metadata: RecipientMetadata;
   preferences: Preferences;
   draft?: AsideDraft;
   threadId?: string;

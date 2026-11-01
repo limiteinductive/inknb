@@ -1,3 +1,4 @@
+import { shareMetadata, shareValue } from "./snapshot-sharing";
 import { activity } from "./activity";
 import { invoke } from "@tauri-apps/api/core";
 import { z } from "zod";
@@ -57,7 +58,7 @@ export class PreviewAsides implements AsideSession {
     if (state.composer && !this.confirmed.composer) {
       this.open = true;
     }
-    this.confirmed = state;
+    this.confirmed = { ...state, metadata: shareMetadata(this.confirmed.metadata, state.metadata), preferences: shareValue(this.confirmed.preferences, state.preferences), drafts: shareValue(this.confirmed.drafts, state.drafts) };
     this.refresh();
   }
   private refresh(): void {

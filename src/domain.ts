@@ -785,7 +785,9 @@ export function defaultAgent(metadata: Metadata): AgentConnection | null {
   return metadata.agents.find((agent) => agent.id === metadata.defaultAgentId) ?? null;
 }
 
-export function requestAgentIds(metadata: Metadata, threadId?: string, draft?: Pick<AsideDraft, "recipientAgentIds" | "recipientAgentId">, mode: Preferences["comment_recipients"] = "choose"): string[] {
+export type RecipientMetadata = Pick<Metadata, "agents" | "defaultAgentId"> & { requests: readonly AgentRequest[] };
+
+export function requestAgentIds(metadata: RecipientMetadata, threadId?: string, draft?: Pick<AsideDraft, "recipientAgentIds" | "recipientAgentId">, mode: Preferences["comment_recipients"] = "choose"): string[] {
   if (mode === "default") return metadata.defaultAgentId ? [metadata.defaultAgentId] : [];
   if (draft?.recipientAgentIds?.length) return [...new Set(draft.recipientAgentIds)];
   if (draft?.recipientAgentId) return [draft.recipientAgentId];
