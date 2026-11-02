@@ -2,6 +2,7 @@ import {
   MarkdownSerializer,
   defaultMarkdownSerializer,
 } from "prosemirror-markdown";
+import { Fragment } from "prosemirror-model";
 import type { Mark, Node as DocumentNode } from "prosemirror-model";
 import {
   nativeSchema,
@@ -134,6 +135,35 @@ export function markDelimiters(
   return ["", ""];
 }
 
+function markdownTextblock(node: DocumentNode): DocumentNode {
+  const children: DocumentNode[] = [];
+  node.forEach((child, _offset, index) => {
+    if (!child.isText) {
+      children.push(child);
+      return;
+    }
+    const text = child.text!;
+    const leading = text.match(/^\s*/u)![0].length;
+    const trailing = text.length - text.match(/\s*$/u)![0].length;
+    const boundaries = [...new Set([0, leading, trailing, text.length])].sort(
+      (first, second) => first - second,
+    );
+    for (let boundary = 1; boundary < boundaries.length; boundary += 1) {
+      const from = boundaries[boundary - 1];
+      const to = boundaries[boundary];
+      const marks = child.marks.filter((mark) => {
+        if (!["em", "strong", "strike"].includes(mark.type.name)) return true;
+        return (
+          (to > leading || Boolean(index && mark.isInSet(node.child(index - 1).marks))) &&
+          (from < trailing || Boolean(index + 1 < node.childCount && mark.isInSet(node.child(index + 1).marks)))
+        );
+      });
+      children.push(nativeSchema.text(text.slice(from, to), marks));
+    }
+  });
+  return node.copy(Fragment.fromArray(children));
+}
+
 export function serializeDocument(
   document: DocumentNode,
   format: SourceFormat,
@@ -148,6 +178,15 @@ export function serializeDocument(
   const markdown = new MarkdownSerializer(
     {
       ...defaultMarkdownSerializer.nodes,
+      paragraph(state, node) {
+        state.renderInline(markdownTextblock(node));
+        state.closeBlock(node);
+      },
+      heading(state, node) {
+        state.write(`${"#".repeat(Number(node.attrs.level))} `);
+        state.renderInline(markdownTextblock(node), false);
+        state.closeBlock(node);
+      },
       image(state, node, parent, index) {
         if (!/\s/.test(String(node.attrs.src))) {
           defaultMarkdownSerializer.nodes.image(state, node, parent, index);
