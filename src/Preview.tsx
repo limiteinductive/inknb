@@ -1,3 +1,4 @@
+import { observeImageAssets } from "./image-assets";
 import {
   useCallback,
   useEffect,
@@ -123,7 +124,6 @@ export default function Preview({
     state.previewInformation?.artifactId,
   ]);
   useEffect(() => {
-    let current = true;
     if (!openSuggestions.length) {
       setSuggestions([]);
       return;
@@ -140,26 +140,25 @@ export default function Preview({
       [...fragment.querySelectorAll<HTMLImageElement>("img[data-native-image]")]
         .map((image) => image.dataset.nativeImage ?? ""),
     ))];
-    void invoke<Record<string, string>>("preview_assets", {
-      documentPath: state.path,
+    return observeImageAssets(
+      () => state.path,
       references,
-    })
-      .then((assets) => {
-        if (!current) return;
+      assets => {
         setSuggestions(
           rendered.map(({ proposal, fragment }) => {
-            for (const image of fragment.querySelectorAll<HTMLImageElement>("img[data-native-image]"))
-              image.src = assets[image.dataset.nativeImage ?? ""] ?? "";
             const template = document.createElement("template");
-            template.content.append(fragment);
+            template.content.append(fragment.cloneNode(true));
+            for (const image of template.content.querySelectorAll<HTMLImageElement>("img[data-native-image]")) {
+              const source = assets[image.dataset.nativeImage ?? ""];
+              if (source) image.src = source;
+              else image.removeAttribute("src");
+            }
             return { id: proposal.id, anchor: captureAnchor(state.text, proposal), html: template.innerHTML };
           }),
         );
-      })
-      .catch((error) => onAction({ kind: "error", error: String(error) }));
-    return () => {
-      current = false;
-    };
+      },
+      error => onAction({ kind: "error", error: String(error) }),
+    );
   }, [desired, state.path, state.text, suggestionSignature]);
   const desiredRef = useRef(desired);
   desiredRef.current = desired;

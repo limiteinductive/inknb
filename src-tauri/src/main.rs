@@ -15,7 +15,7 @@ use serde_json::{json, Value};
 use std::collections::{HashMap, HashSet};
 use std::fs::{self, File, OpenOptions};
 use std::os::fd::AsRawFd;
-use std::os::unix::fs::{OpenOptionsExt, PermissionsExt};
+use std::os::unix::fs::{MetadataExt, OpenOptionsExt, PermissionsExt};
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 use tauri::{Emitter, Manager, State};
@@ -657,60 +657,95 @@ fn relative_asset_path(
     Ok(relative.to_string_lossy().into_owned())
 }
 
-#[tauri::command]
-fn preview_assets(
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct PreviewAssetRequest {
     document_path: Option<String>,
-    references: Vec<String>,
-) -> Result<HashMap<String, String>, String> {
-    let mut assets = HashMap::new();
-    let parent = document_path
-        .as_ref()
-        .and_then(|path| Path::new(path).parent());
-    for reference in references {
-        if tauri::Url::parse(&reference).is_ok() {
-            continue;
-        }
-        let decoded = percent_encoding::percent_decode_str(&reference)
-            .decode_utf8()
-            .map_err(|error| error.to_string())?;
-        let path = Path::new(decoded.as_ref());
-        let path = if path.is_absolute() {
-            path.to_path_buf()
-        } else if let Some(parent) = parent {
-            parent.join(path)
-        } else {
-            continue;
-        };
-        let extension = path
-            .extension()
-            .and_then(|extension| extension.to_str())
-            .unwrap_or_default()
-            .to_lowercase();
-        let content_type = match extension.as_str() {
-            "png" => "image/png",
-            "jpg" | "jpeg" => "image/jpeg",
-            "webp" => "image/webp",
-            "svg" => "image/svg+xml",
-            "gif" => "image/gif",
-            _ => continue,
-        };
-        let Ok(metadata) = fs::metadata(&path) else {
-            continue;
-        };
-        if metadata.len() > 12 * 1024 * 1024 {
-            continue;
-        }
-        if let Ok(bytes) = fs::read(path) {
-            assets.insert(
-                reference,
-                format!(
-                    "data:{content_type};base64,{}",
-                    base64::engine::general_purpose::STANDARD.encode(bytes)
-                ),
-            );
-        }
-    }
-    Ok(assets)
+    reference: String,
+    version: Option<String>,
+}
+
+#[derive(Serialize)]
+#[serde(tag = "kind", rename_all = "kebab-case")]
+enum PreviewAsset {
+    Unchanged,
+    Available { version: String, source: String },
+    Unavailable,
+}
+
+#[tauri::command]
+async fn preview_assets(requests: Vec<PreviewAssetRequest>) -> Result<Vec<PreviewAsset>, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        requests
+            .into_iter()
+            .map(|request| {
+                if tauri::Url::parse(&request.reference).is_ok() {
+                    return PreviewAsset::Unavailable;
+                }
+                let Ok(decoded) =
+                    percent_encoding::percent_decode_str(&request.reference).decode_utf8()
+                else {
+                    return PreviewAsset::Unavailable;
+                };
+                let path = Path::new(decoded.as_ref());
+                let path = if path.is_absolute() {
+                    path.to_path_buf()
+                } else if let Some(parent) = request
+                    .document_path
+                    .as_ref()
+                    .and_then(|path| Path::new(path).parent())
+                {
+                    parent.join(path)
+                } else {
+                    return PreviewAsset::Unavailable;
+                };
+                let extension = path
+                    .extension()
+                    .and_then(|extension| extension.to_str())
+                    .unwrap_or_default()
+                    .to_lowercase();
+                let content_type = match extension.as_str() {
+                    "png" => "image/png",
+                    "jpg" | "jpeg" => "image/jpeg",
+                    "webp" => "image/webp",
+                    "svg" => "image/svg+xml",
+                    "gif" => "image/gif",
+                    _ => return PreviewAsset::Unavailable,
+                };
+                let Ok(metadata) = fs::metadata(&path) else {
+                    return PreviewAsset::Unavailable;
+                };
+                if !metadata.is_file() || metadata.len() > 12 * 1024 * 1024 {
+                    return PreviewAsset::Unavailable;
+                }
+                let version = format!(
+                    "{}:{}:{}:{}:{}:{}:{}",
+                    metadata.dev(),
+                    metadata.ino(),
+                    metadata.len(),
+                    metadata.mtime(),
+                    metadata.mtime_nsec(),
+                    metadata.ctime(),
+                    metadata.ctime_nsec()
+                );
+                if request.version.as_ref() == Some(&version) {
+                    return PreviewAsset::Unchanged;
+                }
+                let Ok(bytes) = fs::read(path) else {
+                    return PreviewAsset::Unavailable;
+                };
+                PreviewAsset::Available {
+                    version,
+                    source: format!(
+                        "data:{content_type};base64,{}",
+                        base64::engine::general_purpose::STANDARD.encode(bytes)
+                    ),
+                }
+            })
+            .collect()
+    })
+    .await
+    .map_err(|error| error.to_string())
 }
 
 #[derive(Deserialize)]

@@ -1,3 +1,4 @@
+import { observeImageAssets } from "./image-assets";
 import { formattingCommands, formattingEntries } from "./editor-commands";
 import { ShortcutResolver } from "./shortcuts";
 import { Plugin, TextSelection, Selection, NodeSelection } from "prosemirror-state";
@@ -451,8 +452,16 @@ export class NativeEditor extends NativeDocumentModel {
           image.contentEditable = "false";
           image.draggable = false;
           const reference = String(node.attrs.src);
-          this.loadImage(image, reference);
-          return { dom: image };
+          const unsubscribe = observeImageAssets(
+            () => session.getWorkingSnapshot().path,
+            [reference],
+            assets => {
+              if (assets[reference]) image.src = assets[reference];
+              else image.removeAttribute("src");
+            },
+            () => { image.alt ||= "Figure could not be loaded"; },
+          );
+          return { dom: image, ignoreMutation: () => true, destroy: unsubscribe };
         },
       },
       handleDOMEvents: {
@@ -666,19 +675,6 @@ export class NativeEditor extends NativeDocumentModel {
 
   get dom(): HTMLElement {
     return this.editor.dom;
-  }
-  loadImage(image: HTMLImageElement, reference: string): void {
-    void invoke<Record<string, string>>("preview_assets", {
-      documentPath: this.session.getWorkingSnapshot().path,
-      references: [reference],
-    })
-      .then((assets) => {
-        if (!this.destroyed && assets[reference]) image.src = assets[reference];
-        else image.alt ||= "Figure";
-      })
-      .catch(() => {
-        image.alt ||= "Figure could not be loaded";
-      });
   }
 
   equation(

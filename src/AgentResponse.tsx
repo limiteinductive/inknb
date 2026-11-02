@@ -1,6 +1,6 @@
+import { useImageAssets } from "./image-assets";
 import {
   memo,
-  useEffect,
   useId,
   useLayoutEffect,
   useMemo,
@@ -117,7 +117,6 @@ export default memo(function AgentResponse({ message }: { message: Message }) {
       trigger.current?.focus({ preventScroll: true });
     previousOpen.current = open;
   }, [open]);
-  const [assets, setAssets] = useState<Record<string, string>>({});
   const [error, setError] = useState<string | null>(null);
   const words = responseWords(message.content);
   const legacy = words.length > 100;
@@ -143,24 +142,9 @@ export default memo(function AgentResponse({ message }: { message: Message }) {
       reference,
     }).catch((error) => session.fail(error));
   };
-  useEffect(() => {
-    if (!open) return;
-    let current = true;
-    setError(null);
-    void invoke<Record<string, string>>("preview_assets", {
-      documentPath: path,
-      references: renderMarkdown(complete).references,
-    })
-      .then((result) => {
-        if (current) setAssets(result);
-      })
-      .catch((error) => {
-        if (current) setError(String(error));
-      });
-    return () => {
-      current = false;
-    };
-  }, [open, complete, path]);
+  const imageReferences = useMemo(() => renderMarkdown(open ? complete : preview).references, [open, complete, preview]);
+  const assets = useImageAssets(path, imageReferences, error => setError(String(error)));
+
   return (
     <>
       {legacy && <span className="response-preview-label">Preview</span>}

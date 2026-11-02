@@ -1,7 +1,7 @@
+import { observeImageAssets } from "./image-assets";
 import { useLayoutEffect, useMemo, useState, useSyncExternalStore } from "react";
 import { Fragment } from "prosemirror-model";
 import { ChangeSet } from "@codemirror/state";
-import { invoke } from "@tauri-apps/api/core";
 import {
   Check,
   X,
@@ -47,7 +47,6 @@ export default function TableSuggestion({ identity, review }: { identity: string
   );
   useLayoutEffect(() => {
     if (!preview || !group || !session.model || review.pending) return;
-    let cancelled = false;
     try {
       const proposals = [
         selected!,
@@ -201,28 +200,23 @@ export default function TableSuggestion({ identity, review }: { identity: string
           ].map((image) => image.dataset.nativeImage!),
         ),
       ];
-      if (references.length)
-        void invoke<Record<string, string>>("preview_assets", {
-          documentPath: state.path,
-          references,
-        })
-          .then((assets) => {
-            if (cancelled) return;
-            for (const image of preview.querySelectorAll<HTMLImageElement>(
-              "img[data-native-image]",
-            ))
-              image.src = assets[image.dataset.nativeImage!] ?? "";
-          })
-          .catch((failure) => {
-            if (!cancelled) setError(String(failure));
-          });
+      const unsubscribe = observeImageAssets(
+        () => state.path,
+        references,
+        assets => {
+          for (const image of preview.querySelectorAll<HTMLImageElement>("img[data-native-image]")) {
+            const source = assets[image.dataset.nativeImage ?? ""];
+            if (source) image.src = source;
+            else image.removeAttribute("src");
+          }
+        },
+        failure => setError(String(failure)),
+      );
       setError(null);
+      return unsubscribe;
     } catch (failure) {
       setError(String(failure));
     }
-    return () => {
-      cancelled = true;
-    };
   }, [preview, group, selected?.id, session, review.pending]);
   if (!group || !selected) return null;
   const index = group.proposals.findIndex(

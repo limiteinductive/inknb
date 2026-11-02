@@ -1,3 +1,4 @@
+import { observeImageAssets } from "./image-assets";
 import { memo, useLayoutEffect, useState } from "react";
 import { Button } from "react-aria-components";
 import {
@@ -7,7 +8,6 @@ import {
   ChevronRight,
   ListChecks,
 } from "lucide-react";
-import { invoke } from "@tauri-apps/api/core";
 import { useAsideSession, useAsideState, useAsideSelector, sameFields, sameItems } from "./use-session";
 import { currentSuggestions, reviewSuggestion } from "./suggestions";
 import { renderChange } from "./change-display";
@@ -76,7 +76,6 @@ export const InlineSuggestion = memo(function InlineSuggestion({ identity }: { i
   const [error, setError] = useState<string | null>(null);
   useLayoutEffect(() => {
     if (!preview || !selected) return;
-    let cancelled = false;
     const fragment = renderChange(
       selected.expectedText,
       selected.replacement,
@@ -96,24 +95,19 @@ export const InlineSuggestion = memo(function InlineSuggestion({ identity }: { i
         ].map((image) => image.dataset.nativeImage ?? ""),
       ),
     ];
-    if (references.length)
-      void invoke<Record<string, string>>("preview_assets", {
-        documentPath: state.path,
-        references,
-      })
-        .then((assets) => {
-          if (cancelled) return;
-          for (const image of preview.querySelectorAll<HTMLImageElement>(
-            "img[data-native-image]",
-          ))
-            image.src = assets[image.dataset.nativeImage ?? ""] ?? "";
-        })
-        .catch((failure) => {
-          if (!cancelled) setError(String(failure));
-        });
-    return () => {
-      cancelled = true;
-    };
+    const unsubscribe = observeImageAssets(
+      () => state.path,
+      references,
+      assets => {
+        for (const image of preview.querySelectorAll<HTMLImageElement>("img[data-native-image]")) {
+          const source = assets[image.dataset.nativeImage ?? ""];
+          if (source) image.src = source;
+          else image.removeAttribute("src");
+        }
+      },
+      failure => setError(String(failure)),
+    );
+    return unsubscribe;
   }, [
     preview,
     selected?.id,

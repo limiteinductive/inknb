@@ -5,7 +5,7 @@ import IconButton from "./IconButton";
 import "./image-viewer.css";
 
 export default function ImageViewer() {
-  const [image, setImage] = useState<{ source: string; description: string } | null>(null);
+  const [image, setImage] = useState<{ element: HTMLImageElement; source: string; description: string } | null>(null);
   const [zoomed, setZoomed] = useState(false);
   useEffect(() => {
     const open = (event: Event) => {
@@ -15,7 +15,7 @@ export default function ImageViewer() {
       event.preventDefault();
       event.stopPropagation();
       setZoomed(false);
-      setImage({ source: target.currentSrc || target.src, description: target.alt });
+      setImage({ element: target, source: target.currentSrc || target.src, description: target.alt });
     };
     document.addEventListener("dblclick", open, true);
     window.addEventListener("inknb-image-zoom", open);
@@ -24,6 +24,15 @@ export default function ImageViewer() {
       window.removeEventListener("inknb-image-zoom", open);
     };
   }, []);
+  useEffect(() => {
+    const element = image?.element;
+    if (!element) return;
+    const loaded = () => setImage(current => current?.element === element
+      ? { ...current, source: element.currentSrc || element.src, description: element.alt }
+      : current);
+    element.addEventListener("load", loaded);
+    return () => element.removeEventListener("load", loaded);
+  }, [image?.element]);
   return (
     <ModalOverlay className="modal-overlay" isOpen={Boolean(image)} onOpenChange={open => { if (!open) setImage(null); }} isDismissable>
       <Modal className="image-viewer">

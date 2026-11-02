@@ -58,7 +58,7 @@ export default function PageText({ bounds, assets }: { bounds: PageNodeBounds; a
           image.dataset.pageImage = String(node.attrs.src);
           image.alt = String(node.attrs.alt ?? "");
           if (currentAssets.current[String(node.attrs.src)]) image.src = currentAssets.current[String(node.attrs.src)];
-          return { dom: image };
+          return { dom: image, ignoreMutation: () => true };
         },
       },
       handleDOMEvents: {
@@ -143,6 +143,7 @@ export default function PageText({ bounds, assets }: { bounds: PageNodeBounds; a
       const source = image.dataset.pageImage ?? image.getAttribute("src") ?? "";
       image.dataset.pageImage = source;
       if (assets[source]) image.src = assets[source];
+      else image.removeAttribute("src");
     }
   }, [assets, state.text]);
   return <div className="page-text" data-page-identity={identity} style={{ left: bounds.left, top: bounds.top, width: bounds.width, minHeight: bounds.height, fontFamily: bounds.fontFamily, fontSize: bounds.fontSize, fontWeight: bounds.fontWeight, lineHeight: `${bounds.lineHeight}px` }}>

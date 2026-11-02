@@ -1,3 +1,4 @@
+import { useImageAssets } from "./image-assets";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { Button } from "react-aria-components";
 import { GripVertical, MessageSquarePlus, Plus } from "lucide-react";
@@ -23,7 +24,6 @@ export default function DocumentPage() {
   const root = useRef<HTMLDivElement>(null);
   const [information, setInformation] = useState<PreviewInfo | null>(null);
   const [geometry, setGeometry] = useState<PageNodeBounds[]>([]);
-  const [assets, setAssets] = useState<Record<string, string>>({});
   const [error, setError] = useState<string | null>(null);
   const [focusIdentity, setFocusIdentity] = useState<string | null>(null);
   const [dragging, setDragging] = useState<string | null>(null);
@@ -45,7 +45,7 @@ export default function DocumentPage() {
   const items = entries.filter((bounds) => bounds.role === "item");
   const images: string[] = [];
   document?.descendants((node) => { if (node.type.name === "image") images.push(String(node.attrs.src)); });
-  const imageSignature = JSON.stringify(images);
+  const assets = useImageAssets(state.path, images, error => setError(String(error)));
   const latest = useRef({ entries, containers, items });
   latest.current = { entries, containers, items };
   useEffect(() => {
@@ -60,11 +60,6 @@ export default function DocumentPage() {
     }).catch((error) => { if (current) setError(String(error)); });
     return () => { current = false; };
   }, [state.metadata.documentId, state.metadata.page?.artifactId]);
-  useEffect(() => {
-    let current = true;
-    void invoke<Record<string, string>>("preview_assets", { documentPath: state.path, references: images }).then((assets) => { if (current) setAssets(assets); }).catch((error) => { if (current) setError(String(error)); });
-    return () => { current = false; };
-  }, [state.path, imageSignature]);
   const receiveLayout = useCallback((nodes: PageNodeBounds[]) => {
     setGeometry((previous) => JSON.stringify(previous) === JSON.stringify(nodes) ? previous : nodes);
   }, []);

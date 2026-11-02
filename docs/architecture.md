@@ -52,6 +52,8 @@ Serialized snapshots reuse immutable node content. Each node validates its own a
 
 Response HTML retains its markup for stable text, asset, and citation inputs. Empty assets and citations use stable memo keys.
 
+Each WebView shares subscriptions to displayed local images. One refresh cycle checks file versions and loads changed bytes on the blocking task pool. Unchanged images retain their rendered nodes. Subscriptions release their assets when views close. Image refreshes preserve document text, selection, and Undo history.
+
 Each immutable metadata snapshot owns indexes of threads, requests, and proposal relationships. Conversation cards and activity receipts share these indexes. Proposal groups retain source order and include direct ownership, request ownership, and local suggestion links.
 
 Plain-text files retain their original leading whitespace, paragraph gaps, and trailing whitespace during native edits.
