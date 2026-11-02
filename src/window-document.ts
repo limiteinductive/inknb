@@ -1,3 +1,4 @@
+import { formattingCommands } from "./editor-commands";
 import { collab, receiveTransaction, sendableSteps } from "prosemirror-collab";
 import { Selection as NativeSelection, TextSelection } from "prosemirror-state";
 import { Step, Transform } from "prosemirror-transform";
@@ -498,6 +499,11 @@ export class WindowDocument extends DocumentReader {
     return result;
   }
   override async command(command: string): Promise<void> {
+    if (formattingCommands[command]) {
+      const state = this.getSnapshot();
+      if (!state.pageVisible || !state.metadata.page) this.view?.format(command);
+      return;
+    }
     if (command === "selection-comment") {
       if (this.sendingSelection) return;
       const model = this.model;

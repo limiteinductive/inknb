@@ -1,3 +1,4 @@
+import { formattingCommands, formattingEntries } from "./editor-commands";
 import { ShortcutResolver } from "./shortcuts";
 import { Plugin, TextSelection, Selection, NodeSelection } from "prosemirror-state";
 import type { Command, Transaction } from "prosemirror-state";
@@ -5,7 +6,7 @@ import { EditorView, Decoration, DecorationSet } from "prosemirror-view";
 import type { DecorationAttrs } from "prosemirror-view";
 import { Fragment, Slice } from "prosemirror-model";
 import type { Node as DocumentNode } from "prosemirror-model";
-import { baseKeymap, toggleMark, setBlockType, chainCommands } from "prosemirror-commands";
+import { baseKeymap, chainCommands } from "prosemirror-commands";
 import { keymap } from "prosemirror-keymap";
 import { gapCursor } from "prosemirror-gapcursor";
 import {
@@ -345,11 +346,8 @@ export class NativeEditor extends NativeDocumentModel {
     const shortcuts = new ShortcutResolver();
     this.editor = new EditorView(host, {
       handleKeyDown: (view, event) => shortcuts.handle(event, session.getSnapshot().preferences, "editor", identity => {
-        if (identity.startsWith("editor.heading-")) return setBlockType(nativeSchema.nodes.heading, { level: Number(identity.slice(-1)) })(view.state, view.dispatch, view);
+        if (formattingCommands[identity]) return this.format(identity);
         const commands: Record<string, Command> = {
-          "editor.bold": toggleMark(nativeSchema.marks.strong),
-          "editor.italic": toggleMark(nativeSchema.marks.em),
-          "editor.paragraph": setBlockType(nativeSchema.nodes.paragraph),
           "editor.new-paragraph": chainCommands(splitListItem(nativeSchema.nodes.list_item), baseKeymap.Enter),
           "editor.indent": chainCommands(goToNextCell(1), sinkListItem(nativeSchema.nodes.list_item)),
           "editor.outdent": chainCommands(goToNextCell(-1), liftListItem(nativeSchema.nodes.list_item)),
@@ -841,19 +839,18 @@ export class NativeEditor extends NativeDocumentModel {
     };
   }
 
+  format(identity: string): boolean {
+    const command = formattingCommands[identity];
+    if (!command) return false;
+    const applied = command(this.editor.state, this.editor.dispatch, this.editor);
+    if (applied) this.editor.focus();
+    return applied;
+  }
+
   contextActions(): { text: string; action: () => void }[] {
     const state = this.editor.state;
     const commands = [
-      { text: "Bold", command: toggleMark(nativeSchema.marks.strong) },
-      { text: "Italic", command: toggleMark(nativeSchema.marks.em) },
-      {
-        text: "Paragraph",
-        command: setBlockType(nativeSchema.nodes.paragraph),
-      },
-      {
-        text: "Heading",
-        command: setBlockType(nativeSchema.nodes.heading, { level: 2 }),
-      },
+      ...formattingEntries.filter(entry => !entry.id.startsWith("editor.heading-") || entry.id === "editor.heading-2").map(entry => ({ text: entry.label, command: formattingCommands[entry.id] })),
       { text: "Add row below", command: addRowAfter },
       { text: "Add column after", command: addColumnAfter },
       { text: "Delete row", command: deleteRow },

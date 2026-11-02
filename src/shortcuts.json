@@ -39,6 +39,8 @@
   {"id": "close","label": "Quit ink and butter","scope": "application","defaults": ["Mod+KeyQ"]},
   {"id": "editor.bold","label": "Bold","scope": "editor","defaults": ["Mod+KeyB"]},
   {"id": "editor.italic","label": "Italic","scope": "editor","defaults": ["Mod+KeyI"]},
+  {"id": "editor.strikethrough","label": "Strikethrough","scope": "editor","defaults": ["Mod+Shift+KeyX"]},
+  {"id": "editor.code","label": "Inline code","scope": "editor","defaults": ["Mod+KeyE"]},
   {"id": "editor.paragraph","label": "Paragraph","scope": "editor","defaults": ["Mod+Alt+Digit0"]},
   {"id": "editor.heading-1","label": "Heading 1","scope": "editor","defaults": ["Mod+Alt+Digit1"]},
   {"id": "editor.heading-2","label": "Heading 2","scope": "editor","defaults": ["Mod+Alt+Digit2"]},

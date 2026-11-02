@@ -1,3 +1,5 @@
+import { formattingCommands, formattingEntries } from "./editor-commands";
+import { flushSync } from "react-dom";
 import { shortcutLabel } from "./shortcuts";
 import { useEffect, useId, useState, useSyncExternalStore } from "react";
 import { Input, TextField } from "react-aria-components";
@@ -51,6 +53,7 @@ export default function CommandPalette({ session }: { session?: WindowDocument }
     { id: "activity", label: "Notifications" },
     { id: "decisions", label: "Decisions" },
     ...(state ? [
+      ...formattingEntries.map(entry => ({ id: entry.id, label: entry.label, disabled: !session?.view || Boolean(state.pageVisible && state.metadata.page) || !formattingCommands[entry.id](session.view.editor.state) })),
       { id: "comment", label: "Add aside" },
       { id: "asides", label: state.asidesOpen && !state.focus ? "Hide asides" : "Show asides" },
       { id: "review", label: `Review suggestions${proposals.length ? ` (${proposals.length})` : ""}`, disabled: !proposals.length },
@@ -101,7 +104,7 @@ export default function CommandPalette({ session }: { session?: WindowDocument }
   const selected = matches[Math.min(selectedIndex, matches.length - 1)];
   const run = (command: PaletteOption) => {
     if (command.disabled) return;
-    workspace.update({ commandSurface: null });
+    flushSync(() => workspace.update({ commandSurface: null }));
     void command.select().catch(error => workspace.fail(error));
   };
   const title = searching ? "Search project" : "Commands";
