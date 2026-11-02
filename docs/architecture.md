@@ -14,6 +14,8 @@ Accept all suggestions applies the current document's valid, non-overlapping cha
 
 Table suggestions use one native table projection and one review bar. Structural comparison associates each proposal with its table. Projected source ranges identify changed cells. Preview transactions leave the document unchanged. Each acceptance uses the existing proposal revision and text checks.
 
+Accepting or dismissing a suggestion retains the document reading position. Table review selects the next change within the same table. Suggestion arrows and Show in document provide explicit source navigation.
+
 The Show asides and Hide asides commands toggle the whole column. Each document stores its column visibility in its library entry. Hiding the column retains thread expansion states and drafts. New aside commands and passage navigation reveal the column. Selecting text or pressing Shift+Command+A creates an aside.
 
 Each table exposes the shared comment-plus icon. The action captures the whole table and opens its composer in one click. Selection and deletion remain in the table context menu.

@@ -228,16 +228,17 @@ export default function TableSuggestion({ identity, review }: { identity: string
     setError(null);
     try {
       await session.proposal(selected.id, accept);
-      const remaining = currentSuggestions(session.getSnapshot());
+      const current = session.getSnapshot();
+      if (current.reviewProposalId && current.reviewProposalId !== selected.id) return;
+      const remaining = currentSuggestions(current);
       const next =
         group.proposals
           .slice(index + 1)
           .concat(group.proposals.slice(0, index))
           .find((proposal) =>
             remaining.some((candidate) => candidate.id === proposal.id),
-          ) ?? remaining[0];
-      if (next) reviewSuggestion(next.id, session);
-      else session.update({ reviewProposalId: null });
+          );
+      session.update({ reviewProposalId: next?.id ?? null, reviewOpen: false });
     } catch (failure) {
       setError(String(failure));
     } finally {

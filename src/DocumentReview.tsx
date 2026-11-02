@@ -122,14 +122,8 @@ export const InlineSuggestion = memo(function InlineSuggestion({ identity }: { i
     setError(null);
     try {
       await session.proposal(identity, accept);
-      const remaining = currentSuggestions(session.getSnapshot());
-      const next =
-        remaining.find((proposal) => proposal.from >= selected.from) ??
-        remaining[0];
-      if (next) reviewSuggestion(next.id, session);
-      else if (selected.threadId)
-        session.collapseThread(selected.threadId, false);
-      else session.update({ reviewProposalId: null });
+      if (session.getSnapshot().reviewProposalId === identity)
+        session.update({ reviewProposalId: null, reviewOpen: false });
     } catch (failure) {
       setError(String(failure));
     } finally {
