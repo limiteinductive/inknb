@@ -16,6 +16,8 @@ Table suggestions use one native table projection and one review bar. Structural
 
 Accepting or dismissing a suggestion retains the document reading position. Table review selects the next change within the same table. Suggestion arrows and Show in document provide explicit source navigation.
 
+Resolving an aside returns focus to the document reading area. The writing selection and unsent drafts stay in place. Resolution responses recover reading focus after the control disappears and preserve focus moved by the writer.
+
 The Show asides and Hide asides commands toggle the whole column. Each document stores its column visibility in its library entry. Hiding the column retains thread expansion states and drafts. New aside commands and passage navigation reveal the column. Selecting text or pressing Shift+Command+A creates an aside.
 
 Each table exposes the shared comment-plus icon. The action captures the whole table and opens its composer in one click. Selection and deletion remain in the table context menu.

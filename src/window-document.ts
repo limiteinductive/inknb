@@ -22,6 +22,7 @@ import { NativeDocumentModel } from "./native-model";
 import { captureDocument } from "./native-document";
 import { save } from "@tauri-apps/plugin-dialog";
 import { draftSnapshot } from "./images";
+import { documentScroll } from "./document-scroll";
 
 export class WindowDocument extends DocumentReader {
   epochIdentity: string;
@@ -395,11 +396,17 @@ export class WindowDocument extends DocumentReader {
   }
 
   resolve(threadId: string, restoreFocus = true): void {
+    const surface = this.surface;
+    const focused = document.activeElement;
+    if (restoreFocus && surface)
+      documentScroll(surface.dom).focus({ preventScroll: true });
     void this.action({ kind: "resolve", threadId, restoreFocus: false })
       .then(() => {
         if (this.getSnapshot().metadata.threads.find(thread => thread.id === threadId)?.resolved)
           this.collapseThread(threadId, false);
-        if (restoreFocus) this.restoreFocus();
+        if (restoreFocus && surface && this.surface === surface &&
+          (document.activeElement === document.body || document.activeElement === focused))
+          documentScroll(surface.dom).focus({ preventScroll: true });
       })
       .catch((error) => this.fail(error));
   }
