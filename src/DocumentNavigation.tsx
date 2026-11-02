@@ -4,7 +4,7 @@ import { ChevronLeft, ChevronRight, PanelLeft } from "lucide-react";
 import IconButton from "./IconButton";
 import { workspace } from "./window-workspace";
 
-export default function DocumentNavigation() {
+export default function DocumentNavigation({ onNavigate }: { onNavigate?: () => void }) {
   const library = useSyncExternalStore(
     workspace.subscribe,
     workspace.getSnapshot,
@@ -23,14 +23,14 @@ export default function DocumentNavigation() {
         label={shortcutTooltip("Back", "back", library.preferences)}
         agentControl="navigation.back"
         disabled={library.historyIndex <= 0}
-        onPress={() => void workspace.command("back").catch(error => workspace.fail(error))}
+        onPress={() => void workspace.command("back").then(onNavigate).catch(error => workspace.fail(error))}
       />
       <IconButton
         icon={ChevronRight}
         label={shortcutTooltip("Forward", "forward", library.preferences)}
         agentControl="navigation.forward"
         disabled={library.historyIndex >= library.history.length - 1}
-        onPress={() => void workspace.command("forward").catch(error => workspace.fail(error))}
+        onPress={() => void workspace.command("forward").then(onNavigate).catch(error => workspace.fail(error))}
       />
     </nav>
   );

@@ -414,7 +414,7 @@ export default function Library({
         />
       )}
       <header className="library-heading" data-tauri-drag-region>
-        <DocumentNavigation />
+        <DocumentNavigation onNavigate={onNavigate} />
         <IconButton icon={Command} label={shortcutTooltip("Commands", "commands", library.preferences)} agentControl="commands.open" onPress={() => void workspace.command("commands")} />
         <ActivityButton />
       </header>
