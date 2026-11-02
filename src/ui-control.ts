@@ -14,6 +14,7 @@ const targets = new Map<
 
 const agentControls = new Set([
   "library.toggle", "library.resize", "library.content", "commands.open",
+  "navigation.back", "navigation.forward",
   "activity.open", "activity.panel", "activity.back", "activity.open-document",
   "activity.close", "asides", "asides.toggle", "asides.reader", "asides.resize",
   "review.toggle", "response.close", "response.body", "history.open",

@@ -1462,6 +1462,7 @@ html[data-motion="reduced"] *::after {
   display: flex;
   flex-direction: column;
   min-height: 0;
+  container-type: inline-size;
   background: var(--paper-texture), var(--library-surface);
   border-right: 1px solid var(--library-line);
 }
@@ -2191,4 +2192,11 @@ del[data-change="removed"] {
 }
 .library-heading .history-controls {
   margin-inline-end: auto;
+}
+@container (max-width: 270px) {
+  :root:not([data-window-mode="fullscreen"]) .library-heading {
+    height: calc(var(--toolbar-height, 52px) + var(--control-size) + var(--space-2));
+    padding-block-start: var(--toolbar-height, 52px);
+    padding-inline-start: var(--space-3);
+  }
 }
